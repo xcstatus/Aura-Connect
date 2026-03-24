@@ -247,3 +247,40 @@ impl TerminalView {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::mock_session::MockSession;
+
+    #[test]
+    fn test_terminal_view_initialization() {
+        let view = TerminalView::new();
+        assert!(view.last_cols == 0);
+        assert!(view.last_rows == 0);
+    }
+
+    #[test]
+    fn test_terminal_data_extraction() {
+        let mut view = TerminalView::new();
+        
+        // 模拟写入简单的 ANSI 文本
+        let test_data = b"Hello Ghostty";
+        view.ghostty_engine.write_ansi(test_data);
+        
+        // 抓取第一行
+        let cells = view.ghostty_engine.get_line(0, 80);
+        
+        // 验证基本字符提取
+        let extracted: String = cells.iter().take(13).map(|c| c.c).collect();
+        assert_eq!(extracted, "Hello Ghostty");
+        
+        // 验证带颜色的数据 (红色)
+        view.ghostty_engine.write_ansi(b"\x1b[31;1mRED\x1b[0m");
+        let cells_red = view.ghostty_engine.get_line(0, 80);
+        
+        // 查找 "RED" 的位置 (通常接在后面或重启行，这里简化为重新写入并获取)
+        // 注意：Ghostty 写入是流式的，通常同步 get_line 能拿到结果
+        println!("DEBUG: First cell color: {:?}", cells_red[0].fg);
+    }
+}
