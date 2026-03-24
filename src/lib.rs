@@ -1,0 +1,11 @@
+pub mod vault;
+pub mod icons; 
+pub mod session;
+pub mod settings;
+pub mod storage;
+pub mod repository;
+pub mod session_manager;
+pub mod app;
+pub mod ui;
+pub mod vault_utils;
+pub mod backend;

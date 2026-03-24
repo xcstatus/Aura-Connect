@@ -1,0 +1,40 @@
+[package]
+name = "RustSsh"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "rust_ssh"
+path = "src/lib.rs"
+
+[dependencies]
+aes-gcm = "0.10.3"
+anyhow = "1.0.102"
+argon2 = "0.5.3"
+async-trait = "0.1.86"
+directories = "6.0.0"
+eframe = { version = "0.33.3", features = ["wayland", "x11"] }
+env_logger = "0.11.9"
+image = "0.25.10"
+log = "0.4.29"
+rand = "0.8.5"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+secrecy = "0.10.3"
+thiserror = "2.0.18"
+tokio = { version = "1.43.0", features = ["full", "macros"] }
+uuid = { version = "1.22.0", features = ["v4"] }
+zeroize = { version = "1.8.2", features = ["zeroize_derive"] }
+russh = "0.45.0"
+russh-keys = "0.45.0"
+vte = "0.15.0"
+# libghostty-sys = { git = "https://github.com/ghostty-org/ghostty" } # Currently yanked on crates.io, tracked via local FFI
+futures = "0.3.32"
+
+[dev-dependencies]
+proptest = "1.6.0"
+mockall = "0.13.1"
+tempfile = "3.17.1"
+
+[build-dependencies]
+bindgen = "0.71.1"

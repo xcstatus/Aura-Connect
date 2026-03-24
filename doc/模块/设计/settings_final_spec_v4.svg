@@ -1,0 +1,46 @@
+<svg width="1000" height="800" viewBox="0 0 1000 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Modal -->
+  <rect width="1000" height="800" rx="12" fill="#1C1C1E" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+  
+  <!-- Sidebar (FULL HEIGHT TO TOP - Width 220px, Bg #232326) -->
+  <path d="M0 12C0 5.37258 5.37258 0 12 0H220V800H12C5.37258 800 0 794.627 0 788V12Z" fill="#232326"/>
+  <rect x="219" width="1" height="800" fill="rgba(255,255,255,0.04)"/>
+  
+  <!-- Sidebar Navigation Items (Visual Balance - Slightly Higher) -->
+  <rect x="8" y="36" width="204" height="40" rx="6" fill="#3A3A3C"/> <!-- Surface_2 -->
+  <rect x="4" y="36" width="2" height="40" fill="#00FF80"/> <!-- Accent_Base -->
+  <text x="24" y="61" fill="#FFFFFF" font-family="PingFang SC, Inter, sans-serif" font-size="13">通用设置</text>
+  
+  <text x="24" y="109" fill="#A0A0A5" font-family="PingFang SC, Inter, sans-serif" font-size="13">终端配置</text>
+  <text x="24" y="157" fill="#A0A0A5" font-family="PingFang SC, Inter, sans-serif" font-size="13">安全隐私</text>
+  <text x="24" y="205" fill="#A0A0A5" font-family="PingFang SC, Inter, sans-serif" font-size="13">备份同步</text>
+ 
+  <!-- Right Side Header (32px, No Title, Bg #28282D) -->
+  <rect x="220" y="0" width="780" height="32" fill="#28282D" rx="0"/>
+  
+  <!-- Right Close Button (32x32px Hitbox) -->
+  <rect x="968" y="0" width="32" height="32" rx="0" fill="transparent"/>
+  <rect x="972" y="4" width="24" height="24" rx="4" fill="rgba(255,255,255,0.05)"/>
+  <text x="984" y="21" fill="#A0A0A5" text-anchor="middle" font-family="Inter, sans-serif" font-size="12">✕</text>
+
+  <!-- Secondary Tab Bar (40px) -->
+  <rect x="220" y="32" width="780" height="40" fill="#1C1C1E"/>
+  <rect x="220" y="72" width="780" height="1" fill="rgba(255,255,255,0.04)"/>
+  <text x="244" y="58" fill="#00FF80" font-family="PingFang SC, sans-serif" font-weight="600" font-size="13">基础设置</text>
+  <rect x="240" y="70" width="60" height="2" fill="#00FF80"/>
+  
+  <!-- Content Area -->
+  <text x="244" y="110" fill="#FFFFFF" font-family="PingFang SC, sans-serif" font-weight="700" font-size="18">启动与更新</text>
+  
+  <!-- RESTART BANNER (BOTTOM 50px, Warn Color #FFCC00) -->
+  <rect x="220" y="750" width="780" height="50" fill="rgba(255, 204, 0, 0.1)"/>
+  <rect x="220" y="750" width="780" height="1" fill="rgba(255, 204, 0, 0.2)"/>
+  
+  <text x="244" y="781" fill="#FFCC00" font-family="PingFang SC, sans-serif" font-size="13">⚠️ 部分设置需要重启应用后生效。</text>
+  
+  <rect x="880" y="759" width="96" height="32" rx="6" fill="#FFCC00"/>
+  <text x="928" y="780" fill="#000000" text-anchor="middle" font-family="PingFang SC, sans-serif" font-weight="600" font-size="13">立即重启</text>
+  
+  <rect x="780" y="759" width="88" height="32" rx="6" stroke="#3A3A3C" fill="transparent"/>
+  <text x="824" y="780" fill="#A0A0A5" text-anchor="middle" font-family="PingFang SC, sans-serif" font-size="13">稍后处理</text>
+</svg>
