@@ -35,19 +35,37 @@ fn main() {
     // 也一起链接基础纯字元状态库
     println!("cargo:rustc-link-lib=static=ghostty-vt"); 
 
-    // MacOS 必须要的框架绑定
     #[cfg(target_os = "macos")]
     {
         println!("cargo:rustc-link-lib=framework=AppKit");
         println!("cargo:rustc-link-lib=framework=CoreGraphics");
         println!("cargo:rustc-link-lib=framework=Foundation");
         println!("cargo:rustc-link-lib=framework=CoreText");
+        println!("cargo:rustc-link-lib=c++"); // macOS 需要 libc++
     }
 
-    // 3. 构建 bindgen C-FFI
-    println!("cargo:warning=Generating bindings from ghostty.h...");
+    #[cfg(not(target_os = "macos"))]
+    {
+        println!("cargo:rustc-link-lib=stdc++"); // Linux 采用 libstdc++
+    }
+
+    // 3. 构建 bindgen C-FFI wrapper
+    println!("cargo:warning=Generating bindings from comprehensive ghostty headers...");
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let wrapper_path = out_path.join("ghostty_wrapper.h");
+    std::fs::write(&wrapper_path, format!(
+        "#include \"{0}/include/ghostty/vt/terminal.h\"\n\
+         #include \"{0}/include/ghostty/vt/screen.h\"\n\
+         #include \"{0}/include/ghostty/vt/key.h\"\n\
+         #include \"{0}/include/ghostty/vt/mouse.h\"\n\
+         #include \"{0}/include/ghostty/vt/formatter.h\"\n\
+         #include \"{0}/include/ghostty/vt/render.h\"\n",
+        ghostty_dir.display()
+    )).unwrap();
+
     let bindings = bindgen::Builder::default()
-        .header(ghostty_dir.join("include").join("ghostty.h").to_str().unwrap())
+        .header(wrapper_path.to_str().unwrap())
+        .clang_arg(format!("-I{}/include", ghostty_dir.display()))
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .layout_tests(false)
         .generate()
