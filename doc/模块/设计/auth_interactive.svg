@@ -1,0 +1,8 @@
+<svg width="600" height="120" viewBox="0 0 600 120" xmlns="http://www.w3.org/2000/svg">
+  <rect width="600" height="120" rx="8" fill="#1C1C1E" stroke="rgba(255,255,255,0.1)" />
+  <text x="20" y="30" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#00FF80">Interactive 详情</text>
+  
+  <rect x="20" y="50" width="560" height="50" rx="4" fill="rgba(90,200,250,0.1)" />
+  <text x="35" y="70" font-family="Inter, sans-serif" font-size="11" fill="#5AC8FA">ℹ️ 交互式验证将在连接启动后由终端手动输入。</text>
+  <text x="35" y="85" font-family="Inter, sans-serif" font-size="11" fill="#5AC8FA">支持键盘交互验证（Keyboard-Interactive）。</text>
+</svg>

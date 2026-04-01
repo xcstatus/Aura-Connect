@@ -66,6 +66,23 @@ impl CredentialVault {
         self.unlocked = false;
     }
 
+    /// Re-encrypt the current vault payload with a new password.
+    /// The vault must be unlocked before calling this method.
+    pub fn rekey(&mut self, new_password: &SecretString) -> Result<(), VaultError> {
+        let current_key = self.unlocked_key.as_ref().ok_or(VaultError::Locked)?;
+        let decrypted = crypto::decrypt(current_key, &self.encrypted_data)?;
+
+        let new_salt = crypto::generate_salt();
+        let new_key = crypto::derive_key(new_password, &new_salt)?;
+        let new_encrypted = crypto::encrypt(&new_key, &decrypted)?;
+
+        self.salt = new_salt;
+        self.encrypted_data = new_encrypted;
+        self.unlocked_key = Some(new_key);
+        self.unlocked = true;
+        Ok(())
+    }
+
     /// Get a stored credential, returning `None` if the credential doesn't exist
     pub fn get_credential(&self, key: &str) -> Result<Option<Vec<u8>>, VaultError> {
         let secret_key = self.unlocked_key.as_ref().ok_or(VaultError::Locked)?;
@@ -207,5 +224,19 @@ mod tests {
 
         // Cleanup
         let _ = std::fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn test_vault_rekey() {
+        let old_pwd = SecretString::from("old-pass".to_string());
+        let new_pwd = SecretString::from("new-pass".to_string());
+        let mut vault = CredentialVault::initialize(&old_pwd).unwrap();
+        vault.set_credential("k", b"v").unwrap();
+
+        vault.rekey(&new_pwd).unwrap();
+        vault.lock();
+        assert!(vault.unlock(&old_pwd).is_err());
+        vault.unlock(&new_pwd).unwrap();
+        assert_eq!(vault.get_credential("k").unwrap().unwrap(), b"v");
     }
 }

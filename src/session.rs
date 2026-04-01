@@ -54,6 +54,17 @@ pub enum AuthMethod {
     Interactive,
 }
 
+impl std::fmt::Display for AuthMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthMethod::Password => write!(f, "Password"),
+            AuthMethod::Key { .. } => write!(f, "Key"),
+            AuthMethod::Agent => write!(f, "Agent"),
+            AuthMethod::Interactive => write!(f, "Interactive"),
+        }
+    }
+}
+
 /// 核心会话配置文件：仅包含元数据与协议无关属性
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SessionProfile {

@@ -49,4 +49,15 @@ impl SessionManager {
         self.library.sessions.retain(|s| s.id != id);
         Ok(())
     }
+
+    /// 异步更新会话（按 id 覆盖）
+    pub async fn upsert_session(&mut self, config: crate::session::SessionConfig) -> Result<()> {
+        self.store.save(config.clone()).await?;
+        if let Some(existing) = self.library.sessions.iter_mut().find(|s| s.id == config.id) {
+            *existing = config;
+        } else {
+            self.library.sessions.push(config);
+        }
+        Ok(())
+    }
 }

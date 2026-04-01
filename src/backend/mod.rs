@@ -1,3 +1,4 @@
 pub mod ssh_session;
-pub mod ghostty_ffi;
+#[cfg(feature = "ghostty-vt")]
+pub mod ghostty_vt;
 pub mod mock_session;

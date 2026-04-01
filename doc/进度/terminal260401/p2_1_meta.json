@@ -1,0 +1,120 @@
+{
+  "collected_at_ms": 1775049442037,
+  "pid": 53307,
+  "collection": {
+    "out_dir": "term-dumps",
+    "stages": {
+      "idle": {
+        "seconds": 120,
+        "out": "term-dumps/p2_1_idle_120s.csv"
+      },
+      "throughput": {
+        "seconds": 180,
+        "out": "term-dumps/p2_1_throughput_180s.csv"
+      },
+      "longrun": {
+        "seconds": 1800,
+        "out": "term-dumps/p2_1_longrun_1800s.csv"
+      }
+    },
+    "sampler": {
+      "type": "ps",
+      "fields": [
+        "cpu_pct",
+        "rss_kb"
+      ]
+    }
+  },
+  "platform": {
+    "system": "Darwin",
+    "release": "25.3.0",
+    "version": "Darwin Kernel Version 25.3.0: Wed Jan 28 20:54:46 PST 2026; root:xnu-12377.91.3~2/RELEASE_ARM64_T6000",
+    "machine": "arm64"
+  },
+  "repo": {
+    "git_head": "ff271888c24220fd8122ea597044e1de6f4592e8",
+    "git_status_porcelain": "M .DS_Store\n M .gitignore\n M Cargo.lock\n M Cargo.toml\n M build.rs\nAM \"doc/iced\\350\\203\\275\\345\\212\\233\\350\\276\\271\\347\\225\\214\\344\\270\\216\\347\\273\\210\\347\\253\\257\\351\\207\\215\\346\\236\\204\\346\\214\\207\\345\\215\\227.md\"\n M \"doc/\\344\\272\\247\\345\\223\\201\\346\\226\\207\\346\\241\\243.md\"\n M resource/ghostty\n M src/app.rs\n D src/backend/ghostty_ffi.rs\n M src/backend/mod.rs\n M src/backend/ssh_session.rs\n M src/lib.rs\n M src/main.rs\n M src/session.rs\n M src/session_manager.rs\n M src/settings.rs\n D src/ui/components/header.rs\n D src/ui/components/mod.rs\n D src/ui/components/modals.rs\n D src/ui/components/password_modal.rs\n D src/ui/components/terminal_view.rs\n D src/ui/mod.rs\n D src/ui/settings/general.rs\n D src/ui/settings/mod.rs\n D src/ui/settings/security.rs\n D src/ui/settings/terminal.rs\n D src/ui/theme.rs\n M src/vault/core.rs\n M src/vault/mod.rs\n M tests/ssh_integration.rs\n M tests/storage_integration.rs\n M tests/vault_integration.rs\n?? .idea/\n?? \"doc/QA_\\345\\277\\253\\351\\200\\237\\350\\277\\236\\346\\216\\245.md\"\n?? \"doc/SSH\\350\\277\\236\\346\\216\\245\\344\\270\\216\\345\\207\\255\\346\\215\\256\\345\\256\\211\\345\\205\\250\\351\\223\\276\\350\\267\\257\\345\\210\\206\\346\\236\\220.md\"\n?? \"doc/libghostty_API_\\346\\270\\205\\345\\215\\225\\344\\270\\216\\350\\260\\203\\347\\224\\250\\350\\247\\204\\350\\214\\203.md\"\n?? \"doc/\\345\\244\\232\\350\\257\\255\\350\\250\\200\\351\\200\\202\\351\\205\\215\\346\\226\\271\\346\\241\\210\\344\\270\\216\\345\\274\\200\\345\\217\\221\\350\\247\\204\\350\\214\\203.md\"\n?? \"doc/\\345\\276\\205\\345\\212\\236.md\"\n?? \"doc/\\345\\277\\253\\351\\200\\237\\350\\277\\236\\346\\216\\245\\345\\205\\245\\345\\217\\243_\\346\\265\\201\\347\\250\\213\\344\\270\\216\\347\\212\\266\\346\\200\\201\\346\\234\\272.md\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/auth_interactive.svg\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/auth_options_comparison.png\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/auth_password.svg\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/auth_publickey.svg\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/main_breadcrumb_bar.svg\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/session_modal_advanced.svg\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/session_modal_general.svg\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/session_modal_minimal.svg\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/session_modal_mockup.png\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/session_modal_mockup.svg\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/session_modal_split.svg\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/settings_connection_mgmt.svg\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/settings_session_multi_protocol.svg\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/\\344\\274\\232\\350\\257\\235\\347\\256\\241\\347\\220\\206_\\350\\256\\276\\347\\275\\256\\344\\270\\255\\345\\277\\203.md\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/\\346\\226\\260\\345\\273\\272\\344\\274\\232\\350\\257\\235_\\350\\256\\276\\350\\256\\241\\347\\250\\277.md\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/\\347\\273\\210\\347\\253\\257\\344\\277\\241\\346\\201\\257\\346\\240\\217_BreadcrumbBar.md\"\n?? \"doc/\\346\\250\\241\\345\\235\\227/\\350\\256\\276\\350\\256\\241/\\350\\277\\236\\346\\216\\245\\347\\256\\241\\347\\220\\206_\\350\\256\\276\\347\\275\\256\\344\\270\\255\\345\\277\\203.md\"\n?? \"doc/\\347\\273\\210\\347\\253\\257GPU\\346\\230\\276\\347\\244\\272\\345\\274\\202\\345\\270\\270\\351\\227\\256\\351\\242\\230\\345\\244\\215\\347\\233\\230.md\"\n?? \"doc/\\347\\273\\210\\347\\253\\257\\345\\214\\272\\345\\237\\237\\346\\227\\240\\346\\230\\276\\347\\244\\272\\351\\227\\256\\351\\242\\230\\345\\244\\215\\347\\233\\230.md\"\n?? \"doc/\\347\\273\\210\\347\\253\\257\\346\\250\\241\\345\\235\\227_1.0\\344\\270\\2162.0\\346\\226\\271\\346\\241\\210\\345\\257\\271\\346\\257\\224\\344\\270\\216\\344\\274\\230\\345\\214\\226\\347\\202\\271.md\"\n?? \"doc/\\347\\273\\210\\347\\253\\257\\346\\250\\241\\345\\235\\227\\345\\274\\200\\345\\217\\221\\346\\214\\207\\345\\215\\227.md\"\n?? \"doc/\\347\\273\\210\\347\\253\\257\\346\\250\\241\\345\\235\\227\\345\\274\\200\\345\\217\\221\\346\\226\\271\\346\\241\\210.md\"\n?? \"doc/\\347\\273\\210\\347\\253\\257\\347\\204\\246\\347\\202\\271\\344\\270\\242\\345\\244\\261\\351\\227\\256\\351\\242\\230\\345\\244\\215\\347\\233\\230.md\"\n?? \"doc/\\350\\277\\233\\345\\272\\246/\"\n?? \"doc/\\351\\241\\266\\346\\240\\217.md\"\n?? scripts/\n?? src/app_model.rs\n?? src/backend/ghostty_vt.rs\n?? src/connection_input.rs\n?? src/i18n/\n?? src/iced_app/\n?? src/logging.rs\n?? src/prof.rs\n?? src/security/\n?? src/terminal/\n?? src/terminal_core.rs\n?? src/terminal_palette.rs\n?? src/theme/\n?? src/ui-egui/\n?? src/vault/session_credentials.rs\n?? term-dumps/\n?? term.folded\n?? term.svg\n?? tests/connection_input_tests.rs\n?? tests/credential_lifecycle_integration.rs\n?? tests/keyboard_matrix.rs\n?? vendor/"
+  },
+  "toolchain": {
+    "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)",
+    "cargo": "cargo 1.93.1 (083ac5135 2025-12-15)"
+  },
+  "package": {
+    "crate_name": "RustSsh",
+    "version": "0.1.0",
+    "lib_name": "rust_ssh"
+  },
+  "settings": {
+    "paths_tried": [
+      "/Users/xc/Library/Application Support/rust-ssh/settings.json",
+      "/Users/xc/Library/Application Support/com.rustssh.rust-ssh/settings.json",
+      "/Users/xc/Library/Preferences/com.rustssh.rust-ssh/settings.json"
+    ],
+    "path": "/Users/xc/Library/Application Support/com.rustssh.rust-ssh/settings.json",
+    "loaded": {
+      "general": {
+        "language": "zh-CN",
+        "theme": "Dark",
+        "accent_color": "#00FF80",
+        "font_size": 19.0,
+        "window_opacity": 0.95,
+        "auto_check_update": false
+      },
+      "terminal": {
+        "gpu_acceleration": true,
+        "target_fps": 10,
+        "font_family": "JetBrains Mono",
+        "font_size": 14.0,
+        "line_height": 1.0,
+        "color_scheme": "Default",
+        "scrollback_limit": 10000,
+        "gpu_font_path": "/System/Library/Fonts/Menlo.ttc",
+        "gpu_font_face_index": null,
+        "atlas_reset_on_pressure": false,
+        "right_click_paste": true,
+        "bracketed_paste": false,
+        "keep_selection_highlight": true,
+        "history_search_enabled": true,
+        "local_path_completion_enabled": true,
+        "terminal_render_mode": "styled",
+        "apply_terminal_metrics": true,
+        "plain_text_update": "incremental"
+      },
+      "security": {
+        "auto_lock": true,
+        "lock_on_sleep": false,
+        "idle_timeout_mins": 0,
+        "use_biometrics": true,
+        "host_key_policy": "Ask",
+        "known_hosts": [
+          {
+            "host": "192.168.0.132",
+            "port": 22,
+            "algo": "ssh-ed25519",
+            "fingerprint": "bwMOgKA2OzxmMn3QMJFE1lkNYsavoQzWHdbOzfHwAQU",
+            "added_ms": 1775049412563
+          }
+        ],
+        "auto_probe_consent": "ask",
+        "vault": {
+          "salt": "bIGSw6WXYy3/iYQUmnjk7A",
+          "verifier_hash": "$argon2id$v=19$m=19456,t=2,p=1$bIGSw6WXYy3/iYQUmnjk7A$yTsmTHXvmdP/msbf7PwsTibsd4/0g0BN/ZTLwLb0Gmg"
+        }
+      },
+      "quick_connect": {
+        "recent_max": 6,
+        "recent": [
+          {
+            "profile_id": "602ac049-0016-4880-a862-f512a02901fd",
+            "label": "dream@192.168.0.132",
+            "host": "192.168.0.132",
+            "port": 22,
+            "user": "dream",
+            "last_connected_ms": 1775049416489
+          }
+        ],
+        "single_shared_session": true
+      }
+    }
+  }
+}

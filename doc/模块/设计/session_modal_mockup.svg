@@ -1,0 +1,47 @@
+<svg width="800" height="600" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Overlay -->
+  <rect width="800" height="600" fill="rgba(0,0,0,0.4)" />
+  
+  <!-- Content Panel (Bg_Popup) -->
+  <rect x="100" y="50" width="600" height="500" rx="10" fill="#2C2C2E" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+  
+  <!-- Header -->
+  <text x="120" y="85" font-family="Inter, sans-serif" font-size="16" font-weight="600" fill="#FFFFFF">新建会话</text>
+  <line x1="650" y1="75" x2="670" y2="95" stroke="#FFFFFF" stroke-width="2" />
+  <line x1="670" y1="75" x2="650" y2="95" stroke="#FFFFFF" stroke-width="2" />
+  
+  <!-- Content Area (Simplified Fields) -->
+  <!-- General Section -->
+  <text x="120" y="130" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#A0A0A5">GENERAL</text>
+  <rect x="120" y="145" width="560" height="32" rx="6" fill="#1C1C1E" stroke="rgba(255,255,255,0.08)" />
+  <text x="130" y="165" font-family="JetBrains Mono, monospace" font-size="11" fill="#FFFFFF">Name: Web_Server</text>
+  
+  <rect x="120" y="185" width="400" height="32" rx="6" fill="#1C1C1E" stroke="rgba(255,255,255,0.08)" />
+  <text x="130" y="205" font-family="JetBrains Mono, monospace" font-size="11" fill="#FFFFFF">Host: 192.168.1.100</text>
+  
+  <rect x="530" y="185" width="150" height="32" rx="6" fill="#1C1C1E" stroke="rgba(255,255,255,0.08)" />
+  <text x="540" y="205" font-family="JetBrains Mono, monospace" font-size="11" fill="#FFFFFF">Port: 22</text>
+  
+  <!-- Authentication Section -->
+  <text x="120" y="250" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#A0A0A5">AUTHENTICATION</text>
+  <rect x="120" y="265" width="560" height="32" rx="6" fill="#2C2C2E" stroke="#00FF80" stroke-width="1.5" />
+  <text x="130" y="285" font-family="Inter, sans-serif" font-size="11" fill="#FFFFFF">Method: Password</text>
+  
+  <rect x="120" y="305" width="560" height="32" rx="6" fill="#1C1C1E" stroke="rgba(255,255,255,0.08)" />
+  <text x="130" y="325" font-family="Inter, sans-serif" font-size="11" fill="#6C6C70">••••••••••••</text>
+
+  <!-- Advanced Section (Collapsed) -->
+  <rect x="120" y="360" width="560" height="32" rx="6" fill="#3A3A3C" />
+  <text x="130" y="380" font-family="Inter, sans-serif" font-size="11" fill="#FFFFFF">Advanced Settings</text>
+  <polygon points="660,372 665,377 670,372" fill="#FFFFFF" />
+
+  <!-- Footer -->
+  <rect x="100" y="500" width="600" height="50" rx="0 0 10 10" fill="#232326" />
+  <rect x="580" y="510" width="80" height="30" rx="6" fill="#00FF80" />
+  <text x="605" y="530" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#000000">保存</text>
+  
+  <rect x="490" y="510" width="80" height="30" rx="6" fill="#3A3A3C" />
+  <text x="502" y="530" font-family="Inter, sans-serif" font-size="12" fill="#FFFFFF">测试连接</text>
+  
+  <text x="430" y="530" font-family="Inter, sans-serif" font-size="12" fill="#A0A0A5">取消</text>
+</svg>
