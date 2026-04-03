@@ -74,9 +74,6 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.settings.section.gpu_font" => "GPU 字体（可选）",
         "iced.settings.row.gpu_font_path" => "字体文件路径",
         "iced.settings.row.gpu_face_index" => "TTC 中的字型索引",
-        "iced.settings.row.render_mode" => "渲染模式",
-        "iced.settings.row.plain_text_update" => "纯文本拼接更新",
-        "iced.settings.hint.plain_text_update_plain_only" => "仅「plain」渲染模式生效；incremental 按脏行补丁，full 每帧整段 join（排障用）。",
         "iced.settings.section.interaction" => "交互",
         "iced.settings.row.right_paste" => "右键粘贴",
         "iced.settings.row.bracketed_paste" => "括号粘贴（DEC 2004，需远端已开启）",
@@ -87,7 +84,9 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.settings.conn.advanced_title" => "高级连接",
         "iced.settings.conn.session_model_title" => "标签与会话",
         "iced.settings.row.single_shared_session" => "单会话模式（推荐）",
-        "iced.settings.hint.single_shared_session" => "开启时全局至多一条 SSH：仅当前标签持有连接，切换标签会断开上一标签的会话，避免标题与 PTY 不一致。关闭后每个标签可各自保持连接与独立终端缓冲。",
+        "iced.settings.hint.single_shared_session" => {
+            "开启时全局至多一条 SSH：仅当前标签持有连接，切换标签会断开上一标签的会话，避免标题与 PTY 不一致。关闭后每个标签可各自保持连接与独立终端缓冲。"
+        }
         "iced.settings.conn.advanced_hint" => "代理、跳板、证书与 Keepalive 等将在后续版本提供。",
         "iced.settings.conn.manage_suffix" => "连接管理",
         "iced.settings.conn.search_hint" => "搜索名称或地址…",
@@ -115,7 +114,9 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.quick_connect.new_title" => "新建连接",
         "iced.vault_unlock.title" => "解锁 Vault",
         "iced.vault_unlock.title_save_credentials" => "解锁 Vault 以保存凭据",
-        "iced.vault_unlock.hint_save_credentials" => "连接已成功。解锁后将把本次输入的密码保存到 Vault，用于下次自动连接。",
+        "iced.vault_unlock.hint_save_credentials" => {
+            "连接已成功。解锁后将把本次输入的密码保存到 Vault，用于下次自动连接。"
+        }
         "iced.host_key_prompt.title" => "主机指纹确认",
         "iced.host_key_prompt.host_line" => "{host}:{port} ({algo})",
         "iced.host_key_prompt.old_fingerprint" => "旧指纹: {fp}",
@@ -147,7 +148,9 @@ pub fn tr(key: &'static str) -> &'static str {
         "settings.security.master_password.init_action" => "去初始化",
         "settings.security.biometrics.title" => "系统生物识别 (Biometrics)",
         "settings.security.biometrics.label" => "使用系统指纹或面容认证",
-        "settings.security.biometrics.help" => "支持 Touch ID, Windows Hello 或系统密钥环。开启/关闭需先行认证。",
+        "settings.security.biometrics.help" => {
+            "支持 Touch ID, Windows Hello 或系统密钥环。开启/关闭需先行认证。"
+        }
         "settings.security.biometrics.reason.toggle" => "请确认以更改生物识别设置",
         "settings.security.hosts.title" => "主机指纹管理 (Known Hosts)",
         "settings.security.hosts.policy.label" => "连接验证策略",

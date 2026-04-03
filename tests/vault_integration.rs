@@ -1,6 +1,6 @@
+use proptest::prelude::*;
 use rust_ssh::vault::core::CredentialVault;
 use secrecy::SecretString;
-use proptest::prelude::*;
 
 // 1) 基于属性的随机口令测试（Property-based Testing）
 //
@@ -23,19 +23,19 @@ proptest! {
         // proptest 可能生成空字符串；如果产品语义允许空主密码，这里应显式覆盖。
         // 当前选择跳过：避免测试把“空口令是否允许”这个产品决策绑定死。
         if s.is_empty() { return Ok(()); }
-        
+
         let secret = SecretString::new(s.clone().into());
         let mut vault = CredentialVault::initialize(&secret).unwrap();
         assert!(vault.unlocked);
-        
+
         let key = "test_key";
         let val = b"secret_data";
         vault.set_credential(key, val).unwrap();
-        
+
         // 关键链路：锁定后应不可读；重新解锁后应可读且数据一致。
         vault.lock();
         assert!(!vault.unlocked);
-        
+
         vault.unlock(&secret).unwrap();
         let retrieved = vault.get_credential(key).unwrap().unwrap();
         assert_eq!(retrieved, val);
@@ -56,10 +56,10 @@ fn test_vault_memory_lock_wipe() {
     let secret = SecretString::new("master_pass".into());
     let mut vault = CredentialVault::initialize(&secret).unwrap();
     vault.set_credential("k", b"v").unwrap();
-    
+
     assert!(vault.unlocked);
     vault.lock();
-    
+
     // 尝试越权访问：锁定状态下必须拒绝读取。
     let res = vault.get_credential("k");
     assert!(res.is_err(), "应在锁定状态下拒绝访问");
@@ -80,17 +80,17 @@ fn test_vault_memory_lock_wipe() {
 fn test_corrupted_data_recovery() {
     let temp_dir = std::env::temp_dir();
     let path = temp_dir.join("corrupted_vault.json");
-    
+
     let secret = SecretString::new("pass".into());
     let vault = CredentialVault::initialize(&secret).unwrap();
     vault.save_to_file(&path).unwrap();
-    
+
     // 人为破坏文件内容
     std::fs::write(&path, "not a valid json").unwrap();
-    
+
     let loaded = CredentialVault::load_from_file(&path);
     assert!(loaded.is_err(), "读取损坏文件时应当报错");
-    
+
     let _ = std::fs::remove_file(path);
 }
 
@@ -114,10 +114,7 @@ fn test_unlock_with_wrong_password_does_not_unlock_or_corrupt_state() {
     vault.set_credential("token", b"abc123").unwrap();
     vault.lock();
 
-    assert!(
-        vault.unlock(&wrong).is_err(),
-        "错误密码解锁应返回错误"
-    );
+    assert!(vault.unlock(&wrong).is_err(), "错误密码解锁应返回错误");
     assert!(!vault.unlocked, "错误密码失败后不应变为 unlocked");
     assert!(
         vault.get_credential("token").is_err(),
@@ -145,15 +142,14 @@ fn test_rekey_invalidates_old_password_and_preserves_data() {
     let new_pwd = SecretString::new("new-master".into());
 
     let mut vault = CredentialVault::initialize(&old_pwd).unwrap();
-    vault.set_credential("ssh_key", b"PRIVATE_KEY_BYTES").unwrap();
+    vault
+        .set_credential("ssh_key", b"PRIVATE_KEY_BYTES")
+        .unwrap();
 
     vault.rekey(&new_pwd).unwrap();
     vault.lock();
 
-    assert!(
-        vault.unlock(&old_pwd).is_err(),
-        "rekey 后旧密码必须失效"
-    );
+    assert!(vault.unlock(&old_pwd).is_err(), "rekey 后旧密码必须失效");
     assert!(!vault.unlocked, "旧密码失败后不应变为 unlocked");
 
     vault.unlock(&new_pwd).unwrap();

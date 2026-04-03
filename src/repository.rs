@@ -1,7 +1,7 @@
-use async_trait::async_trait;
 use crate::session::SessionProfile;
-use std::path::PathBuf;
 use anyhow::Result;
+use async_trait::async_trait;
+use std::path::PathBuf;
 
 /// 领域驱动设计下的存储隔离边界
 #[async_trait]
@@ -43,12 +43,12 @@ impl SessionStore for JsonSessionStore {
         } else {
             sessions.push(session);
         }
-        
+
         let library = crate::session::SessionLibrary {
             sessions,
             version: "1.1.0".to_string(),
         };
-        
+
         let content = serde_json::to_string_pretty(&library)?;
         if let Some(parent) = self.path.parent() {
             tokio::fs::create_dir_all(parent).await?;
@@ -60,12 +60,12 @@ impl SessionStore for JsonSessionStore {
     async fn delete(&self, id: &str) -> Result<()> {
         let mut sessions = self.fetch_all().await?;
         sessions.retain(|s| s.id != id);
-        
+
         let library = crate::session::SessionLibrary {
             sessions,
             version: "1.1.0".to_string(),
         };
-        
+
         let content = serde_json::to_string_pretty(&library)?;
         tokio::fs::write(&self.path, content).await?;
         Ok(())

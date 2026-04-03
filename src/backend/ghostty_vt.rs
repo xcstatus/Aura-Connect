@@ -77,8 +77,16 @@ impl Default for VtStyledRun {
     fn default() -> Self {
         Self {
             cells: Vec::new(),
-            fg: ffi::GhosttyColorRgb { r: 230, g: 230, b: 230 },
-            bg: ffi::GhosttyColorRgb { r: 10, g: 10, b: 15 },
+            fg: ffi::GhosttyColorRgb {
+                r: 230,
+                g: 230,
+                b: 230,
+            },
+            bg: ffi::GhosttyColorRgb {
+                r: 10,
+                g: 10,
+                b: 15,
+            },
             has_bg: false,
             bold: false,
             underline: false,
@@ -293,9 +301,21 @@ impl GhosttyVtTerminal {
             // Cursor color: explicit cursor color if provided, else terminal fg.
             let mut colors = ffi::GhosttyRenderStateColors {
                 size: std::mem::size_of::<ffi::GhosttyRenderStateColors>(),
-                background: ffi::GhosttyColorRgb { r: 10, g: 10, b: 15 },
-                foreground: ffi::GhosttyColorRgb { r: 230, g: 230, b: 230 },
-                cursor: ffi::GhosttyColorRgb { r: 230, g: 230, b: 230 },
+                background: ffi::GhosttyColorRgb {
+                    r: 10,
+                    g: 10,
+                    b: 15,
+                },
+                foreground: ffi::GhosttyColorRgb {
+                    r: 230,
+                    g: 230,
+                    b: 230,
+                },
+                cursor: ffi::GhosttyColorRgb {
+                    r: 230,
+                    g: 230,
+                    b: 230,
+                },
                 cursor_has_value: false,
                 palette: [ffi::GhosttyColorRgb { r: 0, g: 0, b: 0 }; 256],
             };
@@ -355,14 +375,18 @@ impl GhosttyVtTerminal {
                 let res = ffi::ghostty_render_state_row_get(
                     self.row_iter,
                     ffi::GhosttyRenderStateRowData_GHOSTTY_RENDER_STATE_ROW_DATA_CELLS,
-                    (&mut self.row_cells as *mut ffi::GhosttyRenderStateRowCells_ptr) as *mut c_void,
+                    (&mut self.row_cells as *mut ffi::GhosttyRenderStateRowCells_ptr)
+                        as *mut c_void,
                 );
                 if res != ffi::GhosttyResult_GHOSTTY_SUCCESS {
                     anyhow::bail!("ghostty_render_state_row_get(cells) failed: {}", res);
                 }
 
                 let (row_x0, row_x1) = if y0 == y1 {
-                    (x0.min(cols.saturating_sub(1)), x1.min(cols.saturating_sub(1)))
+                    (
+                        x0.min(cols.saturating_sub(1)),
+                        x1.min(cols.saturating_sub(1)),
+                    )
                 } else if y == y0 {
                     (x0.min(cols.saturating_sub(1)), cols.saturating_sub(1))
                 } else if y == y1 {
@@ -439,7 +463,12 @@ impl GhosttyVtTerminal {
         }
     }
 
-    pub fn encode_key(&mut self, action: ffi::GhosttyKeyAction, key: ffi::GhosttyKey, mods: ffi::GhosttyMods) -> anyhow::Result<Vec<u8>> {
+    pub fn encode_key(
+        &mut self,
+        action: ffi::GhosttyKeyAction,
+        key: ffi::GhosttyKey,
+        mods: ffi::GhosttyMods,
+    ) -> anyhow::Result<Vec<u8>> {
         self.encode_key_with_utf8(action, key, mods, None)
     }
 
@@ -508,7 +537,8 @@ impl GhosttyVtTerminal {
 
     pub fn dirty(&self) -> anyhow::Result<ffi::GhosttyRenderStateDirty> {
         unsafe {
-            let mut dirty: ffi::GhosttyRenderStateDirty = ffi::GhosttyRenderStateDirty_GHOSTTY_RENDER_STATE_DIRTY_FALSE;
+            let mut dirty: ffi::GhosttyRenderStateDirty =
+                ffi::GhosttyRenderStateDirty_GHOSTTY_RENDER_STATE_DIRTY_FALSE;
             let res = ffi::ghostty_render_state_get(
                 self.render_state,
                 ffi::GhosttyRenderStateData_GHOSTTY_RENDER_STATE_DATA_DIRTY,
@@ -540,7 +570,8 @@ impl GhosttyVtTerminal {
                 let res = ffi::ghostty_render_state_row_get(
                     self.row_iter,
                     ffi::GhosttyRenderStateRowData_GHOSTTY_RENDER_STATE_ROW_DATA_CELLS,
-                    (&mut self.row_cells as *mut ffi::GhosttyRenderStateRowCells_ptr) as *mut c_void,
+                    (&mut self.row_cells as *mut ffi::GhosttyRenderStateRowCells_ptr)
+                        as *mut c_void,
                 );
                 if res != ffi::GhosttyResult_GHOSTTY_SUCCESS {
                     anyhow::bail!("ghostty_render_state_row_get(cells) failed: {}", res);
@@ -566,8 +597,7 @@ impl GhosttyVtTerminal {
 
                     // Read graphemes buffer (base + combining marks).
                     self.grapheme_scratch.clear();
-                    self.grapheme_scratch
-                        .resize(len_u32 as usize, 0);
+                    self.grapheme_scratch.resize(len_u32 as usize, 0);
                     let res = ffi::ghostty_render_state_row_cells_get(
                         self.row_cells,
                         ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
@@ -658,8 +688,16 @@ impl GhosttyVtTerminal {
             // Defaults (terminal fg/bg) for cells without explicit colors.
             let mut colors = ffi::GhosttyRenderStateColors {
                 size: std::mem::size_of::<ffi::GhosttyRenderStateColors>(),
-                background: ffi::GhosttyColorRgb { r: 10, g: 10, b: 15 },
-                foreground: ffi::GhosttyColorRgb { r: 230, g: 230, b: 230 },
+                background: ffi::GhosttyColorRgb {
+                    r: 10,
+                    g: 10,
+                    b: 15,
+                },
+                foreground: ffi::GhosttyColorRgb {
+                    r: 230,
+                    g: 230,
+                    b: 230,
+                },
                 cursor: ffi::GhosttyColorRgb { r: 0, g: 0, b: 0 },
                 cursor_has_value: false,
                 palette: [ffi::GhosttyColorRgb { r: 0, g: 0, b: 0 }; 256],
@@ -712,7 +750,8 @@ impl GhosttyVtTerminal {
                 let res = ffi::ghostty_render_state_row_get(
                     self.row_iter,
                     ffi::GhosttyRenderStateRowData_GHOSTTY_RENDER_STATE_ROW_DATA_CELLS,
-                    (&mut self.row_cells as *mut ffi::GhosttyRenderStateRowCells_ptr) as *mut c_void,
+                    (&mut self.row_cells as *mut ffi::GhosttyRenderStateRowCells_ptr)
+                        as *mut c_void,
                 );
                 if res != ffi::GhosttyResult_GHOSTTY_SUCCESS {
                     anyhow::bail!("ghostty_render_state_row_get(cells) failed: {}", res);
@@ -731,7 +770,8 @@ impl GhosttyVtTerminal {
                         ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW,
                         &mut raw_cell as *mut _ as *mut c_void,
                     );
-                    let mut wide: ffi::GhosttyCellWide = ffi::GhosttyCellWide_GHOSTTY_CELL_WIDE_NARROW;
+                    let mut wide: ffi::GhosttyCellWide =
+                        ffi::GhosttyCellWide_GHOSTTY_CELL_WIDE_NARROW;
                     let _ = ffi::ghostty_cell_get(
                         raw_cell,
                         ffi::GhosttyCellData_GHOSTTY_CELL_DATA_WIDE,
@@ -749,9 +789,18 @@ impl GhosttyVtTerminal {
                     // Style
                     let mut style = ffi::GhosttyStyle {
                         size: std::mem::size_of::<ffi::GhosttyStyle>(),
-                        fg_color: ffi::GhosttyStyleColor { tag: 0, value: ffi::GhosttyStyleColorValue { _padding: 0 } },
-                        bg_color: ffi::GhosttyStyleColor { tag: 0, value: ffi::GhosttyStyleColorValue { _padding: 0 } },
-                        underline_color: ffi::GhosttyStyleColor { tag: 0, value: ffi::GhosttyStyleColorValue { _padding: 0 } },
+                        fg_color: ffi::GhosttyStyleColor {
+                            tag: 0,
+                            value: ffi::GhosttyStyleColorValue { _padding: 0 },
+                        },
+                        bg_color: ffi::GhosttyStyleColor {
+                            tag: 0,
+                            value: ffi::GhosttyStyleColorValue { _padding: 0 },
+                        },
+                        underline_color: ffi::GhosttyStyleColor {
+                            tag: 0,
+                            value: ffi::GhosttyStyleColorValue { _padding: 0 },
+                        },
                         bold: false,
                         italic: false,
                         faint: false,
@@ -844,17 +893,19 @@ impl GhosttyVtTerminal {
                     // Group into runs.
                     let needs_new = match out_runs.last() {
                         None => true,
-                        Some(last) => last.fg.r != fg.r
-                            || last.fg.g != fg.g
-                            || last.fg.b != fg.b
-                            || last.bg.r != bg.r
-                            || last.bg.g != bg.g
-                            || last.bg.b != bg.b
-                            || last.has_bg != has_bg
-                            || last.bold != bold
-                            || last.underline != underline
-                            || last.dim != dim
-                            || last.strikethrough != strikethrough,
+                        Some(last) => {
+                            last.fg.r != fg.r
+                                || last.fg.g != fg.g
+                                || last.fg.b != fg.b
+                                || last.bg.r != bg.r
+                                || last.bg.g != bg.g
+                                || last.bg.b != bg.b
+                                || last.has_bg != has_bg
+                                || last.bold != bold
+                                || last.underline != underline
+                                || last.dim != dim
+                                || last.strikethrough != strikethrough
+                        }
                     };
 
                     if needs_new {
@@ -1014,8 +1065,7 @@ impl GhosttyVtTerminal {
 
                         // Read graphemes buffer.
                         self.grapheme_scratch.clear();
-                        self.grapheme_scratch
-                            .resize(len_u32 as usize, 0);
+                        self.grapheme_scratch.resize(len_u32 as usize, 0);
                         let res = ffi::ghostty_render_state_row_cells_get(
                             self.row_cells,
                             ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
@@ -1081,7 +1131,8 @@ impl GhosttyVtTerminal {
                 let res = ffi::ghostty_render_state_row_get(
                     self.row_iter,
                     ffi::GhosttyRenderStateRowData_GHOSTTY_RENDER_STATE_ROW_DATA_CELLS,
-                    (&mut self.row_cells as *mut ffi::GhosttyRenderStateRowCells_ptr) as *mut c_void,
+                    (&mut self.row_cells as *mut ffi::GhosttyRenderStateRowCells_ptr)
+                        as *mut c_void,
                 );
                 if res != ffi::GhosttyResult_GHOSTTY_SUCCESS {
                     anyhow::bail!("ghostty_render_state_row_get(cells) failed: {}", res);
@@ -1100,8 +1151,7 @@ impl GhosttyVtTerminal {
                         0
                     } else {
                         self.grapheme_scratch.clear();
-                        self.grapheme_scratch
-                            .resize(len_u32 as usize, 0);
+                        self.grapheme_scratch.resize(len_u32 as usize, 0);
                         let res = ffi::ghostty_render_state_row_cells_get(
                             self.row_cells,
                             ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
@@ -1163,8 +1213,8 @@ mod tests {
     #[test]
     fn vt_new_write_and_snapshot_lines() {
         let mut vt = GhosttyVtTerminal::new(20, 4, 1000).expect("create vt");
-            vt.write_vt(b"hello\r\nworld");
-            vt.update_render_state().expect("update render state");
+        vt.write_vt(b"hello\r\nworld");
+        vt.update_render_state().expect("update render state");
         let lines = vt
             .snapshot_plain_lines_and_clear_dirty()
             .expect("snapshot lines");
@@ -1176,8 +1226,8 @@ mod tests {
     #[test]
     fn vt_snapshot_codepoints_grid_non_empty_after_write() {
         let mut vt = GhosttyVtTerminal::new(10, 2, 1000).expect("create vt");
-            vt.write_vt(b"abc");
-            vt.update_render_state().expect("update render state");
+        vt.write_vt(b"abc");
+        vt.update_render_state().expect("update render state");
         let grid = vt
             .snapshot_codepoints_grid_and_clear_dirty()
             .expect("snapshot grid");
@@ -1191,9 +1241,9 @@ mod tests {
     #[test]
     fn vt_resize_updates_dimensions_and_snapshot_still_works() {
         let mut vt = GhosttyVtTerminal::new(5, 2, 1000).expect("create vt");
-            vt.write_vt(b"x");
+        vt.write_vt(b"x");
         vt.resize(8, 3).expect("resize");
-            vt.update_render_state().expect("update render state");
+        vt.update_render_state().expect("update render state");
         assert_eq!(vt.cols(), 8);
         assert_eq!(vt.rows(), 3);
         let grid = vt
@@ -1220,16 +1270,16 @@ mod tests {
         let mut vt = GhosttyVtTerminal::new(10, 2, 1000).expect("create vt");
         let mut lines: Vec<String> = Vec::new();
 
-            vt.write_vt(b"abc");
-            vt.update_render_state().expect("update render state");
+        vt.write_vt(b"abc");
+        vt.update_render_state().expect("update render state");
         vt.update_dirty_plain_lines_and_clear_dirty(&mut lines)
             .expect("update dirty");
         assert_eq!(lines.len(), 2);
         assert!(lines.join("\n").contains("abc"));
 
         // Update with more content; should still work and modify lines.
-            vt.write_vt(b"\r\nz");
-            vt.update_render_state().expect("update render state 2");
+        vt.write_vt(b"\r\nz");
+        vt.update_render_state().expect("update render state 2");
         vt.update_dirty_plain_lines_and_clear_dirty(&mut lines)
             .expect("update dirty 2");
         assert!(lines.join("\n").contains('z'));
@@ -1238,15 +1288,16 @@ mod tests {
     #[test]
     fn vt_snapshot_styled_rows_produces_runs() {
         let mut vt = GhosttyVtTerminal::new(10, 2, 1000).expect("create vt");
-            vt.write_vt(b"\x1b[1;31mR\x1b[0m");
-            vt.update_render_state().expect("update render state");
+        vt.write_vt(b"\x1b[1;31mR\x1b[0m");
+        vt.update_render_state().expect("update render state");
         let rows = vt.snapshot_styled_rows_and_clear_dirty().expect("styled");
         assert_eq!(rows.len(), 2);
-        assert!(rows[0]
-            .runs
-            .iter()
-            .flat_map(|r| r.cells.iter())
-            .any(|c| c.text.contains('R') && !c.continuation));
+        assert!(
+            rows[0]
+                .runs
+                .iter()
+                .flat_map(|r| r.cells.iter())
+                .any(|c| c.text.contains('R') && !c.continuation)
+        );
     }
 }
-

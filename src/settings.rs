@@ -70,26 +70,6 @@ pub struct GeneralSettings {
     pub auto_check_update: bool,
 }
 
-/// Iced 终端绘制：`plain` 为兼容回滚；`styled` 使用 libghostty 着色 run。
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum TerminalRenderMode {
-    Plain,
-    #[default]
-    Styled,
-}
-
-/// How the plain-mode UI string is derived from per-row buffers.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum TerminalPlainTextUpdate {
-    /// Patch the cached `join` using dirty row indices (default).
-    #[default]
-    Incremental,
-    /// `lines.join("\\n")` each time rows change (diagnostics / fallback).
-    Full,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TerminalSettings {
@@ -119,13 +99,9 @@ pub struct TerminalSettings {
     pub history_search_enabled: bool,
     /// Enable local file/folder name completion on Tab.
     pub local_path_completion_enabled: bool,
-    /// Iced 终端：`plain`（无前景色） / `styled`（run 级颜色与样式）。
-    pub terminal_render_mode: TerminalRenderMode,
     /// When true, `font_size` / `line_height` / `font_family` affect PTY grid sizing and Iced terminal rendering.
     /// When false, use fixed defaults (14px, 1.28 cell height ratio) to avoid frequent PTY resizes or bad metrics.
     pub apply_terminal_metrics: bool,
-    /// Plain mode: incremental patched join vs full `join("\\n")` rebuild.
-    pub plain_text_update: TerminalPlainTextUpdate,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -208,9 +184,7 @@ impl Default for TerminalSettings {
             keep_selection_highlight: true,
             history_search_enabled: true,
             local_path_completion_enabled: true,
-            terminal_render_mode: TerminalRenderMode::default(),
             apply_terminal_metrics: true,
-            plain_text_update: TerminalPlainTextUpdate::default(),
         }
     }
 }
@@ -269,7 +243,7 @@ impl Settings {
     }
 
     fn get_path() -> PathBuf {
-        if let Some(proj_dirs) = directories::ProjectDirs::from("com", "rustssh",  "rust-ssh") {
+        if let Some(proj_dirs) = directories::ProjectDirs::from("com", "rustssh", "rust-ssh") {
             let mut path = proj_dirs.config_dir().to_path_buf();
             path.push("settings.json");
             path

@@ -78,4 +78,3 @@ fn focus_and_paste_mode_invariants() {
         "paste should be wrapped when 2004 is enabled"
     );
 }
-

@@ -3,9 +3,11 @@ use std::os::raw::c_char;
 use anyhow::Result;
 use iced::keyboard::key::Code;
 
-use crate::backend::ghostty_vt::{ffi, CursorState, GhosttyVtTerminal, ScrollbarState, VtStyledRow};
+use crate::backend::ghostty_vt::{
+    CursorState, GhosttyVtTerminal, ScrollbarState, VtStyledRow, ffi,
+};
 use crate::backend::ssh_session::AsyncSession;
-use crate::settings::{TerminalPlainTextUpdate, TerminalRenderMode, TerminalSettings};
+use crate::settings::TerminalSettings;
 use crate::terminal_selection::TerminalSelection;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -156,16 +158,9 @@ pub struct TerminalController {
     last_pty_size: (u16, u16),
     cols: u16,
     rows: u16,
-    render_mode: TerminalRenderMode,
     /// User preference: only wrap paste when remote DEC 2004 is on (see [`Self::encode_paste`]).
     bracketed_paste: bool,
     cursor_cache: Option<CursorState>,
-    /// Plain mode: cached `lines.join("\n")` (UTF-8 byte offsets per row in [`Self::plain_line_byte_offsets`]).
-    plain_join_cache: String,
-    plain_line_byte_offsets: Vec<usize>,
-    plain_text_update: TerminalPlainTextUpdate,
-    scratch_plain_dirty_rows: Vec<usize>,
-    plain_join_rebuilds: u64,
     key_fallback_named: u64,
     key_fallback_text: u64,
 }
@@ -225,9 +220,8 @@ impl TerminalController {
         let scrollback = settings.scrollback_limit.max(256);
         let vt = GhosttyVtTerminal::new(cols, rows, scrollback)
             .expect("failed to create ghostty terminal");
-        let render_mode = settings.terminal_render_mode;
         let bracketed_paste = settings.bracketed_paste;
-        let mut s = Self {
+        let s = Self {
             vt,
             bridge: TerminalSessionBridge::default(),
             lines: vec![String::new(); rows as usize],
@@ -239,50 +233,16 @@ impl TerminalController {
             last_pty_size: (0, 0),
             cols,
             rows,
-            render_mode,
             bracketed_paste,
             cursor_cache: None,
-            plain_join_cache: String::new(),
-            plain_line_byte_offsets: Vec::new(),
-            plain_text_update: settings.plain_text_update,
-            scratch_plain_dirty_rows: Vec::new(),
-            plain_join_rebuilds: 0,
             key_fallback_named: 0,
             key_fallback_text: 0,
         };
-        if render_mode == TerminalRenderMode::Plain {
-            s.rebuild_plain_join_full();
-        }
         s
     }
 
     pub fn set_bracketed_paste(&mut self, enabled: bool) {
         self.bracketed_paste = enabled;
-    }
-
-    pub fn set_plain_text_update(&mut self, mode: TerminalPlainTextUpdate) {
-        if self.plain_text_update == mode {
-            return;
-        }
-        self.plain_text_update = mode;
-        if self.render_mode == TerminalRenderMode::Plain
-            && mode == TerminalPlainTextUpdate::Incremental
-        {
-            self.rebuild_plain_join_full();
-        }
-    }
-
-    /// Plain UI string when [`TerminalPlainTextUpdate::Incremental`] is enabled (kept in sync in [`Self::pump_output`] / resize / refresh).
-    #[inline]
-    pub fn plain_text_for_view(&self) -> &str {
-        &self.plain_join_cache
-    }
-
-    /// Drain number of plain join full-rebuilds since last call.
-    pub fn take_plain_join_rebuilds(&mut self) -> u64 {
-        let n = self.plain_join_rebuilds;
-        self.plain_join_rebuilds = 0;
-        n
     }
 
     /// Drain key encoding fallback counts since last call.
@@ -292,11 +252,6 @@ impl TerminalController {
         self.key_fallback_named = 0;
         self.key_fallback_text = 0;
         (n_named, n_text)
-    }
-
-    #[inline]
-    pub fn render_mode(&self) -> TerminalRenderMode {
-        self.render_mode
     }
 
     #[inline]
@@ -329,18 +284,9 @@ impl TerminalController {
         &mut self.selection
     }
 
-    pub fn set_render_mode(&mut self, mode: TerminalRenderMode) {
-        self.render_mode = mode;
-    }
-
     /// Pull render-state cursor (styled UI / blink). Cheap vs full snapshot.
     pub fn on_frame_tick(&mut self) {
-        if self.render_mode != TerminalRenderMode::Styled {
-            return;
-        }
         let _ = self.vt.update_render_state();
-        // Cursor policy: when the viewport is in scrollback (not following bottom),
-        // hide the cursor so the screen reads like a typical terminal "paused" view.
         self.cursor_cache = if self.is_in_scrollback() {
             None
         } else {
@@ -348,33 +294,22 @@ impl TerminalController {
         };
     }
 
-    /// After changing [`TerminalRenderMode`] (e.g. settings save), rebuild local snapshots.
+    /// Rebuild all local Styled snapshots after palette/size changes.
     pub fn refresh_terminal_snapshots(&mut self) {
         let _ = self.vt.update_render_state();
-        match self.render_mode {
-            TerminalRenderMode::Plain => {
-                let _ = self
-                    .vt
-                    .update_dirty_plain_lines_and_clear_dirty(&mut self.lines);
-                self.rebuild_plain_join_full();
-                self.cursor_cache = None;
-            }
-            TerminalRenderMode::Styled => {
-                self.styled_dirty_rows_tmp.clear();
-                let _ = self.vt.update_dirty_styled_rows_and_clear_dirty_collect(
-                    &mut self.styled_rows,
-                    false,
-                    Some(&mut self.styled_dirty_rows_tmp),
-                );
-                self.cursor_cache = if self.is_in_scrollback() {
-                    None
-                } else {
-                    self.vt.cursor_state().ok()
-                };
-                self.bump_all_styled_row_gen();
-                self.rebuild_all_styled_fragments();
-            }
-        }
+        self.styled_dirty_rows_tmp.clear();
+        let _ = self.vt.update_dirty_styled_rows_and_clear_dirty_collect(
+            &mut self.styled_rows,
+            false,
+            Some(&mut self.styled_dirty_rows_tmp),
+        );
+        self.cursor_cache = if self.is_in_scrollback() {
+            None
+        } else {
+            self.vt.cursor_state().ok()
+        };
+        self.bump_all_styled_row_gen();
+        self.rebuild_all_styled_fragments();
     }
 
     /// OSC 4 palette into the **local** libghostty VT (not SSH). Refreshes snapshots so Iced styled rows match.
@@ -397,7 +332,10 @@ impl TerminalController {
 
     #[inline]
     pub fn styled_row_fragments(&self, row: usize) -> &[StyledFragment] {
-        self.styled_fragments.get(row).map(|v| v.as_slice()).unwrap_or(&[])
+        self.styled_fragments
+            .get(row)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 
     #[inline]
@@ -414,12 +352,8 @@ impl TerminalController {
         rows: u16,
     ) -> Result<bool> {
         self.resize(cols, rows);
-        self.bridge.resize_pty_if_needed(
-            session,
-            &mut self.last_pty_size,
-            self.cols,
-            self.rows,
-        )
+        self.bridge
+            .resize_pty_if_needed(session, &mut self.last_pty_size, self.cols, self.rows)
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) {
@@ -435,30 +369,19 @@ impl TerminalController {
         self.lines.resize(rows as usize, String::new());
         self.styled_row_gen.resize(rows as usize, 0);
         self.styled_fragments.resize_with(rows as usize, Vec::new);
-        match self.render_mode {
-            TerminalRenderMode::Plain => {
-                let _ = self
-                    .vt
-                    .update_dirty_plain_lines_and_clear_dirty(&mut self.lines);
-                self.rebuild_plain_join_full();
-                self.cursor_cache = None;
-            }
-            TerminalRenderMode::Styled => {
-                self.styled_dirty_rows_tmp.clear();
-                let _ = self.vt.update_dirty_styled_rows_and_clear_dirty_collect(
-                    &mut self.styled_rows,
-                    false,
-                    Some(&mut self.styled_dirty_rows_tmp),
-                );
-                self.cursor_cache = if self.is_in_scrollback() {
-                    None
-                } else {
-                    self.vt.cursor_state().ok()
-                };
-                self.bump_all_styled_row_gen();
-                self.rebuild_all_styled_fragments();
-            }
-        }
+        self.styled_dirty_rows_tmp.clear();
+        let _ = self.vt.update_dirty_styled_rows_and_clear_dirty_collect(
+            &mut self.styled_rows,
+            false,
+            Some(&mut self.styled_dirty_rows_tmp),
+        );
+        self.cursor_cache = if self.is_in_scrollback() {
+            None
+        } else {
+            self.vt.cursor_state().ok()
+        };
+        self.bump_all_styled_row_gen();
+        self.rebuild_all_styled_fragments();
     }
 
     pub fn attach_session(&mut self, session: &mut dyn AsyncSession) -> Result<()> {
@@ -468,58 +391,29 @@ impl TerminalController {
     }
 
     pub fn pump_output(&mut self, session: &mut dyn AsyncSession) -> Result<usize> {
-        let n = self.bridge.drain_output(session, |bytes| self.vt.write_vt(bytes))?;
+        let n = self
+            .bridge
+            .drain_output(session, |bytes| self.vt.write_vt(bytes))?;
         if n > 0 {
             let _ = self.vt.update_render_state();
-            match self.render_mode {
-                TerminalRenderMode::Plain => {
-                    match self.plain_text_update {
-                        TerminalPlainTextUpdate::Full => {
-                            let _ = self
-                                .vt
-                                .update_dirty_plain_lines_and_clear_dirty(&mut self.lines);
-                            self.rebuild_plain_join_full();
-                        }
-                        TerminalPlainTextUpdate::Incremental => {
-                            let _ = self.vt.update_dirty_plain_lines_collect_dirty_rows(
-                                &mut self.lines,
-                                &mut self.scratch_plain_dirty_rows,
-                            );
-                            if !self.scratch_plain_dirty_rows.is_empty() {
-                                if self.plain_join_cache.is_empty()
-                                    || self.plain_line_byte_offsets.len() != self.lines.len()
-                                {
-                                    self.rebuild_plain_join_full();
-                                } else {
-                                    let dirty =
-                                        std::mem::take(&mut self.scratch_plain_dirty_rows);
-                                    self.patch_plain_join_incremental(&dirty);
-                                }
-                            }
-                        }
-                    }
-                }
-                TerminalRenderMode::Styled => {
-                    self.styled_dirty_rows_tmp.clear();
-                    let _ = self.vt.update_dirty_styled_rows_and_clear_dirty_collect(
-                        &mut self.styled_rows,
-                        true,
-                        Some(&mut self.styled_dirty_rows_tmp),
-                    );
-                    self.cursor_cache = if self.is_in_scrollback() {
-                        None
-                    } else {
-                        self.vt.cursor_state().ok()
-                    };
-                    for &y in &self.styled_dirty_rows_tmp {
-                        if let Some(g) = self.styled_row_gen.get_mut(y) {
-                            *g = g.saturating_add(1);
-                        }
-                    }
-                    let dirty = self.styled_dirty_rows_tmp.clone();
-                    self.rebuild_dirty_styled_fragments(&dirty);
+            self.styled_dirty_rows_tmp.clear();
+            let _ = self.vt.update_dirty_styled_rows_and_clear_dirty_collect(
+                &mut self.styled_rows,
+                true,
+                Some(&mut self.styled_dirty_rows_tmp),
+            );
+            self.cursor_cache = if self.is_in_scrollback() {
+                None
+            } else {
+                self.vt.cursor_state().ok()
+            };
+            for &y in &self.styled_dirty_rows_tmp {
+                if let Some(g) = self.styled_row_gen.get_mut(y) {
+                    *g = g.saturating_add(1);
                 }
             }
+            let dirty = self.styled_dirty_rows_tmp.clone();
+            self.rebuild_dirty_styled_fragments(&dirty);
         }
         Ok(n)
     }
@@ -533,54 +427,24 @@ impl TerminalController {
         }
         let _ = self.vt.write_vt(bytes);
         let _ = self.vt.update_render_state();
-        match self.render_mode {
-            TerminalRenderMode::Plain => {
-                match self.plain_text_update {
-                    TerminalPlainTextUpdate::Full => {
-                        let _ = self
-                            .vt
-                            .update_dirty_plain_lines_and_clear_dirty(&mut self.lines);
-                        self.rebuild_plain_join_full();
-                    }
-                    TerminalPlainTextUpdate::Incremental => {
-                        let _ = self.vt.update_dirty_plain_lines_collect_dirty_rows(
-                            &mut self.lines,
-                            &mut self.scratch_plain_dirty_rows,
-                        );
-                        if !self.scratch_plain_dirty_rows.is_empty() {
-                            if self.plain_join_cache.is_empty()
-                                || self.plain_line_byte_offsets.len() != self.lines.len()
-                            {
-                                self.rebuild_plain_join_full();
-                            } else {
-                                let dirty = std::mem::take(&mut self.scratch_plain_dirty_rows);
-                                self.patch_plain_join_incremental(&dirty);
-                            }
-                        }
-                    }
-                }
-            }
-            TerminalRenderMode::Styled => {
-                self.styled_dirty_rows_tmp.clear();
-                let _ = self.vt.update_dirty_styled_rows_and_clear_dirty_collect(
-                    &mut self.styled_rows,
-                    true,
-                    Some(&mut self.styled_dirty_rows_tmp),
-                );
-                self.cursor_cache = if self.is_in_scrollback() {
-                    None
-                } else {
-                    self.vt.cursor_state().ok()
-                };
-                for &y in &self.styled_dirty_rows_tmp {
-                    if let Some(g) = self.styled_row_gen.get_mut(y) {
-                        *g = g.saturating_add(1);
-                    }
-                }
-                let dirty = self.styled_dirty_rows_tmp.clone();
-                self.rebuild_dirty_styled_fragments(&dirty);
+        self.styled_dirty_rows_tmp.clear();
+        let _ = self.vt.update_dirty_styled_rows_and_clear_dirty_collect(
+            &mut self.styled_rows,
+            true,
+            Some(&mut self.styled_dirty_rows_tmp),
+        );
+        self.cursor_cache = if self.is_in_scrollback() {
+            None
+        } else {
+            self.vt.cursor_state().ok()
+        };
+        for &y in &self.styled_dirty_rows_tmp {
+            if let Some(g) = self.styled_row_gen.get_mut(y) {
+                *g = g.saturating_add(1);
             }
         }
+        let dirty = self.styled_dirty_rows_tmp.clone();
+        self.rebuild_dirty_styled_fragments(&dirty);
     }
 
     pub fn inject_local_lines(&mut self, lines: &[&str]) {
@@ -616,54 +480,24 @@ impl TerminalController {
         }
         self.vt.scroll_viewport_delta_rows(delta_rows);
         let _ = self.vt.update_render_state();
-        match self.render_mode {
-            TerminalRenderMode::Plain => {
-                match self.plain_text_update {
-                    TerminalPlainTextUpdate::Full => {
-                        let _ = self
-                            .vt
-                            .update_dirty_plain_lines_and_clear_dirty(&mut self.lines);
-                        self.rebuild_plain_join_full();
-                    }
-                    TerminalPlainTextUpdate::Incremental => {
-                        let _ = self.vt.update_dirty_plain_lines_collect_dirty_rows(
-                            &mut self.lines,
-                            &mut self.scratch_plain_dirty_rows,
-                        );
-                        if !self.scratch_plain_dirty_rows.is_empty() {
-                            if self.plain_join_cache.is_empty()
-                                || self.plain_line_byte_offsets.len() != self.lines.len()
-                            {
-                                self.rebuild_plain_join_full();
-                            } else {
-                                let dirty = std::mem::take(&mut self.scratch_plain_dirty_rows);
-                                self.patch_plain_join_incremental(&dirty);
-                            }
-                        }
-                    }
-                }
-            }
-            TerminalRenderMode::Styled => {
-                self.styled_dirty_rows_tmp.clear();
-                let _ = self.vt.update_dirty_styled_rows_and_clear_dirty_collect(
-                    &mut self.styled_rows,
-                    true,
-                    Some(&mut self.styled_dirty_rows_tmp),
-                );
-                self.cursor_cache = if self.is_in_scrollback() {
-                    None
-                } else {
-                    self.vt.cursor_state().ok()
-                };
-                for &y in &self.styled_dirty_rows_tmp {
-                    if let Some(g) = self.styled_row_gen.get_mut(y) {
-                        *g = g.saturating_add(1);
-                    }
-                }
-                let dirty = self.styled_dirty_rows_tmp.clone();
-                self.rebuild_dirty_styled_fragments(&dirty);
+        self.styled_dirty_rows_tmp.clear();
+        let _ = self.vt.update_dirty_styled_rows_and_clear_dirty_collect(
+            &mut self.styled_rows,
+            true,
+            Some(&mut self.styled_dirty_rows_tmp),
+        );
+        self.cursor_cache = if self.is_in_scrollback() {
+            None
+        } else {
+            self.vt.cursor_state().ok()
+        };
+        for &y in &self.styled_dirty_rows_tmp {
+            if let Some(g) = self.styled_row_gen.get_mut(y) {
+                *g = g.saturating_add(1);
             }
         }
+        let dirty = self.styled_dirty_rows_tmp.clone();
+        self.rebuild_dirty_styled_fragments(&dirty);
     }
 
     pub fn on_key(
@@ -728,11 +562,7 @@ impl TerminalController {
                 utf8,
             )
             .ok()?;
-        if seq.is_empty() {
-            None
-        } else {
-            Some(seq)
-        }
+        if seq.is_empty() { None } else { Some(seq) }
     }
 
     /// Clear PTY `(cols, rows)` latch so the next session always receives `resize_pty`.
@@ -790,12 +620,7 @@ impl TerminalController {
         let mut buf = [0u8; 8];
         let mut written: usize = 0;
         let res = unsafe {
-            ffi::ghostty_focus_encode(
-                ev,
-                buf.as_mut_ptr() as *mut c_char,
-                buf.len(),
-                &mut written,
-            )
+            ffi::ghostty_focus_encode(ev, buf.as_mut_ptr() as *mut c_char, buf.len(), &mut written)
         };
         if res == ffi::GhosttyResult_GHOSTTY_SUCCESS {
             return buf[..written].to_vec();
@@ -804,12 +629,7 @@ impl TerminalController {
             let mut v = vec![0u8; written];
             let mut written2: usize = 0;
             let res2 = unsafe {
-                ffi::ghostty_focus_encode(
-                    ev,
-                    v.as_mut_ptr() as *mut c_char,
-                    v.len(),
-                    &mut written2,
-                )
+                ffi::ghostty_focus_encode(ev, v.as_mut_ptr() as *mut c_char, v.len(), &mut written2)
             };
             if res2 == ffi::GhosttyResult_GHOSTTY_SUCCESS {
                 v.truncate(written2);
@@ -836,9 +656,8 @@ impl TerminalController {
             out.extend_from_slice(b"\x1b[201~");
             return out;
         }
-        let _safe = unsafe {
-            ffi::ghostty_paste_is_safe(text.as_ptr() as *const c_char, text.len())
-        };
+        let _safe =
+            unsafe { ffi::ghostty_paste_is_safe(text.as_ptr() as *const c_char, text.len()) };
         text.as_bytes().to_vec()
     }
 
@@ -848,130 +667,30 @@ impl TerminalController {
 
     /// Visible viewport text for clipboard copy.
     ///
-    /// - Plain: uses the same cached/joined text as the view.
-    /// - Styled: reconstructs text from `VtStyledRow` cells, respecting grid columns.
+    /// Reconstructs text from `VtStyledRow` cells, respecting grid columns.
     pub fn visible_text_for_copy(&self) -> String {
-        match self.render_mode {
-            TerminalRenderMode::Plain => self.plain_join_cache.clone(),
-            TerminalRenderMode::Styled => {
-                let mut out = String::new();
-                for (y, row) in self.styled_rows.iter().enumerate() {
-                    if y > 0 {
-                        out.push('\n');
-                    }
-                    if row.runs.is_empty() {
-                        continue;
-                    }
-                    for run in &row.runs {
-                        for cell in &run.cells {
-                            // Continuation cells are the second half of wide glyphs; do not emit
-                            // visible placeholder spaces into clipboard.
-                            if cell.continuation {
-                                continue;
-                            }
-                            if cell.text.is_empty() {
-                                out.push(' ');
-                            } else {
-                                out.push_str(&cell.text);
-                            }
-                        }
-                    }
-                }
-                out
+        let mut out = String::new();
+        for (y, row) in self.styled_rows.iter().enumerate() {
+            if y > 0 {
+                out.push('\n');
             }
-        }
-    }
-
-    fn rebuild_plain_line_offsets(&mut self) {
-        let rows = self.lines.len();
-        self.plain_line_byte_offsets.resize(rows, 0);
-        let mut off = 0usize;
-        for i in 0..rows {
-            self.plain_line_byte_offsets[i] = off;
-            off += self.lines[i].len();
-            if i + 1 < rows {
-                off += 1;
-            }
-        }
-    }
-
-    fn rebuild_plain_join_full(&mut self) {
-        self.plain_join_rebuilds = self.plain_join_rebuilds.saturating_add(1);
-        #[cfg(debug_assertions)]
-        log::debug!(target: "term-plain-cache", "plain join: full rebuild rows={}", self.lines.len());
-        self.plain_join_cache.clear();
-        for (i, line) in self.lines.iter().enumerate() {
-            if i > 0 {
-                self.plain_join_cache.push('\n');
-            }
-            self.plain_join_cache.push_str(line);
-        }
-        self.rebuild_plain_line_offsets();
-    }
-
-    /// Replace newline-delimited segments for dirty viewport rows (descending `y` so offsets stay valid).
-    fn patch_plain_join_incremental(&mut self, dirty_rows: &[usize]) {
-        let rows = self.lines.len();
-        if rows == 0 {
-            self.plain_join_cache.clear();
-            self.plain_line_byte_offsets.clear();
-            return;
-        }
-        if self.plain_line_byte_offsets.len() != rows {
-            self.rebuild_plain_join_full();
-            return;
-        }
-
-        let mut sorted: Vec<usize> = dirty_rows.to_vec();
-        sorted.sort_unstable();
-        sorted.dedup();
-        if sorted.is_empty() {
-            return;
-        }
-
-        for &y in sorted.iter().rev() {
-            if y >= rows {
+            if row.runs.is_empty() {
                 continue;
             }
-            let start = self.plain_line_byte_offsets[y];
-            let end = if y + 1 < rows {
-                self.plain_line_byte_offsets[y + 1]
-            } else {
-                self.plain_join_cache.len()
-            };
-            if end < start || end > self.plain_join_cache.len() {
-                self.rebuild_plain_join_full();
-                return;
-            }
-            let mut replacement =
-                String::with_capacity(self.lines[y].len().saturating_add(1));
-            replacement.push_str(&self.lines[y]);
-            if y + 1 < rows {
-                replacement.push('\n');
-            }
-            self.plain_join_cache.replace_range(start..end, &replacement);
-
-            let mut off = self.plain_line_byte_offsets[y] + self.lines[y].len();
-            if y + 1 < rows {
-                off += 1;
-            }
-            for i in (y + 1)..rows {
-                self.plain_line_byte_offsets[i] = off;
-                off += self.lines[i].len();
-                if i + 1 < rows {
-                    off += 1;
+            for run in &row.runs {
+                for cell in &run.cells {
+                    if cell.continuation {
+                        continue;
+                    }
+                    if cell.text.is_empty() {
+                        out.push(' ');
+                    } else {
+                        out.push_str(&cell.text);
+                    }
                 }
             }
-            if off != self.plain_join_cache.len() {
-                log::debug!(
-                    target: "term-plain-cache",
-                    "plain join offset drift after row {}; rebuilding",
-                    y
-                );
-                self.rebuild_plain_join_full();
-                return;
-            }
         }
+        out
     }
 
     fn encode_key(&mut self, key: TerminalKey, modifiers: TerminalModifiers) -> Vec<u8> {
@@ -991,15 +710,15 @@ impl TerminalController {
             TerminalKey::ArrowDown => ffi::GhosttyKey_GHOSTTY_KEY_ARROW_DOWN,
             TerminalKey::ArrowLeft => ffi::GhosttyKey_GHOSTTY_KEY_ARROW_LEFT,
             TerminalKey::ArrowRight => ffi::GhosttyKey_GHOSTTY_KEY_ARROW_RIGHT,
-            TerminalKey::Function(n) => ghostty_function_key(n)
-                .unwrap_or(ffi::GhosttyKey_GHOSTTY_KEY_UNIDENTIFIED),
+            TerminalKey::Function(n) => {
+                ghostty_function_key(n).unwrap_or(ffi::GhosttyKey_GHOSTTY_KEY_UNIDENTIFIED)
+            }
         };
         let mods = mods_to_ffi(modifiers);
-        match self.vt.encode_key(
-            ffi::GhosttyKeyAction_GHOSTTY_KEY_ACTION_PRESS,
-            k,
-            mods,
-        ) {
+        match self
+            .vt
+            .encode_key(ffi::GhosttyKeyAction_GHOSTTY_KEY_ACTION_PRESS, k, mods)
+        {
             Ok(seq) if !seq.is_empty() => seq,
             Ok(_) | Err(_) => {
                 if mods == 0 {
@@ -1040,36 +759,18 @@ impl TerminalController {
             return String::new();
         }
 
-        match self.render_mode {
-            TerminalRenderMode::Plain => {
-                let mut out = String::new();
-                for y in sy..=ey {
-                    if (y as usize) >= self.lines.len() {
-                        break;
-                    }
-                    if !out.is_empty() {
-                        out.push('\n');
-                    }
-                    let (lo, hi) = cols_for_row_range(sx, ex, sy, ey, y);
-                    out.push_str(slice_by_cols(&self.lines[y as usize], lo, hi));
-                }
-                out
+        let mut out = String::new();
+        for y in sy..=ey {
+            if (y as usize) >= self.styled_rows.len() {
+                break;
             }
-            TerminalRenderMode::Styled => {
-                let mut out = String::new();
-                for y in sy..=ey {
-                    if (y as usize) >= self.styled_rows.len() {
-                        break;
-                    }
-                    if !out.is_empty() {
-                        out.push('\n');
-                    }
-                    let (lo, hi) = cols_for_row_range(sx, ex, sy, ey, y);
-                    out.push_str(&styled_row_slice(&self.styled_rows[y as usize], lo, hi));
-                }
-                out
+            if !out.is_empty() {
+                out.push('\n');
             }
+            let (lo, hi) = cols_for_row_range(sx, ex, sy, ey, y);
+            out.push_str(&styled_row_slice(&self.styled_rows[y as usize], lo, hi));
         }
+        out
     }
 }
 
@@ -1090,38 +791,6 @@ fn cols_for_row_range(sx: u16, ex: u16, sy: u16, ey: u16, y: u16) -> (u16, u16) 
         (0, ex)
     } else {
         (0, u16::MAX)
-    }
-}
-
-fn slice_by_cols(s: &str, lo: u16, hi: u16) -> &str {
-    // `lines` are built per-cell with spaces; treat each char as 1 column.
-    if s.is_empty() {
-        return "";
-    }
-    let lo = lo as usize;
-    let hi = hi as usize;
-    let mut start_b = None;
-    let mut end_b = None;
-    let mut col = 0usize;
-    for (b, ch) in s.char_indices() {
-        if start_b.is_none() && col >= lo {
-            start_b = Some(b);
-        }
-        col += 1;
-        if col > hi + 1 {
-            end_b = Some(b);
-            break;
-        }
-        if ch == '\n' {
-            break;
-        }
-    }
-    let start = start_b.unwrap_or(s.len());
-    let end = end_b.unwrap_or(s.len());
-    if start >= end {
-        ""
-    } else {
-        &s[start..end]
     }
 }
 
@@ -1331,63 +1000,5 @@ fn mods_to_ffi(m: TerminalModifiers) -> ffi::GhosttyMods {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    fn join_lines(lines: &[String]) -> String {
-        lines.join("\n")
-    }
-
-    #[test]
-    fn plain_incremental_patch_matches_full_join_single_row() {
-        let settings = TerminalSettings::default();
-        let mut t = TerminalController::new(&settings);
-        t.render_mode = TerminalRenderMode::Plain;
-        t.plain_text_update = TerminalPlainTextUpdate::Incremental;
-
-        t.lines = vec!["a".into(), "bb".into(), "ccc".into()];
-        t.rebuild_plain_join_full();
-
-        t.lines[1] = "B".into();
-        t.patch_plain_join_incremental(&[1]);
-
-        assert_eq!(t.plain_join_cache, join_lines(&t.lines));
-    }
-
-    #[test]
-    fn plain_incremental_patch_matches_full_join_multiple_rows_unsorted() {
-        let settings = TerminalSettings::default();
-        let mut t = TerminalController::new(&settings);
-        t.render_mode = TerminalRenderMode::Plain;
-        t.plain_text_update = TerminalPlainTextUpdate::Incremental;
-
-        t.lines = vec!["0".into(), "1".into(), "2".into(), "3".into()];
-        t.rebuild_plain_join_full();
-
-        t.lines[0] = "zero".into();
-        t.lines[3] = "three".into();
-        t.patch_plain_join_incremental(&[3, 0, 3]);
-
-        assert_eq!(t.plain_join_cache, join_lines(&t.lines));
-    }
-
-    #[test]
-    fn plain_incremental_patch_rebuilds_when_offsets_invalid() {
-        let settings = TerminalSettings::default();
-        let mut t = TerminalController::new(&settings);
-        t.render_mode = TerminalRenderMode::Plain;
-        t.plain_text_update = TerminalPlainTextUpdate::Incremental;
-
-        t.lines = vec!["a".into(), "bb".into(), "ccc".into()];
-        t.rebuild_plain_join_full();
-
-        // Corrupt offsets to simulate drift/bug.
-        t.plain_line_byte_offsets = vec![999, 999, 999];
-        t.lines[1] = "B".into();
-        t.patch_plain_join_incremental(&[1]);
-
-        assert_eq!(t.plain_join_cache, join_lines(&t.lines));
-        assert_eq!(t.plain_line_byte_offsets.len(), t.lines.len());
-        assert_eq!(t.plain_line_byte_offsets[0], 0);
-    }
+    // Plain mode removed — see git history if needed.
 }
-

@@ -30,4 +30,3 @@ fn ipv6_without_brackets_is_not_direct() {
     assert!(!is_direct_candidate("fe80::1"));
     assert!(parse_direct_input("fe80::1").is_some() == false);
 }
-

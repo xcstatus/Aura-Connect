@@ -102,4 +102,3 @@ pub fn is_direct_candidate(input: &str) -> bool {
     }
     false
 }
-

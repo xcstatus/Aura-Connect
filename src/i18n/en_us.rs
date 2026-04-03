@@ -67,16 +67,15 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.settings.scheme.applied" => "Applied",
         "iced.settings.scheme.apply" => "Apply",
         "iced.settings.section.text_render" => "Text rendering",
-        "iced.settings.row.apply_terminal_metrics" => "Apply font size & line height to terminal (PTY grid)",
+        "iced.settings.row.apply_terminal_metrics" => {
+            "Apply font size & line height to terminal (PTY grid)"
+        }
         "iced.settings.row.terminal_font_size" => "Terminal font size (px)",
         "iced.settings.row.line_height" => "Line height",
         "iced.settings.row.mono_font" => "Monospace font",
         "iced.settings.section.gpu_font" => "GPU font (optional)",
         "iced.settings.row.gpu_font_path" => "Font file path",
         "iced.settings.row.gpu_face_index" => "Face index in TTC",
-        "iced.settings.row.render_mode" => "Render mode",
-        "iced.settings.row.plain_text_update" => "Plain text buffer update",
-        "iced.settings.hint.plain_text_update_plain_only" => "Applies in plain render mode only: incremental patches changed rows; full rebuilds joined text each frame (for debugging).",
         "iced.settings.section.interaction" => "Interaction",
         "iced.settings.row.right_paste" => "Right-click to paste",
         "iced.settings.row.bracketed_paste" => "Bracketed paste (DEC 2004, if remote enables it)",
@@ -87,8 +86,12 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.settings.conn.advanced_title" => "Advanced",
         "iced.settings.conn.session_model_title" => "Tabs & sessions",
         "iced.settings.row.single_shared_session" => "Single-session mode (recommended)",
-        "iced.settings.hint.single_shared_session" => "When on, at most one SSH connection: only the active tab holds the session; switching tabs disconnects the previous tab, avoiding a tab title/host mismatch with the live PTY. When off, each tab may keep its own connection and terminal buffer.",
-        "iced.settings.conn.advanced_hint" => "Proxy, jump host, certificates, and keepalive will arrive in a later release.",
+        "iced.settings.hint.single_shared_session" => {
+            "When on, at most one SSH connection: only the active tab holds the session; switching tabs disconnects the previous tab, avoiding a tab title/host mismatch with the live PTY. When off, each tab may keep its own connection and terminal buffer."
+        }
+        "iced.settings.conn.advanced_hint" => {
+            "Proxy, jump host, certificates, and keepalive will arrive in a later release."
+        }
         "iced.settings.conn.manage_suffix" => "sessions",
         "iced.settings.conn.search_hint" => "Search name or address…",
         "iced.settings.conn.new" => "New",
@@ -96,7 +99,9 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.settings.conn.edit" => "Edit",
         "iced.settings.conn.delete" => "Delete",
         "iced.settings.backup.title" => "Backup & sync",
-        "iced.settings.backup.hint" => "Export/import and cloud sync are not available in this build (placeholder).",
+        "iced.settings.backup.hint" => {
+            "Export/import and cloud sync are not available in this build (placeholder)."
+        }
         "iced.settings.restart.banner" => "Some display settings require restarting the app.",
         "iced.settings.restart.ok" => "OK",
         "iced.topbar.new_tab" => "New",
@@ -115,7 +120,9 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.quick_connect.new_title" => "New connection",
         "iced.vault_unlock.title" => "Unlock Vault",
         "iced.vault_unlock.title_save_credentials" => "Unlock Vault to save credentials",
-        "iced.vault_unlock.hint_save_credentials" => "Connection succeeded. Unlocking will save the password to Vault for next time.",
+        "iced.vault_unlock.hint_save_credentials" => {
+            "Connection succeeded. Unlocking will save the password to Vault for next time."
+        }
         "iced.host_key_prompt.title" => "Host key confirmation",
         "iced.host_key_prompt.host_line" => "{host}:{port} ({algo})",
         "iced.host_key_prompt.old_fingerprint" => "Old fingerprint: {fp}",
@@ -126,32 +133,48 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.term.connecting" => "[rustssh] Connecting…",
         "iced.term.connected" => "[rustssh] Connected.",
         "iced.term.connection_failed" => "[rustssh] Connection failed.",
-        "iced.term.vault_needed" => "[rustssh] This session requires Vault unlock to load credentials.",
+        "iced.term.vault_needed" => {
+            "[rustssh] This session requires Vault unlock to load credentials."
+        }
         "iced.term.vault_unlock_to_continue" => "[rustssh] Unlock Vault to continue…",
         "iced.term.vault_unlocked" => "[rustssh] Vault unlocked.",
         "settings.security.vault.title" => "Vault Security",
         "settings.security.auto_lock.label" => "Auto-lock timeout",
-        "settings.security.auto_lock.help" => "Lock vault after inactivity. Choose Never to disable auto-lock.",
+        "settings.security.auto_lock.help" => {
+            "Lock vault after inactivity. Choose Never to disable auto-lock."
+        }
         "settings.security.timeout.never" => "Never",
         "settings.security.timeout.minute_1" => "1 minute",
         "settings.security.timeout.minute_5" => "5 minutes",
         "settings.security.timeout.minute_10" => "10 minutes",
         "settings.security.timeout.minute_30" => "30 minutes",
         "settings.security.lock_on_sleep.label" => "Lock when app is backgrounded",
-        "settings.security.lock_on_sleep.help" => "Lock vault immediately when minimized or moved to background.",
+        "settings.security.lock_on_sleep.help" => {
+            "Lock vault immediately when minimized or moved to background."
+        }
         "settings.security.master_password.change_title" => "Change master password",
         "settings.security.master_password.init_title" => "Initialize vault",
-        "settings.security.master_password.change_help" => "Change the root key used to decrypt the vault.",
-        "settings.security.master_password.init_help" => "Set a master password and create a local encrypted vault.",
+        "settings.security.master_password.change_help" => {
+            "Change the root key used to decrypt the vault."
+        }
+        "settings.security.master_password.init_help" => {
+            "Set a master password and create a local encrypted vault."
+        }
         "settings.security.master_password.change_action" => "Change",
         "settings.security.master_password.init_action" => "Initialize",
         "settings.security.biometrics.title" => "System Biometrics",
         "settings.security.biometrics.label" => "Use fingerprint or face authentication",
-        "settings.security.biometrics.help" => "Supports Touch ID, Windows Hello, or system keychain. Verification is required before toggling.",
-        "settings.security.biometrics.reason.toggle" => "Please verify to change biometric settings",
+        "settings.security.biometrics.help" => {
+            "Supports Touch ID, Windows Hello, or system keychain. Verification is required before toggling."
+        }
+        "settings.security.biometrics.reason.toggle" => {
+            "Please verify to change biometric settings"
+        }
         "settings.security.hosts.title" => "Known Hosts",
         "settings.security.hosts.policy.label" => "Connection verification policy",
-        "settings.security.hosts.policy.help" => "How to handle unknown or mismatched host fingerprints",
+        "settings.security.hosts.policy.help" => {
+            "How to handle unknown or mismatched host fingerprints"
+        }
         "settings.security.hosts.policy.strict" => "Strict",
         "settings.security.hosts.policy.ask" => "Ask",
         "settings.security.hosts.policy.accept_new" => "Accept New",
@@ -165,7 +188,9 @@ pub fn tr(key: &'static str) -> &'static str {
         "biometric.error.not_enrolled" => "Biometrics are not enrolled on this device",
         "biometric.error.locked_out" => "Biometrics are locked. Unlock with system passcode first",
         "biometric.error.user_canceled" => "Biometric verification was canceled",
-        "biometric.error.permission_denied" => "Biometric permission denied. Please allow it in system settings",
+        "biometric.error.permission_denied" => {
+            "Biometric permission denied. Please allow it in system settings"
+        }
         "biometric.error.timeout" => "Biometric verification timed out. Please try again",
         "biometric.error.unknown" => "Biometric verification failed",
         "biometric.error.unknown_with_detail" => "Biometric verification failed: {detail}",

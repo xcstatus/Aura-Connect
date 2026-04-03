@@ -4,7 +4,9 @@ use std::process::Command;
 
 fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let ghostty_dir = PathBuf::from(&manifest_dir).join("resource").join("ghostty");
+    let ghostty_dir = PathBuf::from(&manifest_dir)
+        .join("resource")
+        .join("ghostty");
 
     // 通知 cargo 在源文件变更时才触发重编译
     println!("cargo:rerun-if-changed=resource/ghostty/build.zig");
@@ -17,8 +19,8 @@ fn main() {
         .args(&[
             "build",
             "-Doptimize=ReleaseSafe",
-            "-Dapp-runtime=none", // 强制引用的方式现在由 main_c.zig 处理
-            "-Demit-macos-app=false", // 不要跑 xcodebuild 生成 App
+            "-Dapp-runtime=none",       // 强制引用的方式现在由 main_c.zig 处理
+            "-Demit-macos-app=false",   // 不要跑 xcodebuild 生成 App
             "-Demit-xcframework=false", // 不要生成臃肿的框架
         ])
         .status()
@@ -57,12 +59,16 @@ fn main() {
     eprintln!("Generating bindings from ghostty/vt.h...");
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     let wrapper_path = out_path.join("ghostty_wrapper.h");
-    std::fs::write(&wrapper_path, format!(
-        "#include <stdbool.h>\n\
+    std::fs::write(
+        &wrapper_path,
+        format!(
+            "#include <stdbool.h>\n\
          #include <stdint.h>\n\
          #include \"{0}/include/ghostty/vt.h\"\n",
-        ghostty_dir.display()
-    )).unwrap();
+            ghostty_dir.display()
+        ),
+    )
+    .unwrap();
 
     let bindings = bindgen::Builder::default()
         .header(wrapper_path.to_str().unwrap())

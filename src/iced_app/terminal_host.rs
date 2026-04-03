@@ -1,8 +1,8 @@
+use iced::Task;
 use iced::clipboard;
 use iced::keyboard::key::{Named, Physical};
 use iced::keyboard::{Key, Modifiers};
 use iced::mouse::ScrollDelta;
-use iced::Task;
 
 use crate::terminal_core::{TerminalKey, TerminalModifiers};
 use crate::theme::layout::terminal_scroll_hit_exclude_right_px;
@@ -278,11 +278,7 @@ impl TerminalHost {
                     // Click arms selection; highlight only after drag movement.
                     let mut engine = EngineAdapterMut::new(&mut pane.terminal);
                     engine.selection_begin((c, r));
-                } else if local_x >= 0.0
-                    && local_y >= 0.0
-                    && local_x < w
-                    && local_y < h
-                {
+                } else if local_x >= 0.0 && local_y >= 0.0 && local_x < w && local_y < h {
                     if crate::term_diag::enabled("HIT_TEST") {
                         log::debug!(
                             target: "term_hit_test",
@@ -308,13 +304,9 @@ impl TerminalHost {
                     let engine = EngineAdapterMut::new(&mut pane.terminal);
                     engine.grid_size()
                 };
-                if let Some((c, r)) = terminal_viewport::window_point_to_grid_with_dims(
-                    window,
-                    &spec,
-                    p,
-                    cols,
-                    rows,
-                ) {
+                if let Some((c, r)) =
+                    terminal_viewport::window_point_to_grid_with_dims(window, &spec, p, cols, rows)
+                {
                     let pane = state.active_pane_mut();
                     // Start selection only after the pointer actually moved to a different cell.
                     let mut engine = EngineAdapterMut::new(&mut pane.terminal);
@@ -424,8 +416,8 @@ fn terminal_mods(m: Modifiers) -> TerminalModifiers {
 mod tests {
     use super::*;
     use crate::backend::ssh_session::AsyncSession;
-    use iced::mouse::ScrollDelta;
     use iced::Point;
+    use iced::mouse::ScrollDelta;
 
     #[derive(Default)]
     struct DummySession {
@@ -590,7 +582,9 @@ fn paste_shortcut(key: &Key, modifiers: Modifiers) -> bool {
     match key {
         Key::Named(Named::Paste) => true,
         Key::Character(s) => {
-            s.chars().next().is_some_and(|c| c.eq_ignore_ascii_case(&'v'))
+            s.chars()
+                .next()
+                .is_some_and(|c| c.eq_ignore_ascii_case(&'v'))
                 && (modifiers.control() || modifiers.logo())
         }
         _ => false,
@@ -601,10 +595,11 @@ fn copy_shortcut(key: &Key, modifiers: Modifiers) -> bool {
     match key {
         Key::Named(Named::Copy) => true,
         Key::Character(s) => {
-            s.chars().next().is_some_and(|c| c.eq_ignore_ascii_case(&'c'))
+            s.chars()
+                .next()
+                .is_some_and(|c| c.eq_ignore_ascii_case(&'c'))
                 && (modifiers.control() || modifiers.logo())
         }
         _ => false,
     }
 }
-

@@ -1,11 +1,12 @@
-use iced::{Point, Size};
 use iced::Task;
+use iced::{Point, Size};
 
 use crate::app_model::AppModel;
 use crate::backend::ssh_session::AsyncSession;
+use crate::iced_app::terminal_rich::RowWidgetCache;
 use crate::settings::TerminalSettings;
-use crate::terminal_core::TerminalController;
 use crate::storage::StorageManager;
+use crate::terminal_core::TerminalController;
 use secrecy::SecretString;
 
 use super::message::{Message, SettingsCategory};
@@ -73,6 +74,9 @@ pub(crate) struct TabPane {
     pub last_terminal_focus_sent: Option<bool>,
     /// Last time we pumped output for this pane (for background throttling).
     pub last_pump_ms: i64,
+    /// Per-row Iced widget cache for dirty-row incremental rendering in Styled mode.
+    /// Grows lazily to viewport rows and is invalidated on resize/render mode change.
+    pub styled_row_cache: RowWidgetCache,
 }
 
 impl TabPane {
@@ -84,6 +88,7 @@ impl TabPane {
             terminal,
             last_terminal_focus_sent: None,
             last_pump_ms: 0,
+            styled_row_cache: RowWidgetCache::new(),
         }
     }
 }
@@ -182,12 +187,10 @@ pub(crate) struct PerfCounters {
     pub ticks: u64,
     pub pump_calls: u64,
     pub bytes_in: u64,
-    pub rebuilds: u64,
     pub last_log_ms: i64,
     pub ticks_at_log: u64,
     pub pump_calls_at_log: u64,
     pub bytes_in_at_log: u64,
-    pub rebuilds_at_log: u64,
     /// Optional perf CSV dump path (env: `RUST_SSH_PERF_DUMP`).
     pub dump_path: Option<String>,
     pub dump_header_written: bool,

@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use anyhow::Result;
-use crate::session::SessionLibrary;
 use crate::repository::SessionStore;
+use crate::session::SessionLibrary;
+use anyhow::Result;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct SessionManager {

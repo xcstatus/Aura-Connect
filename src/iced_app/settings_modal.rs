@@ -3,15 +3,15 @@
 use std::collections::BTreeMap;
 
 use iced::alignment::Alignment;
-use iced::widget::{
-    button, checkbox, column, container, mouse_area, pick_list, radio, row, scrollable, slider, text,
-    text_input, Space, Stack,
-};
 use iced::widget::scrollable::{Direction as ScrollDirection, Scrollbar};
+use iced::widget::{
+    Space, Stack, button, checkbox, column, container, mouse_area, pick_list, radio, row,
+    scrollable, slider, text, text_input,
+};
 use iced::{Element, Theme};
 
 use crate::session::{ProtocolType, SessionProfile, TransportConfig};
-use crate::settings::{HostKeyPolicy, TerminalPlainTextUpdate, TerminalRenderMode};
+use crate::settings::HostKeyPolicy;
 
 use super::message::{Message, SettingsCategory, SettingsField};
 use super::state::IcedState;
@@ -33,10 +33,14 @@ pub(crate) fn clamp_sub_tab(category: SettingsCategory, sub: usize) -> usize {
 
 pub(crate) fn modal_stack(state: &IcedState) -> Element<'_, Message> {
     let scrim = mouse_area(
-        container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-            .style(|_t: &Theme| {
-                container::Style::default().background(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.42))
-            }),
+        container(
+            Space::new()
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill),
+        )
+        .style(|_t: &Theme| {
+            container::Style::default().background(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.42))
+        }),
     )
     .on_press(Message::SettingsDismiss);
 
@@ -75,10 +79,13 @@ fn modal_card(state: &IcedState) -> Element<'_, Message> {
     .width(iced::Length::Fill)
     .height(iced::Length::Fill);
 
-    let row_content = row![sidebar, container(body).width(iced::Length::Fill).padding(0)]
-        .spacing(0)
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fill);
+    let row_content = row![
+        sidebar,
+        container(body).width(iced::Length::Fill).padding(0)
+    ]
+    .spacing(0)
+    .width(iced::Length::Fill)
+    .height(iced::Length::Fill);
 
     container(row_content)
         .width(iced::Length::Fill)
@@ -115,7 +122,10 @@ fn settings_sidebar(state: &IcedState) -> Element<'_, Message> {
         (SettingsCategory::Security, "iced.settings.cat.security"),
         (SettingsCategory::Backup, "iced.settings.cat.backup"),
     ];
-    let mut col = column![].spacing(4).width(iced::Length::Fixed(220.0)).padding(12);
+    let mut col = column![]
+        .spacing(4)
+        .width(iced::Length::Fixed(220.0))
+        .padding(12);
     col = col.push(Space::new().height(iced::Length::Fixed(24.0)));
     for (cat, key) in entries {
         let label = i18n.tr(key).to_string();
@@ -215,12 +225,11 @@ fn settings_sub_tab_row(state: &IcedState) -> Element<'_, Message> {
         .width(iced::Length::Fill)
         .padding([8, 20])
         .style(|theme: &Theme| {
-            container::Style::default()
-                .border(iced::Border {
-                    width: 0.0,
-                    color: theme.extended_palette().background.strong.color,
-                    radius: 0.0.into(),
-                })
+            container::Style::default().border(iced::Border {
+                width: 0.0,
+                color: theme.extended_palette().background.strong.color,
+                radius: 0.0.into(),
+            })
         })
         .into()
 }
@@ -303,11 +312,9 @@ fn general_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 section_title(i18n.tr("iced.settings.section.appearance")),
                 settings_row(
                     i18n.tr("iced.settings.row.theme"),
-                    pick_list(
-                        THEMES.as_slice(),
-                        theme_sel,
-                        |t: &str| Message::SettingsFieldChanged(SettingsField::Theme(t.to_string())),
-                    )
+                    pick_list(THEMES.as_slice(), theme_sel, |t: &str| {
+                        Message::SettingsFieldChanged(SettingsField::Theme(t.to_string()))
+                    },)
                     .width(200.0),
                 ),
                 settings_row(
@@ -376,7 +383,8 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 ("Monokai", "Classic bright colors on grey"),
                 ("Solarized", "Precision colors for digital clarity"),
             ];
-            let mut col = column![section_title(i18n.tr("iced.settings.section.color_scheme"))].spacing(12);
+            let mut col =
+                column![section_title(i18n.tr("iced.settings.section.color_scheme"))].spacing(12);
             for (name, desc) in schemes {
                 let active = t.color_scheme == name;
                 col = col.push(
@@ -385,7 +393,12 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                             text(name).size(13),
                             text(desc).size(11).style(|theme: &Theme| text::Style {
                                 color: Some(
-                                    theme.extended_palette().background.base.text.scale_alpha(0.65),
+                                    theme
+                                        .extended_palette()
+                                        .background
+                                        .base
+                                        .text
+                                        .scale_alpha(0.65),
                                 ),
                             }),
                         ]
@@ -412,16 +425,11 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 .iter()
                 .find(|&&x| x == t.font_family.as_str())
                 .map(|_| t.font_family.as_str());
-            let gpu_path = t
-                .gpu_font_path
-                .clone()
-                .unwrap_or_default();
+            let gpu_path = t.gpu_font_path.clone().unwrap_or_default();
             let face_raw = t
                 .gpu_font_face_index
                 .map(|n| n.to_string())
                 .unwrap_or_default();
-            let mode = t.terminal_render_mode;
-            let plain_upd = t.plain_text_update;
             column![
                 section_title(i18n.tr("iced.settings.section.text_render")),
                 checkbox(t.apply_terminal_metrics)
@@ -447,11 +455,9 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 .width(300.0),
                 settings_row(
                     i18n.tr("iced.settings.row.mono_font"),
-                    pick_list(
-                        FONTS.as_slice(),
-                        font_sel,
-                        |f: &str| Message::SettingsFieldChanged(SettingsField::FontFamily(f.to_string())),
-                    )
+                    pick_list(FONTS.as_slice(), font_sel, |f: &str| {
+                        Message::SettingsFieldChanged(SettingsField::FontFamily(f.to_string()))
+                    },)
                     .width(220.0),
                 ),
                 text(i18n.tr("iced.settings.section.gpu_font")).size(14),
@@ -468,33 +474,6 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                             Message::SettingsFieldChanged(SettingsField::GpuFontFaceIndex(s))
                         })
                         .width(120.0),
-                ),
-                text(i18n.tr("iced.settings.row.render_mode")).size(14),
-                radio(
-                    "styled",
-                    TerminalRenderMode::Styled,
-                    Some(mode),
-                    |m| Message::SettingsFieldChanged(SettingsField::TerminalRenderMode(m)),
-                ),
-                radio(
-                    "plain",
-                    TerminalRenderMode::Plain,
-                    Some(mode),
-                    |m| Message::SettingsFieldChanged(SettingsField::TerminalRenderMode(m)),
-                ),
-                text(i18n.tr("iced.settings.row.plain_text_update")).size(14),
-                text(i18n.tr("iced.settings.hint.plain_text_update_plain_only")).size(11),
-                radio(
-                    "incremental",
-                    TerminalPlainTextUpdate::Incremental,
-                    Some(plain_upd),
-                    |m| Message::SettingsFieldChanged(SettingsField::PlainTextUpdate(m)),
-                ),
-                radio(
-                    "full",
-                    TerminalPlainTextUpdate::Full,
-                    Some(plain_upd),
-                    |m| Message::SettingsFieldChanged(SettingsField::PlainTextUpdate(m)),
                 ),
             ]
             .spacing(12)
@@ -660,7 +639,12 @@ fn connection_protocol_page<'a>(
                             text(s.name.clone()).size(13),
                             text(subtitle).size(11).style(|theme: &Theme| text::Style {
                                 color: Some(
-                                    theme.extended_palette().background.base.text.scale_alpha(0.6),
+                                    theme
+                                        .extended_palette()
+                                        .background
+                                        .base
+                                        .text
+                                        .scale_alpha(0.6),
                                 ),
                             }),
                         ]

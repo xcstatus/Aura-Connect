@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// 协议类型枚举
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -25,7 +25,7 @@ pub struct SerialConfig {
     pub baud_rate: u32,
     pub data_bits: u8,
     pub stop_bits: u8,
-    pub parity: String, // N, E, O
+    pub parity: String,       // N, E, O
     pub flow_control: String, // None, Software, Hardware
 }
 

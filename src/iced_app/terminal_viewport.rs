@@ -3,11 +3,13 @@
 
 use std::sync::{Mutex, OnceLock};
 
-use iced::{Padding, Size};
 use iced::Point;
+use iced::{Padding, Size};
 
 use crate::settings::TerminalSettings;
-use crate::theme::layout::{terminal_scroll_hit_exclude_right_px, BOTTOM_BAR_HEIGHT, TOP_BAR_HEIGHT};
+use crate::theme::layout::{
+    BOTTOM_BAR_HEIGHT, TOP_BAR_HEIGHT, terminal_scroll_hit_exclude_right_px,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct FontMetricKey {
@@ -24,10 +26,12 @@ struct MeasuredCellMetrics {
     font_height_px: f32,
 }
 
-static FONT_METRICS_CACHE: OnceLock<Mutex<std::collections::HashMap<FontMetricKey, MeasuredCellMetrics>>> =
-    OnceLock::new();
+static FONT_METRICS_CACHE: OnceLock<
+    Mutex<std::collections::HashMap<FontMetricKey, MeasuredCellMetrics>>,
+> = OnceLock::new();
 
-fn metrics_cache() -> &'static Mutex<std::collections::HashMap<FontMetricKey, MeasuredCellMetrics>> {
+fn metrics_cache() -> &'static Mutex<std::collections::HashMap<FontMetricKey, MeasuredCellMetrics>>
+{
     FONT_METRICS_CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
 }
 
@@ -43,7 +47,12 @@ fn qx100(x: f32) -> i32 {
 
 fn pick_font_file_for_terminal(t: &TerminalSettings) -> (String, u32) {
     // Prefer explicit override used by the GPU glyph atlas (file path + face index).
-    if let Some(p) = t.gpu_font_path.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(p) = t
+        .gpu_font_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         return (p.to_string(), t.gpu_font_face_index.unwrap_or(0));
     }
 
@@ -254,7 +263,10 @@ pub fn terminal_scroll_area_px(window: Size, spec: &TerminalViewportSpec) -> (f3
 }
 
 /// Scrollable terminal area rectangle in window coordinates: `(x, y, w, h)`.
-pub fn terminal_scroll_area_rect(window: Size, spec: &TerminalViewportSpec) -> (f32, f32, f32, f32) {
+pub fn terminal_scroll_area_rect(
+    window: Size,
+    spec: &TerminalViewportSpec,
+) -> (f32, f32, f32, f32) {
     let win_w = window.width.max(1.0);
     let win_h = window.height.max(1.0);
 
@@ -277,11 +289,9 @@ pub fn terminal_scroll_area_rect(window: Size, spec: &TerminalViewportSpec) -> (
 
     // Height: derived from the same SSOT chain as `terminal_scroll_area_px`.
     let below_top = (win_h - spec.top_bar_h - spec.macos_window_top_inset).max(1.0);
-    let body_h = (below_top
-        - spec.breadcrumb_block_h()
-        - spec.bottom_bar_h
-        - spec.main_column_gap * 2.0)
-        .max(1.0);
+    let body_h =
+        (below_top - spec.breadcrumb_block_h() - spec.bottom_bar_h - spec.main_column_gap * 2.0)
+            .max(1.0);
     let h = (body_h
         - spec.terminal_panel_pad_top
         - spec.terminal_panel_pad_bottom
@@ -292,7 +302,11 @@ pub fn terminal_scroll_area_rect(window: Size, spec: &TerminalViewportSpec) -> (
 
 /// Mappable scroll width (excluding right hit-test gutter) and **uniform** column band width.
 /// Must match [`window_point_to_grid_with_dims`] and terminal row layout in `terminal_rich`.
-pub fn terminal_scroll_cell_geometry(window: Size, spec: &TerminalViewportSpec, cols: u16) -> (f32, f32) {
+pub fn terminal_scroll_cell_geometry(
+    window: Size,
+    spec: &TerminalViewportSpec,
+    cols: u16,
+) -> (f32, f32) {
     let (_, _, w, _) = terminal_scroll_area_rect(window, spec);
     let cols = cols.max(1);
     let metric_cw = spec.term_cell_w().max(1.0);
@@ -350,7 +364,8 @@ pub fn window_point_to_grid_with_dims(
     // from font metrics and can disagree with Iced/cryoglyph glyph advances, so `local_x/metric_cw`
     // drifts (e.g. clicking “dream” letter-by-letter skips columns). `w_map/cols` matches the PTY
     // resize rule `cols = floor(tw / cw_metric)` while aligning bands to the live viewport width.
-    let col = ((local_x / cell_w).floor() as i32).clamp(0, i32::from(cols.saturating_sub(1))) as u16;
+    let col =
+        ((local_x / cell_w).floor() as i32).clamp(0, i32::from(cols.saturating_sub(1))) as u16;
     let row = ((local_y / ch).floor() as i32).clamp(0, i32::from(rows.saturating_sub(1))) as u16;
     Some((col, row))
 }
@@ -591,7 +606,10 @@ mod tests {
         let (c0, r0) = grid_from_window_size_with_spec(w, &base);
         let (c1, r1) = grid_from_window_size_with_spec(w, &loose);
         assert_eq!(c0, c1, "vertical-only padding should not change cols");
-        assert!(r1 < r0, "extra vertical padding must reduce rows: {r0} vs {r1}");
+        assert!(
+            r1 < r0,
+            "extra vertical padding must reduce rows: {r0} vs {r1}"
+        );
     }
 
     #[test]
@@ -618,7 +636,10 @@ mod tests {
         t.font_size = 32.0;
         t.line_height = 2.5;
         let spec = super::terminal_viewport_spec_for_settings(&t);
-        assert_eq!(spec.term_font_px, TerminalViewportSpec::DEFAULT.term_font_px);
+        assert_eq!(
+            spec.term_font_px,
+            TerminalViewportSpec::DEFAULT.term_font_px
+        );
         assert_eq!(
             spec.term_cell_h_per_font,
             TerminalViewportSpec::DEFAULT.term_cell_h_per_font

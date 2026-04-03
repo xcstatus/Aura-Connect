@@ -35,9 +35,6 @@ pub(crate) enum SettingsField {
     ScrollbackLimit(usize),
     HistorySearch(bool),
     PathCompletion(bool),
-    TerminalRenderMode(crate::settings::TerminalRenderMode),
-    /// Plain mode only: incremental patched `join` vs full rebuild each frame with output.
-    PlainTextUpdate(crate::settings::TerminalPlainTextUpdate),
     IdleTimeoutMins(u32),
     LockOnSleep(bool),
     HostKeyPolicy(crate::settings::HostKeyPolicy),

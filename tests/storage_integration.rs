@@ -11,9 +11,15 @@ fn test_storage_paths_validity() {
     // - 这里用最小断言覆盖“不会崩溃 + 关键文件名约定不被改坏”，避免重构时悄悄写到错误位置。
     let config_dir = StorageManager::get_config_dir();
     assert!(config_dir.is_some());
-    
+
     let sessions_path = StorageManager::get_sessions_path();
-    assert!(sessions_path.unwrap().to_str().unwrap().contains("sessions.json"));
+    assert!(
+        sessions_path
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("sessions.json")
+    );
 }
 
 #[test]
@@ -27,13 +33,13 @@ fn test_atomic_write_simulation() {
     //   防止未来改动把写入退化成非原子覆盖写。
     let dir = tempdir().unwrap();
     let file_path = dir.path().join("atomic_test.json");
-    
+
     // 注意：使用与目标文件同目录的临时文件，才能保证 rename 在多数平台/文件系统上具备原子性语义。
     let content = b"{\"test\": true}";
     let tmp_path = file_path.with_extension("tmp");
     std::fs::write(&tmp_path, content).unwrap();
     std::fs::rename(&tmp_path, &file_path).unwrap();
-    
+
     assert!(file_path.exists());
     let read_back = std::fs::read_to_string(&file_path).unwrap();
     assert_eq!(read_back, "{\"test\": true}");

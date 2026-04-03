@@ -109,7 +109,8 @@ impl<'a> EngineAdapterMut<'a> {
         mods: crate::terminal_core::TerminalModifiers,
         text: Option<&str>,
     ) -> Option<Vec<u8>> {
-        self.terminal.encode_keypress_from_physical(code, mods, text)
+        self.terminal
+            .encode_keypress_from_physical(code, mods, text)
     }
 
     #[inline]
@@ -142,4 +143,3 @@ impl<'a> EngineAdapterMut<'a> {
         self.terminal.scroll_viewport_delta_rows(delta_rows);
     }
 }
-

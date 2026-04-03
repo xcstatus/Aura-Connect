@@ -1,12 +1,12 @@
+use super::error::VaultError;
 use aes_gcm::{
-    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
 };
 use argon2::{Argon2, Params};
 use rand::RngCore;
 use secrecy::{ExposeSecret, SecretString};
 use zeroize::Zeroizing;
-use super::error::VaultError;
 
 const SALT_SIZE: usize = 16;
 const NONCE_SIZE: usize = 12;
@@ -21,11 +21,12 @@ pub fn generate_salt() -> [u8; SALT_SIZE] {
 pub fn derive_key(password: &SecretString, salt: &[u8]) -> Result<Zeroizing<[u8; 32]>, VaultError> {
     let params = Params::new(65536, 3, 1, Some(32)).map_err(|_| VaultError::DerivationFailed)?;
     let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
-    
+
     let mut key = [0u8; 32];
-    argon2.hash_password_into(password.expose_secret().as_bytes(), salt, &mut key)
+    argon2
+        .hash_password_into(password.expose_secret().as_bytes(), salt, &mut key)
         .map_err(|_| VaultError::DerivationFailed)?;
-    
+
     Ok(Zeroizing::new(key))
 }
 
@@ -39,10 +40,11 @@ pub fn encrypt(key: &Zeroizing<[u8; 32]>, plaintext: &[u8]) -> Result<Vec<u8>, V
     let nonce_bytes = generate_nonce();
     let nonce = Nonce::from_slice(&nonce_bytes);
     let cipher = Aes256Gcm::new(key.as_slice().into());
-    
-    let mut ciphertext = cipher.encrypt(nonce, plaintext)
+
+    let mut ciphertext = cipher
+        .encrypt(nonce, plaintext)
         .map_err(|e| VaultError::EncryptionFailed(e.to_string()))?;
-        
+
     let mut result = Vec::with_capacity(nonce_bytes.len() + ciphertext.len());
     result.extend_from_slice(&nonce_bytes);
     result.append(&mut ciphertext);
@@ -53,12 +55,13 @@ pub fn decrypt(key: &Zeroizing<[u8; 32]>, encrypted_data: &[u8]) -> Result<Vec<u
     if encrypted_data.len() < NONCE_SIZE {
         return Err(VaultError::DecryptionFailed("Data too short".into()));
     }
-    
+
     let (nonce_bytes, ciphertext) = encrypted_data.split_at(NONCE_SIZE);
     let nonce = Nonce::from_slice(nonce_bytes);
     let cipher = Aes256Gcm::new(key.as_slice().into());
-    
-    cipher.decrypt(nonce, ciphertext)
+
+    cipher
+        .decrypt(nonce, ciphertext)
         .map_err(|e| VaultError::DecryptionFailed(e.to_string()))
 }
 
@@ -71,10 +74,10 @@ mod tests {
     fn test_encryption_decryption() {
         let key = Zeroizing::new([42u8; 32]);
         let plaintext = b"Hello, secret world!";
-        
+
         let encrypted = encrypt(&key, plaintext).unwrap();
         assert_ne!(plaintext.as_slice(), encrypted.as_slice());
-        
+
         let decrypted = decrypt(&key, &encrypted).unwrap();
         assert_eq!(plaintext.as_slice(), decrypted.as_slice());
     }
@@ -85,10 +88,10 @@ mod tests {
         let password = SecretString::from("password123".to_string());
         let key1 = derive_key(&password, &salt).unwrap();
         let key2 = derive_key(&password, &salt).unwrap();
-        
+
         let diff_password = SecretString::from("Password123".to_string());
         let key3 = derive_key(&diff_password, &salt).unwrap();
-        
+
         assert_eq!(*key1, *key2);
         assert_ne!(*key1, *key3);
     }

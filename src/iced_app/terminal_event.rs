@@ -1,7 +1,7 @@
+use iced::Point;
 use iced::keyboard;
 use iced::keyboard::key::Physical;
 use iced::keyboard::{Key, Modifiers};
-use iced::Point;
 use iced::mouse;
 
 /// Terminal input/output events normalized from Iced events.
@@ -25,7 +25,10 @@ pub(crate) enum TerminalEvent {
     MouseLeftUp(Point),
     MouseMoved(Point),
     MouseRightClick(Point),
-    MouseWheel { delta: mouse::ScrollDelta, at: Point },
+    MouseWheel {
+        delta: mouse::ScrollDelta,
+        at: Point,
+    },
 }
 
 impl TerminalEvent {
@@ -46,6 +49,4 @@ impl TerminalEvent {
             _ => None,
         }
     }
-
 }
-

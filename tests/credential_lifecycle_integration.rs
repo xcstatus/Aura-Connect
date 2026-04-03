@@ -6,7 +6,7 @@ use tempfile::tempdir;
 use rust_ssh::session::{AuthMethod, SessionLibrary, SessionProfile, SshConfig, TransportConfig};
 use rust_ssh::settings::Settings;
 use rust_ssh::storage::StorageManager;
-use rust_ssh::vault::{VaultManager};
+use rust_ssh::vault::VaultManager;
 
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -112,7 +112,9 @@ fn save_write_restart_prefill() {
         // 3) Restart: load model and verify prefill loads password back from vault.
         let mut model = rust_ssh::app_model::AppModel::load();
         let derived_master = SecretString::from(meta.verifier_hash.clone());
-        model.fill_draft_from_profile(&profile, Some(&derived_master)).unwrap();
+        model
+            .fill_draft_from_profile(&profile, Some(&derived_master))
+            .unwrap();
         assert_eq!(model.draft.password.expose_secret(), "ssh-pass");
     });
 }
@@ -151,13 +153,9 @@ fn update_clear_credentials_deletes_vault_entry() {
         assert_eq!(cid, "ssh:sess-2");
 
         // Clear: sync with no secrets should delete.
-        let cleared = rust_ssh::vault::session_credentials::sync_ssh_credentials(
-            &settings,
-            sid,
-            None,
-            None,
-        )
-        .unwrap();
+        let cleared =
+            rust_ssh::vault::session_credentials::sync_ssh_credentials(&settings, sid, None, None)
+                .unwrap();
         assert!(cleared.is_none());
 
         let loaded =
@@ -201,8 +199,8 @@ fn delete_profile_should_leave_no_orphan_credentials() {
 
         // Simulate "delete profile": delete the credential id, ensure it's gone.
         rust_ssh::vault::session_credentials::delete_credential(&settings, &cid).unwrap();
-        let loaded = rust_ssh::vault::session_credentials::load_ssh_credentials(&settings, &cid)
-            .unwrap();
+        let loaded =
+            rust_ssh::vault::session_credentials::load_ssh_credentials(&settings, &cid).unwrap();
         assert!(loaded.is_none());
     });
 }
@@ -389,4 +387,3 @@ fn key_profile_passphrase_roundtrip_and_prefill() {
         assert_eq!(model.draft.passphrase.expose_secret(), "key-passphrase");
     });
 }
-

@@ -1,8 +1,8 @@
-use async_trait::async_trait;
 use anyhow::Result;
+use async_trait::async_trait;
+use russh::*;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use russh::*;
 
 use russh_keys::*;
 use tokio::sync::mpsc;
@@ -69,7 +69,11 @@ async fn connect_russh_prefer_ipv4(
     let addrs = resolve_ssh_addrs(host, port).await?;
     let mut last_err: Option<anyhow::Error> = None;
     for addr in addrs {
-        log::debug!("[SshSession] 尝试连接 {} (IPv{})", addr, if addr.is_ipv4() { 4 } else { 6 });
+        log::debug!(
+            "[SshSession] 尝试连接 {} (IPv{})",
+            addr,
+            if addr.is_ipv4() { 4 } else { 6 }
+        );
         let handler = Client {
             tx: None,
             host: host.to_string(),
@@ -166,7 +170,7 @@ pub struct SshSession {
 
 impl SshSession {
     pub fn new() -> Self {
-        Self { 
+        Self {
             handle: None,
             data_rx: None,
             cmd_tx: None,
@@ -190,7 +194,9 @@ impl SshSession {
             connect_russh_prefer_ipv4(config, host, port, known_hosts.to_vec()).await?;
 
         let authed = match auth {
-            crate::session::AuthMethod::Password => handle.authenticate_password(user, password).await?,
+            crate::session::AuthMethod::Password => {
+                handle.authenticate_password(user, password).await?
+            }
             crate::session::AuthMethod::Key { .. } => {
                 let p = private_key_path.trim();
                 if p.is_empty() {
@@ -229,13 +235,16 @@ impl SshSession {
                         russh::client::KeyboardInteractiveAuthResponse::Success => break true,
                         russh::client::KeyboardInteractiveAuthResponse::Failure => break false,
                         russh::client::KeyboardInteractiveAuthResponse::InfoRequest {
-                            prompts, ..
+                            prompts,
+                            ..
                         } => {
                             let answers = prompts
                                 .iter()
                                 .map(|_p| password.to_string())
                                 .collect::<Vec<_>>();
-                            resp = handle.authenticate_keyboard_interactive_respond(answers).await?;
+                            resp = handle
+                                .authenticate_keyboard_interactive_respond(answers)
+                                .await?;
                         }
                     }
                 }
@@ -299,7 +308,7 @@ impl SshSession {
         // 启动数据收发处理循环 (UI <-> SSH)
         // 增加 Keep-Alive 心跳间隔轮询: 每30秒发送一次 ping 以防被防火墙剔除
         let mut keep_alive_interval = tokio::time::interval(std::time::Duration::from_secs(30));
-        
+
         tokio::spawn(async move {
             loop {
                 tokio::select! {
@@ -313,7 +322,7 @@ impl SshSession {
                                     "[SessionCmd] 发送至服务端 SSH: {} bytes",
                                     data.len()
                                 );
-                                let _ = channel.data(&data[..]).await; 
+                                let _ = channel.data(&data[..]).await;
                             }
                             Some(SessionCmd::Resize(c, r)) => { let _ = channel.window_change(c as u32, r as u32, 0, 0).await; }
                             None => break,
@@ -349,7 +358,13 @@ impl SshSession {
         Ok(())
     }
 
-    pub async fn connect(&mut self, host: &str, port: u16, user: &str, password: &str) -> Result<()> {
+    pub async fn connect(
+        &mut self,
+        host: &str,
+        port: u16,
+        user: &str,
+        password: &str,
+    ) -> Result<()> {
         self.connect_with_auth(
             host,
             port,
@@ -413,7 +428,10 @@ impl InteractiveAuthSession {
         Ok((self, map_kbd_resp(resp)))
     }
 
-    pub async fn respond(mut self, answers: Vec<String>) -> Result<(Self, KeyboardInteractiveStep)> {
+    pub async fn respond(
+        mut self,
+        answers: Vec<String>,
+    ) -> Result<(Self, KeyboardInteractiveStep)> {
         let resp = self
             .handle
             .authenticate_keyboard_interactive_respond(answers)
@@ -476,7 +494,8 @@ impl AsyncSession for SshSession {
                         }
                         return Ok(len);
                     }
-                    Err(mpsc::error::TryRecvError::Empty) | Err(mpsc::error::TryRecvError::Disconnected) => return Ok(0),
+                    Err(mpsc::error::TryRecvError::Empty)
+                    | Err(mpsc::error::TryRecvError::Disconnected) => return Ok(0),
                 }
             }
         }

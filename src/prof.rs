@@ -14,11 +14,21 @@ pub mod term_counters {
     pub static RUNS_DRAWN: AtomicU64 = AtomicU64::new(0);
     pub static CELLS_DRAWN: AtomicU64 = AtomicU64::new(0);
 
-    pub fn add_text_calls(n: u64) { TEXT_CALLS.fetch_add(n, Ordering::Relaxed); }
-    pub fn add_bg_rects(n: u64) { BG_RECTS.fetch_add(n, Ordering::Relaxed); }
-    pub fn add_rows(n: u64) { ROWS_DRAWN.fetch_add(n, Ordering::Relaxed); }
-    pub fn add_runs(n: u64) { RUNS_DRAWN.fetch_add(n, Ordering::Relaxed); }
-    pub fn add_cells(n: u64) { CELLS_DRAWN.fetch_add(n, Ordering::Relaxed); }
+    pub fn add_text_calls(n: u64) {
+        TEXT_CALLS.fetch_add(n, Ordering::Relaxed);
+    }
+    pub fn add_bg_rects(n: u64) {
+        BG_RECTS.fetch_add(n, Ordering::Relaxed);
+    }
+    pub fn add_rows(n: u64) {
+        ROWS_DRAWN.fetch_add(n, Ordering::Relaxed);
+    }
+    pub fn add_runs(n: u64) {
+        RUNS_DRAWN.fetch_add(n, Ordering::Relaxed);
+    }
+    pub fn add_cells(n: u64) {
+        CELLS_DRAWN.fetch_add(n, Ordering::Relaxed);
+    }
 
     pub fn snapshot() -> (u64, u64, u64, u64, u64) {
         (
@@ -55,4 +65,3 @@ pub(crate) fn spawn_term_prof_heartbeat_thread() {
         }
     });
 }
-

@@ -41,15 +41,27 @@ pub enum ConnectErrorKind {
 impl ConnectErrorKind {
     pub fn user_message(self) -> &'static str {
         match self {
-            ConnectErrorKind::AuthFailed => "认证失败：请检查密码/密钥/交互认证输入，或切换认证方式后重试。",
-            ConnectErrorKind::ResolveFailed => "无法解析主机名：请检查 host 是否正确、DNS/网络是否可用。",
-            ConnectErrorKind::HostUnreachable => "无法连接到主机：请检查网络、防火墙、端口是否开放。",
+            ConnectErrorKind::AuthFailed => {
+                "认证失败：请检查密码/密钥/交互认证输入，或切换认证方式后重试。"
+            }
+            ConnectErrorKind::ResolveFailed => {
+                "无法解析主机名：请检查 host 是否正确、DNS/网络是否可用。"
+            }
+            ConnectErrorKind::HostUnreachable => {
+                "无法连接到主机：请检查网络、防火墙、端口是否开放。"
+            }
             ConnectErrorKind::HostKeyUnknown => "主机指纹未知：请核对指纹后再决定是否信任。",
-            ConnectErrorKind::HostKeyChanged => "主机指纹发生变化：存在中间人风险，请核对指纹后再决定是否继续。",
+            ConnectErrorKind::HostKeyChanged => {
+                "主机指纹发生变化：存在中间人风险，请核对指纹后再决定是否继续。"
+            }
             ConnectErrorKind::KeyNotFound => "找不到私钥文件：请检查私钥路径与权限。",
-            ConnectErrorKind::KeyPermissionDenied => "无法读取私钥文件：权限不足，请检查文件权限或改用其他认证方式。",
+            ConnectErrorKind::KeyPermissionDenied => {
+                "无法读取私钥文件：权限不足，请检查文件权限或改用其他认证方式。"
+            }
             ConnectErrorKind::AgentUnsupported => "当前未接入 SSH Agent 认证：请切换认证方式。",
-            ConnectErrorKind::AgentUnavailable => "无法使用 SSH Agent：未检测到可用的 agent 或 agent 中没有可用的 key。",
+            ConnectErrorKind::AgentUnavailable => {
+                "无法使用 SSH Agent：未检测到可用的 agent 或 agent 中没有可用的 key。"
+            }
             ConnectErrorKind::InvalidPort => "端口无效：请输入 1–65535。",
             ConnectErrorKind::MissingHostOrUser => "Host/User 不能为空。",
             ConnectErrorKind::Unknown => "连接失败：请检查参数并重试。",
@@ -187,11 +199,7 @@ impl AppModel {
     /// 成功连接后写入「最近」列表（去重、截断、`settings` 落盘）。
     pub fn record_recent_connection(&mut self, mut rec: RecentConnectionRecord) {
         rec.last_connected_ms = crate::settings::unix_time_ms();
-        let max = self
-            .settings
-            .quick_connect
-            .recent_max
-            .clamp(1, 64);
+        let max = self.settings.quick_connect.recent_max.clamp(1, 64);
         let recent = &mut self.settings.quick_connect.recent;
         recent.retain(|r| {
             if let (Some(a), Some(b)) = (&r.profile_id, &rec.profile_id) {
@@ -279,7 +287,9 @@ impl AppModel {
         ConnectErrorKind::Unknown
     }
 
-    pub async fn connect_from_draft(&mut self) -> std::result::Result<Box<dyn AsyncSession>, ConnectErrorKind> {
+    pub async fn connect_from_draft(
+        &mut self,
+    ) -> std::result::Result<Box<dyn AsyncSession>, ConnectErrorKind> {
         let host = self.draft.host.trim().to_string();
         let user = self.draft.user.trim().to_string();
         let port: u16 = self
@@ -478,12 +488,7 @@ impl AppModel {
         label: String,
         profile_id: Option<String>,
     ) -> RecentConnectionRecord {
-        let port = self
-            .draft
-            .port
-            .trim()
-            .parse()
-            .unwrap_or(22);
+        let port = self.draft.port.trim().parse().unwrap_or(22);
         RecentConnectionRecord {
             profile_id,
             label,
@@ -508,4 +513,3 @@ impl AppModel {
         })
     }
 }
-

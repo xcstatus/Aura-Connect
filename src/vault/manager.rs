@@ -1,6 +1,6 @@
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
+    password_hash::{PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
@@ -22,7 +22,7 @@ impl VaultManager {
     pub fn setup_vault(password: &SecretString) -> anyhow::Result<VaultMeta> {
         let salt = SaltString::generate(&mut OsRng);
         let argon2 = Argon2::default();
-        
+
         let password_hash = argon2
             .hash_password(password.expose_secret().as_bytes(), &salt)
             .map_err(|e| anyhow::anyhow!("KDF init failed: {}", e))?
@@ -37,7 +37,7 @@ impl VaultManager {
     /// 验证主密码是否正确
     pub fn verify_password(password: &SecretString, meta: &VaultMeta) -> bool {
         use argon2::password_hash::PasswordHash;
-        
+
         let Ok(parsed_hash) = PasswordHash::new(&meta.verifier_hash) else {
             return false;
         };
@@ -52,7 +52,7 @@ impl VaultManager {
     pub fn derive_master_key(password: &SecretString, salt: &str) -> anyhow::Result<[u8; 32]> {
         let mut output_key = [0u8; 32];
         let salt_bytes = salt.as_bytes();
-        
+
         let argon2 = Argon2::default();
         argon2
             .hash_password_into(
@@ -61,7 +61,7 @@ impl VaultManager {
                 &mut output_key,
             )
             .map_err(|e| anyhow::anyhow!("Key derivation failed: {}", e))?;
-            
+
         Ok(output_key)
     }
 }

@@ -23,4 +23,3 @@ pub fn enabled(scope: &str) -> bool {
     let key = format!("RUST_SSH_TERM_DIAG_{}", scope.trim().to_ascii_uppercase());
     env_truthy(&key)
 }
-

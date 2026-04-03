@@ -122,7 +122,12 @@ exit(ok ? 0 : 1)
             .arg(swift)
             .env("RUSTSSH_BIOMETRIC_REASON", reason)
             .output()
-            .map_err(|e| err(BiometricErrorCode::Unknown, format!("调用系统认证失败: {}", e)))?;
+            .map_err(|e| {
+                err(
+                    BiometricErrorCode::Unknown,
+                    format!("调用系统认证失败: {}", e),
+                )
+            })?;
         if output.status.success() {
             return Ok(());
         }
@@ -172,7 +177,12 @@ if ($result -eq [Windows.Security.Credentials.UI.UserConsentVerificationResult]:
             .arg(ps)
             .env("RUSTSSH_BIOMETRIC_REASON", reason)
             .output()
-            .map_err(|e| err(BiometricErrorCode::Unknown, format!("调用 Windows Hello 失败: {}", e)))?;
+            .map_err(|e| {
+                err(
+                    BiometricErrorCode::Unknown,
+                    format!("调用 Windows Hello 失败: {}", e),
+                )
+            })?;
         if output.status.success() {
             return Ok(());
         }

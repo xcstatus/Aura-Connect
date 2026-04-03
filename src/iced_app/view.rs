@@ -1,12 +1,12 @@
 use iced::alignment::Alignment;
-use iced::widget::{
-    button, checkbox, column, container, mouse_area, row, scrollable, text, text_input,
-    tooltip, Space, Stack, pick_list,
-};
-use iced::widget::tooltip::Position;
-use iced::widget::scrollable::{Direction as ScrollDirection, Scrollbar};
-use iced::{Element, Theme};
 use iced::widget::Id;
+use iced::widget::scrollable::{Direction as ScrollDirection, Scrollbar};
+use iced::widget::tooltip::Position;
+use iced::widget::{
+    Space, Stack, button, checkbox, column, container, mouse_area, pick_list, row, scrollable,
+    text, text_input, tooltip,
+};
+use iced::{Element, Theme};
 
 use secrecy::ExposeSecret;
 
@@ -14,15 +14,15 @@ use crate::session::{SessionProfile, TransportConfig};
 use crate::theme::layout::BOTTOM_BAR_HEIGHT;
 
 use super::chrome::{
+    TAB_STRIP_SCROLLABLE_ID, TOP_BAR_EDGE_PAD, TOP_BAR_H, TOP_CONTROL_GROUP_W, TOP_ICON_BTN,
     main_chrome_style, tab_scroll_needs_fade, tab_scroll_right_fade, top_bar_material_style,
-    top_bar_vertical_rule, unified_titlebar_padding, TAB_STRIP_SCROLLABLE_ID, TOP_BAR_EDGE_PAD,
-    TOP_BAR_H, TOP_CONTROL_GROUP_W, TOP_ICON_BTN,
+    top_bar_vertical_rule, unified_titlebar_padding,
 };
+use super::engine_adapter::EngineAdapter;
 use super::message::Message;
 use super::settings_modal;
 use super::state::IcedState;
 use super::state::{VaultFlowMode, VaultStatus};
-use super::engine_adapter::EngineAdapter;
 use super::terminal_rich;
 use super::terminal_viewport;
 use super::widgets::chrome_button::{
@@ -30,7 +30,8 @@ use super::widgets::chrome_button::{
 };
 
 pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
-    let term_vp = terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal);
+    let term_vp =
+        terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal);
     let i18n = &state.model.i18n;
     let is_connected = state.active_session_is_connected();
     let current_node = state
@@ -42,6 +43,12 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
         .ok()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "-".to_string());
+    let cell_w_hit = terminal_viewport::terminal_scroll_cell_geometry(
+        state.window_size,
+        &term_vp,
+        EngineAdapter::active(state).grid_size().0,
+    )
+    .1;
 
     let mut tabs_row = row![].spacing(4).align_y(Alignment::Center);
     for (i, tab) in state.tabs.iter().enumerate() {
@@ -63,11 +70,7 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
                 .height(iced::Length::Fixed(1.0))
                 .into()
         };
-        let body_h = if active {
-            TOP_BAR_H - 2.0
-        } else {
-            TOP_BAR_H
-        };
+        let body_h = if active { TOP_BAR_H - 2.0 } else { TOP_BAR_H };
         let top_line = container(
             Space::new()
                 .width(iced::Length::Fill)
@@ -151,13 +154,10 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
 
     let show_tab_scroll_fade = tab_scroll_needs_fade(state.tabs.len(), state.window_size.width);
     let tab_strip_area: Element<'_, Message> = if show_tab_scroll_fade {
-        Stack::with_children([
-            tab_scroll_host.into(),
-            tab_scroll_right_fade().into(),
-        ])
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fixed(TOP_BAR_H))
-        .into()
+        Stack::with_children([tab_scroll_host.into(), tab_scroll_right_fade().into()])
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fixed(TOP_BAR_H))
+            .into()
     } else {
         tab_scroll_host.into()
     };
@@ -202,9 +202,13 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
 
     // 控制组：顶栏色、整体顶栏最右侧，内容右对齐
     let control_group = container(
-        row![Space::new().width(iced::Length::Fill), settings_ctrl, win_controls]
-            .spacing(4)
-            .align_y(Alignment::Center),
+        row![
+            Space::new().width(iced::Length::Fill),
+            settings_ctrl,
+            win_controls
+        ]
+        .spacing(4)
+        .align_y(Alignment::Center),
     )
     .width(iced::Length::Fixed(TOP_CONTROL_GROUP_W))
     .height(iced::Length::Fixed(TOP_BAR_H))
@@ -212,10 +216,9 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
     .style(top_bar_material_style);
 
     // 滚动区与控制组之间的窄分隔带（顶栏色，与右侧固定区分开）
-    let scroll_control_gutter =
-        container(Space::new().height(iced::Length::Fixed(TOP_BAR_H)))
-            .width(super::chrome::SCROLL_TO_CONTROL_GUTTER_W)
-            .style(top_bar_material_style);
+    let scroll_control_gutter = container(Space::new().height(iced::Length::Fixed(TOP_BAR_H)))
+        .width(super::chrome::SCROLL_TO_CONTROL_GUTTER_W)
+        .style(top_bar_material_style);
 
     let mut top_bar_row = row![].spacing(0).align_y(Alignment::Center);
     #[cfg(target_os = "macos")]
@@ -236,6 +239,7 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
         .height(iced::Length::Fixed(TOP_BAR_H))
         .padding(iced::Padding::from([0.0, TOP_BAR_EDGE_PAD]));
 
+    let _selection = EngineAdapter::active(state).selection();
     let conn_label = if is_connected {
         i18n.tr("iced.breadcrumb.connected")
     } else {
@@ -252,8 +256,7 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
                 button(text(i18n.tr("iced.btn.reconnect")).size(12))
                     .on_press(Message::ConnectPressed)
                     .style(style_chrome_secondary(12.0)),
-                button(text(i18n.tr("iced.btn.sftp")).size(12))
-                    .style(style_chrome_secondary(12.0)),
+                button(text(i18n.tr("iced.btn.sftp")).size(12)).style(style_chrome_secondary(12.0)),
                 button(text(i18n.tr("iced.btn.port_fwd")).size(12))
                     .style(style_chrome_secondary(12.0)),
             ]
@@ -266,11 +269,33 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
     .height(iced::Length::Fixed(term_vp.breadcrumb_block_h()))
     .align_y(Alignment::Center);
 
-    // Terminal body: plain mode uses `terminal_rich` + `TerminalController::plain_text_for_view` when
-    // `plain_text_update` is incremental (see `terminal_core`); styled mode uses per-row runs.
+    // Terminal body: always uses per-row Styled runs via `terminal_rich`.
     let terminal_panel: Element<'_, Message> = container(
         column![
-            container(terminal_rich::terminal_main_area(state))
+            container({
+                // Extract all state reads first, before any mutable borrows.
+                let selection = {
+                    let engine = EngineAdapter::active(state);
+                    engine.selection()
+                };
+                let tick_count = state.tick_count;
+                let term_font_px = term_vp.term_font_px;
+                let term_cell_h = iced::Pixels(term_vp.term_cell_h().max(1.0));
+                let term_font = terminal_rich::iced_terminal_font(&state.model.settings.terminal);
+                // Now safe to take mutable borrows.
+                let terminal = &*state.active_terminal();
+                let cache = &state.tab_panes[state.active_tab].styled_row_cache;
+                terminal_rich::styled_terminal(
+                    terminal,
+                    cache,
+                    selection,
+                    term_font_px,
+                    term_cell_h,
+                    term_font,
+                    cell_w_hit,
+                    tick_count,
+                )
+            })
             .width(iced::Length::Fill)
             .height(iced::Length::Fill)
             .style(container::bordered_box),
@@ -292,7 +317,11 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
     let engine = EngineAdapter::active(state);
     let term_scroll = engine.scroll();
     let term_in_scrollback = engine.is_in_scrollback();
-    let term_scroll_word = if term_in_scrollback { "回滚中" } else { "跟随底部" };
+    let term_scroll_word = if term_in_scrollback {
+        "回滚中"
+    } else {
+        "跟随底部"
+    };
     let vault_word = match state.vault_status {
         VaultStatus::Uninitialized => "未初始化",
         VaultStatus::Unlocked => "已解锁",
@@ -301,7 +330,11 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
     };
     let bottom_bar = container(
         row![
-            text(format!("{}: {}", i18n.tr("iced.footer.status"), status_word)),
+            text(format!(
+                "{}: {}",
+                i18n.tr("iced.footer.status"),
+                status_word
+            )),
             text("|"),
             text(format!(
                 "{}: {}",
@@ -326,11 +359,7 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
                 state.model.status
             )),
             text("|"),
-            text(format!(
-                "{}: {}",
-                i18n.tr("iced.footer.vault"),
-                vault_word
-            )),
+            text(format!("{}: {}", i18n.tr("iced.footer.vault"), vault_word)),
             text("|"),
             text(format!("{}: iced", i18n.tr("iced.footer.runtime"))),
         ]
@@ -343,13 +372,9 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
     .style(main_chrome_style);
 
     // 顶栏 32px | 终端区（面包屑 + 主内容 + 底栏，快速连接浮层叠在终端区内）
-    let below_top_fill = column![
-        breadcrumb,
-        main_body,
-        bottom_bar,
-    ]
-    .spacing(term_vp.main_column_spacing())
-    .height(iced::Length::Fill);
+    let below_top_fill = column![breadcrumb, main_body, bottom_bar,]
+        .spacing(term_vp.main_column_spacing())
+        .height(iced::Length::Fill);
 
     let under_top_bar: Element<'_, Message> = {
         let mut layers: Vec<Element<'_, Message>> = vec![below_top_fill.into()];
@@ -391,8 +416,12 @@ fn auto_probe_consent_modal_stack(state: &IcedState) -> Element<'_, Message> {
         return Space::new().into();
     };
     let scrim = mouse_area(
-        container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-            .style(modal_scrim_style),
+        container(
+            Space::new()
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill),
+        )
+        .style(modal_scrim_style),
     )
     .on_press(Message::AutoProbeConsentUsePassword);
 
@@ -445,13 +474,20 @@ fn vault_unlock_modal_stack(state: &IcedState) -> Element<'_, Message> {
         return Space::new().into();
     };
     let scrim = mouse_area(
-        container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-            .style(modal_scrim_style),
+        container(
+            Space::new()
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill),
+        )
+        .style(modal_scrim_style),
     )
     .on_press(Message::VaultUnlockClose);
 
     let title = if unlock.pending_save_credentials_profile_id.is_some() {
-        state.model.i18n.tr("iced.vault_unlock.title_save_credentials")
+        state
+            .model
+            .i18n
+            .tr("iced.vault_unlock.title_save_credentials")
     } else {
         state.model.i18n.tr("iced.vault_unlock.title")
     };
@@ -475,7 +511,13 @@ fn vault_unlock_modal_stack(state: &IcedState) -> Element<'_, Message> {
 
     if unlock.pending_save_credentials_profile_id.is_some() {
         body = body.push(
-            text(state.model.i18n.tr("iced.vault_unlock.hint_save_credentials")).size(12),
+            text(
+                state
+                    .model
+                    .i18n
+                    .tr("iced.vault_unlock.hint_save_credentials"),
+            )
+            .size(12),
         );
     }
 
@@ -519,8 +561,12 @@ fn host_key_prompt_stack(state: &IcedState) -> Element<'_, Message> {
     let info = &p.info;
 
     let scrim = mouse_area(
-        container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-            .style(modal_scrim_style),
+        container(
+            Space::new()
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill),
+        )
+        .style(modal_scrim_style),
     )
     .on_press(Message::HostKeyReject);
 
@@ -550,11 +596,7 @@ fn host_key_prompt_stack(state: &IcedState) -> Element<'_, Message> {
 
     if let Some(old) = info.old_fingerprint.as_ref() {
         body = body.push(
-            text(i18n.tr_fmt(
-                "iced.host_key_prompt.old_fingerprint",
-                &[("fp", old)],
-            ))
-            .size(12),
+            text(i18n.tr_fmt("iced.host_key_prompt.old_fingerprint", &[("fp", old)])).size(12),
         );
     }
 
@@ -571,7 +613,9 @@ fn host_key_prompt_stack(state: &IcedState) -> Element<'_, Message> {
                 crate::settings::HostKeyPolicy::Strict => {
                     i18n.tr("settings.security.hosts.policy.strict")
                 }
-                crate::settings::HostKeyPolicy::Ask => i18n.tr("settings.security.hosts.policy.ask"),
+                crate::settings::HostKeyPolicy::Ask => {
+                    i18n.tr("settings.security.hosts.policy.ask")
+                }
                 crate::settings::HostKeyPolicy::AcceptNew => {
                     i18n.tr("settings.security.hosts.policy.accept_new")
                 }
@@ -615,8 +659,12 @@ fn session_editor_modal_stack(state: &IcedState) -> Element<'_, Message> {
     };
     let i18n = &state.model.i18n;
     let scrim = mouse_area(
-        container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-            .style(modal_scrim_style),
+        container(
+            Space::new()
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill),
+        )
+        .style(modal_scrim_style),
     )
     .on_press(Message::SessionEditorClose);
 
@@ -648,8 +696,12 @@ fn session_editor_modal_stack(state: &IcedState) -> Element<'_, Message> {
         text_input(i18n.tr("iced.field.user"), &ed.user)
             .on_input(Message::SessionEditorUserChanged)
             .width(iced::Length::Fill),
-        pick_list(auth_options, Some(ed.auth.clone()), Message::SessionEditorAuthChanged)
-            .placeholder("Auth"),
+        pick_list(
+            auth_options,
+            Some(ed.auth.clone()),
+            Message::SessionEditorAuthChanged
+        )
+        .placeholder("Auth"),
     ]
     .spacing(10)
     .width(iced::Length::Fill);
@@ -707,8 +759,12 @@ fn vault_modal_stack(state: &IcedState) -> Element<'_, Message> {
         return Space::new().into();
     };
     let scrim = mouse_area(
-        container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-            .style(modal_scrim_style),
+        container(
+            Space::new()
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill),
+        )
+        .style(modal_scrim_style),
     )
     .on_press(Message::VaultClose);
 
@@ -789,8 +845,12 @@ fn modal_scrim_style(_theme: &Theme) -> container::Style {
 
 fn quick_connect_modal_stack(state: &IcedState) -> Element<'_, Message> {
     let scrim = mouse_area(
-        container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-            .style(modal_scrim_style),
+        container(
+            Space::new()
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill),
+        )
+        .style(modal_scrim_style),
     )
     .on_press(Message::QuickConnectDismiss);
 
@@ -899,7 +959,14 @@ fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
             text(i18n.tr("iced.quick_connect.empty_recent"))
                 .size(12)
                 .style(|theme: &Theme| text::Style {
-                    color: Some(theme.extended_palette().background.base.text.scale_alpha(0.55)),
+                    color: Some(
+                        theme
+                            .extended_palette()
+                            .background
+                            .base
+                            .text
+                            .scale_alpha(0.55),
+                    ),
                 }),
         );
     } else {
@@ -911,7 +978,14 @@ fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
                     column![
                         text(r.label.clone()).size(13),
                         text(subtitle).size(11).style(|theme: &Theme| text::Style {
-                            color: Some(theme.extended_palette().background.base.text.scale_alpha(0.6)),
+                            color: Some(
+                                theme
+                                    .extended_palette()
+                                    .background
+                                    .base
+                                    .text
+                                    .scale_alpha(0.6)
+                            ),
                         }),
                     ]
                     .spacing(2)
@@ -996,7 +1070,14 @@ fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
                     column![
                         text(entry_title).size(13),
                         text(subtitle).size(11).style(|theme: &Theme| text::Style {
-                            color: Some(theme.extended_palette().background.base.text.scale_alpha(0.6)),
+                            color: Some(
+                                theme
+                                    .extended_palette()
+                                    .background
+                                    .base
+                                    .text
+                                    .scale_alpha(0.6)
+                            ),
                         }),
                     ]
                     .spacing(2)
@@ -1021,10 +1102,13 @@ fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
                 .style(style_top_icon(14.0)),
         ]
         .align_y(Alignment::Center),
-        text_input(i18n.tr("iced.quick_connect.search_or_direct"), &state.quick_connect_query)
-            .on_input(Message::QuickConnectQueryChanged)
-            .on_submit(Message::QuickConnectDirectSubmit)
-            .padding([8, 10]),
+        text_input(
+            i18n.tr("iced.quick_connect.search_or_direct"),
+            &state.quick_connect_query
+        )
+        .on_input(Message::QuickConnectQueryChanged)
+        .on_submit(Message::QuickConnectDirectSubmit)
+        .padding([8, 10]),
         direct_cta,
         scrollable(
             column![recent_block, saved_block]
@@ -1097,8 +1181,12 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
     let flow_banner: Option<Element<'_, Message>> = match flow {
         super::state::QuickConnectFlow::NeedUser => Some(
             container(
-                text(err_kind.unwrap_or(crate::app_model::ConnectErrorKind::MissingHostOrUser).user_message())
-                    .size(12),
+                text(
+                    err_kind
+                        .unwrap_or(crate::app_model::ConnectErrorKind::MissingHostOrUser)
+                        .user_message(),
+                )
+                .size(12),
             )
             .padding(10)
             .style(top_bar_material_style)
@@ -1139,16 +1227,22 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
         _ => None,
     };
 
-    let key_row: Option<Element<'_, Message>> = if matches!(state.model.draft.auth, crate::session::AuthMethod::Key { .. }) {
+    let key_row: Option<Element<'_, Message>> = if matches!(
+        state.model.draft.auth,
+        crate::session::AuthMethod::Key { .. }
+    ) {
         Some(
             column![
                 text_input("Private key path", &state.model.draft.private_key_path)
                     .on_input(Message::QuickConnectKeyPathChanged)
                     .width(iced::Length::Fill),
-                text_input("Passphrase (optional)", state.model.draft.passphrase.expose_secret())
-                    .secure(true)
-                    .on_input(Message::QuickConnectPassphraseChanged)
-                    .width(iced::Length::Fill),
+                text_input(
+                    "Passphrase (optional)",
+                    state.model.draft.passphrase.expose_secret()
+                )
+                .secure(true)
+                .on_input(Message::QuickConnectPassphraseChanged)
+                .width(iced::Length::Fill),
             ]
             .spacing(8)
             .into(),
@@ -1157,48 +1251,50 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
         None
     };
 
-    let interactive_row: Option<Element<'_, Message>> =
-        if matches!(state.quick_connect_flow, super::state::QuickConnectFlow::NeedAuthInteractive) {
-            state.quick_connect_interactive.as_ref().map(|flow| {
-                let mut col = column![
-                    text(flow.ui.name.clone()).size(13),
-                    text(flow.ui.instructions.clone()).size(12),
-                ]
-                .spacing(6)
-                .width(iced::Length::Fill);
-                for (i, p) in flow.ui.prompts.iter().enumerate() {
-                    let ans = flow.ui.answers.get(i).cloned().unwrap_or_default();
-                    col = col.push(
-                        column![
-                            text(p.prompt.clone()).size(12),
-                            text_input("", &ans)
-                                .secure(!p.echo)
-                                .on_input(move |v| Message::QuickConnectInteractiveAnswerChanged(i, v))
-                                .width(iced::Length::Fill),
-                        ]
-                        .spacing(4),
-                    );
-                }
-                if let Some(err) = flow.ui.error.as_ref() {
-                    col = col.push(text(err).size(12));
-                }
+    let interactive_row: Option<Element<'_, Message>> = if matches!(
+        state.quick_connect_flow,
+        super::state::QuickConnectFlow::NeedAuthInteractive
+    ) {
+        state.quick_connect_interactive.as_ref().map(|flow| {
+            let mut col = column![
+                text(flow.ui.name.clone()).size(13),
+                text(flow.ui.instructions.clone()).size(12),
+            ]
+            .spacing(6)
+            .width(iced::Length::Fill);
+            for (i, p) in flow.ui.prompts.iter().enumerate() {
+                let ans = flow.ui.answers.get(i).cloned().unwrap_or_default();
                 col = col.push(
-                    row![
-                        button(text("提交").size(13))
-                            .on_press(Message::QuickConnectInteractiveSubmit)
-                            .style(style_chrome_primary(13.0)),
+                    column![
+                        text(p.prompt.clone()).size(12),
+                        text_input("", &ans)
+                            .secure(!p.echo)
+                            .on_input(move |v| Message::QuickConnectInteractiveAnswerChanged(i, v))
+                            .width(iced::Length::Fill),
                     ]
-                    .spacing(8),
+                    .spacing(4),
                 );
-                container(col)
-                    .padding(12)
-                    .style(top_bar_material_style)
-                    .width(iced::Length::Fill)
-                    .into()
-            })
-        } else {
-            None
-        };
+            }
+            if let Some(err) = flow.ui.error.as_ref() {
+                col = col.push(text(err).size(12));
+            }
+            col = col.push(
+                row![
+                    button(text("提交").size(13))
+                        .on_press(Message::QuickConnectInteractiveSubmit)
+                        .style(style_chrome_primary(13.0)),
+                ]
+                .spacing(8),
+            );
+            container(col)
+                .padding(12)
+                .style(top_bar_material_style)
+                .width(iced::Length::Fill)
+                .into()
+        })
+    } else {
+        None
+    };
 
     let saved_session_hint: Option<Element<'_, Message>> =
         state.model.selected_session_id.as_deref().and_then(|pid| {
@@ -1274,10 +1370,7 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
     if let Some(h) = saved_session_hint {
         form_cols = form_cols.push(h);
     }
-    let mut form_cols = form_cols
-        .push(host_row)
-        .push(auth_row)
-        .push(user_row);
+    let mut form_cols = form_cols.push(host_row).push(auth_row).push(user_row);
     if let Some(k) = key_row {
         form_cols = form_cols.push(k);
     }

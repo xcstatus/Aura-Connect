@@ -2,11 +2,11 @@
 //!
 //! Iced 0.14 的 [`button::Status`] 不包含键盘焦点态，焦点环需在可聚焦封装上另行接入。
 
-use iced::widget::button::{self, Status};
 use iced::Background;
 use iced::Border;
 use iced::Color;
 use iced::Theme;
+use iced::widget::button::{self, Status};
 
 use crate::theme::layout;
 
@@ -202,12 +202,18 @@ pub fn unified_button_style(
 
     match status {
         Status::Disabled => button::Style {
-            background: spec.tint.idle.map(|c| Background::Color(with_alpha(c, 0.35))),
+            background: spec
+                .tint
+                .idle
+                .map(|c| Background::Color(with_alpha(c, 0.35))),
             text_color: with_alpha(base_text, 0.45),
             border: if spec.borderless {
                 border_none()
             } else {
-                rounded_border(spec.border_radius, with_alpha(t.background.strong.color, 0.25))
+                rounded_border(
+                    spec.border_radius,
+                    with_alpha(t.background.strong.color, 0.25),
+                )
             },
             ..Default::default()
         },

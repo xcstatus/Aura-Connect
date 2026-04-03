@@ -59,4 +59,3 @@ impl TerminalSelection {
         self.selecting
     }
 }
-

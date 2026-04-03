@@ -1,7 +1,7 @@
-use iced::theme::Base;
-use iced::widget::{container, row, Space};
 use iced::Element;
 use iced::Theme;
+use iced::theme::Base;
+use iced::widget::{Space, container, row};
 
 use super::state::IcedState;
 
@@ -52,8 +52,7 @@ pub(crate) fn tab_scroll_content_min_width(tab_count: usize) -> f32 {
     let tabs_w = if tab_count == 0 {
         0.0
     } else {
-        tab_count as f32 * TAB_CHIP_WIDTH
-            + (tab_count.saturating_sub(1) as f32) * TAB_CHIP_SPACING
+        tab_count as f32 * TAB_CHIP_WIDTH + (tab_count.saturating_sub(1) as f32) * TAB_CHIP_SPACING
     };
     tabs_w + 1.0
 }

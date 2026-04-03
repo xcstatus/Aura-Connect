@@ -9,7 +9,10 @@ pub(crate) fn subscription(state: &IcedState) -> Subscription<Message> {
     let escape_overlay = if state.settings_modal_open {
         iced::keyboard::listen().filter_map(|ev| {
             if let iced::keyboard::Event::KeyPressed { key, .. } = ev {
-                if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape)) {
+                if matches!(
+                    key,
+                    iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape)
+                ) {
                     return Some(Message::SettingsDismiss);
                 }
             }
@@ -18,7 +21,10 @@ pub(crate) fn subscription(state: &IcedState) -> Subscription<Message> {
     } else if state.quick_connect_open {
         iced::keyboard::listen().filter_map(|ev| {
             if let iced::keyboard::Event::KeyPressed { key, .. } = ev {
-                if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape)) {
+                if matches!(
+                    key,
+                    iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape)
+                ) {
                     return Some(Message::QuickConnectDismiss);
                 }
             }

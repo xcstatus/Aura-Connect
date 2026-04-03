@@ -1,9 +1,9 @@
 //! 将 [`DesignTokens`] 映射为 Iced [`Theme`](iced::Theme) 的 [`Palette`] 与 [`Extended`](iced::theme::palette::Extended)。
 
+use iced::Theme;
 use iced::theme::palette::{
     Background, Danger, Extended, Pair, Palette, Primary, Secondary, Success, Warning,
 };
-use iced::Theme;
 
 use super::tokens::{DesignTokens, RustSshThemeId};
 
