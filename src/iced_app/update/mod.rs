@@ -13,6 +13,7 @@ pub mod settings;
 pub mod tick;
 pub mod vault;
 
+use iced::keyboard;
 use iced::Size;
 use iced::Task;
 use iced::event::Event;
@@ -161,6 +162,16 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
                 }
             }
             if let Event::Keyboard(key_event) = &event {
+                // Ctrl+Shift+D: toggle debug overlay.
+                if let keyboard::Event::KeyPressed { key, modifiers, .. } = key_event {
+                    if modifiers.contains(keyboard::Modifiers::CTRL | keyboard::Modifiers::SHIFT) {
+                        if let keyboard::Key::Character(s) = key {
+                            if s.eq_ignore_ascii_case(&"d") {
+                                return update(state, Message::ToggleDebugOverlay);
+                            }
+                        }
+                    }
+                }
                 if let Some(tev) = TerminalEvent::from_keyboard_event(key_event) {
                     return TerminalHost::handle_event(state, tev);
                 }
@@ -222,6 +233,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
+            state.connection_stage = super::state::ConnectionStage::None;
             state.model.status = "Quick connect".to_string();
             Task::none()
         }
@@ -240,6 +252,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
+            state.connection_stage = super::state::ConnectionStage::None;
             Task::none()
         }
         Message::QuickConnectNewConnection => {
@@ -249,6 +262,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
+            state.connection_stage = super::state::ConnectionStage::None;
             Task::none()
         }
         Message::QuickConnectBackToList => {
@@ -257,6 +271,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
+            state.connection_stage = super::state::ConnectionStage::None;
             Task::none()
         }
         Message::QuickConnectQueryChanged(q) => {
@@ -284,6 +299,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
                 state.quick_connect_flow = super::state::QuickConnectFlow::Idle;
             }
             state.quick_connect_error_kind = None;
+            state.connection_stage = super::state::ConnectionStage::None;
             state.quick_connect_panel = QuickConnectPanel::NewConnection;
             Task::none()
         }
@@ -308,6 +324,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_flow = super::state::QuickConnectFlow::Idle;
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
+            state.connection_stage = super::state::ConnectionStage::None;
             Task::none()
         }
 
@@ -515,5 +532,14 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
         Message::VaultUnlockClose => vault::handle_vault_unlock_close(state),
         Message::VaultUnlockPasswordChanged(v) => vault::handle_vault_unlock_password(state, v),
         Message::VaultUnlockSubmit => vault::handle_vault_unlock_submit(state),
+        Message::ToggleDebugOverlay => {
+            state.perf.debug_overlay_enabled = !state.perf.debug_overlay_enabled;
+            log::info!(
+                target: "term-perf",
+                "debug_overlay={}",
+                state.perf.debug_overlay_enabled
+            );
+            Task::none()
+        }
     }
 }

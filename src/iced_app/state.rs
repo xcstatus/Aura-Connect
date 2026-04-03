@@ -11,6 +11,81 @@ use secrecy::SecretString;
 
 use super::message::{Message, SettingsCategory};
 
+/// Fixed-size circular buffer for sliding window statistics.
+#[derive(Debug, Clone)]
+pub(crate) struct RingBuffer<T> {
+    data: Vec<T>,
+    head: usize,
+    count: usize,
+}
+
+impl<T: Clone + Default> RingBuffer<T> {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            data: vec![T::default(); capacity],
+            head: 0,
+            count: 0,
+        }
+    }
+
+    /// Push a new value (evicts oldest if full).
+    pub fn push(&mut self, value: T) {
+        self.data[self.head] = value;
+        self.head = (self.head + 1) % self.data.len();
+        self.count = self.count.saturating_add(1).min(self.data.len());
+    }
+
+    /// Return the most recent value (the one about to be evicted).
+    pub fn last(&self) -> Option<&T> {
+        if self.count == 0 {
+            return None;
+        }
+        let idx = if self.head == 0 {
+            self.data.len() - 1
+        } else {
+            self.head - 1
+        };
+        Some(&self.data[idx])
+    }
+
+    /// Maximum of all stored values.
+    pub fn max(&self) -> Option<T>
+    where
+        T: Ord,
+    {
+        self.data.iter().take(self.count).cloned().max()
+    }
+
+    pub fn len(&self) -> usize {
+        self.count
+    }
+}
+
+impl RingBuffer<u64> {
+    /// Average of all stored u64 values as f64.
+    pub fn average_ns(&self) -> Option<f64> {
+        if self.count == 0 {
+            return None;
+        }
+        let sum: u64 = self
+            .data
+            .iter()
+            .take(self.count)
+            .map(|&v| v)
+            .sum();
+        Some(sum as f64 / self.count as f64)
+    }
+}
+
+impl<T> Default for RingBuffer<T>
+where
+    T: Clone + Default,
+{
+    fn default() -> Self {
+        Self::with_capacity(60)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct InteractivePromptState {
     pub name: String,
@@ -41,6 +116,21 @@ pub(crate) enum QuickConnectFlow {
     AuthLocked,
     Failed,
     Connected,
+}
+
+/// Connection progress stage shown in the quick-connect form while connecting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum ConnectionStage {
+    #[default]
+    None,
+    /// Vault credentials loading / decrypting.
+    VaultLoading,
+    /// SSH TCP connection + handshake.
+    SshConnecting,
+    /// SSH authentication phase.
+    Authenticating,
+    /// PTY allocation + session finalization.
+    SessionSetup,
 }
 
 /// 快速连接弹窗内：列表 / 新建连接表单。
@@ -109,6 +199,8 @@ pub(crate) struct IcedState {
     pub quick_connect_query: String,
     /// Quick connect state machine.
     pub quick_connect_flow: QuickConnectFlow,
+    /// Connection progress stage shown in the quick-connect form while connecting.
+    pub connection_stage: ConnectionStage,
     /// Quick connect: last stable error kind for UI branching (Failed/NeedAuthPassword).
     pub quick_connect_error_kind: Option<crate::app_model::ConnectErrorKind>,
     /// Keyboard-interactive auth flow state (when `quick_connect_flow == NeedAuthInteractive`).
@@ -180,8 +272,13 @@ pub(crate) enum VaultStatus {
     Unavailable,
 }
 
-#[derive(Debug, Clone, Default)]
+/// Performance counters and diagnostics data.
+///
+/// Tick/pump statistics are accumulated since app start. Per-tab and sliding-window
+/// data are used by the DebugOverlay; accumulated data is used by CSV export.
+#[derive(Debug, Clone)]
 pub(crate) struct PerfCounters {
+    // === Tick/pump accumulated counters ===
     pub ticks: u64,
     pub pump_calls: u64,
     pub bytes_in: u64,
@@ -189,9 +286,150 @@ pub(crate) struct PerfCounters {
     pub ticks_at_log: u64,
     pub pump_calls_at_log: u64,
     pub bytes_in_at_log: u64,
+
+    // === Accumulated timing (nanoseconds) ===
+    /// Total tick elapsed time since start (ns).
+    pub tick_ns_total: u64,
+    /// Slow tick count (> SLOW_TICK_NS threshold).
+    pub slow_ticks: u64,
+    /// `slow_ticks` value at last log (for delta calculation).
+    pub slow_ticks_at_log: Option<u64>,
+
+    // === Per-pump diagnostics ===
+    /// Number of pump calls that returned 0 bytes (empty reads).
+    pub pump_empty_reads: u64,
+    /// `pump_empty_reads` value at last log (for delta calculation).
+    pub pump_empty_reads_at_log: Option<u64>,
+
+    // === Per-tab statistics ===
+    /// Pump call counts per tab (index-aligned with tab_panes).
+    pub tab_pump_calls: Vec<u64>,
+    /// Bytes-in per tab.
+    pub tab_bytes_in: Vec<u64>,
+    /// VT pump time per tab (ns).
+    pub tab_vt_ns: Vec<u64>,
+    /// VT frame time per tab (ns).
+    pub tab_vt_frame_ns: Vec<u64>,
+
+    // === VT engine timing ===
+    /// Accumulated `update_render_state` + `update_dirty_styled_rows` time (ns).
+    pub vt_update_ns_total: u64,
+    /// Accumulated `on_frame_tick` time (ns).
+    pub vt_frame_ns_total: u64,
+
+    // === Sliding window (last N ticks) ===
+    /// Last 60 tick durations for DebugOverlay display.
+    pub tick_durations_ns: RingBuffer<u64>,
+
+    // === Diagnostics output ===
     /// Optional perf CSV dump path (env: `RUST_SSH_PERF_DUMP`).
     pub dump_path: Option<String>,
     pub dump_header_written: bool,
+
+    // === Runtime control ===
+    /// Whether the DebugOverlay widget is visible.
+    pub debug_overlay_enabled: bool,
+}
+
+impl Default for PerfCounters {
+    fn default() -> Self {
+        Self {
+            ticks: 0,
+            pump_calls: 0,
+            bytes_in: 0,
+            last_log_ms: 0,
+            ticks_at_log: 0,
+            pump_calls_at_log: 0,
+            bytes_in_at_log: 0,
+            tick_ns_total: 0,
+            slow_ticks: 0,
+            slow_ticks_at_log: None,
+            pump_empty_reads: 0,
+            pump_empty_reads_at_log: None,
+            tab_pump_calls: Vec::new(),
+            tab_bytes_in: Vec::new(),
+            tab_vt_ns: Vec::new(),
+            tab_vt_frame_ns: Vec::new(),
+            vt_update_ns_total: 0,
+            vt_frame_ns_total: 0,
+            tick_durations_ns: RingBuffer::with_capacity(60),
+            dump_path: None,
+            dump_header_written: false,
+            debug_overlay_enabled: false,
+        }
+    }
+}
+
+impl PerfCounters {
+    /// Ensure tab arrays have at least `n` slots (grows lazily with tab count).
+    pub fn ensure_tabs(&mut self, n: usize) {
+        if self.tab_pump_calls.len() < n {
+            self.tab_pump_calls.resize(n, 0);
+            self.tab_bytes_in.resize(n, 0);
+            self.tab_vt_ns.resize(n, 0);
+            self.tab_vt_frame_ns.resize(n, 0);
+        }
+    }
+
+    /// Reset accumulated counters (keeps config like dump_path and debug_overlay_enabled).
+    pub fn reset(&mut self) {
+        self.ticks = 0;
+        self.pump_calls = 0;
+        self.bytes_in = 0;
+        self.tick_ns_total = 0;
+        self.slow_ticks = 0;
+        self.slow_ticks_at_log = None;
+        self.pump_empty_reads = 0;
+        self.pump_empty_reads_at_log = None;
+        for v in self.tab_pump_calls.iter_mut() {
+            *v = 0;
+        }
+        for v in self.tab_bytes_in.iter_mut() {
+            *v = 0;
+        }
+        for v in self.tab_vt_ns.iter_mut() {
+            *v = 0;
+        }
+        for v in self.tab_vt_frame_ns.iter_mut() {
+            *v = 0;
+        }
+        self.vt_update_ns_total = 0;
+        self.vt_frame_ns_total = 0;
+        self.tick_durations_ns = RingBuffer::with_capacity(60);
+        self.last_log_ms = crate::settings::unix_time_ms();
+        self.ticks_at_log = 0;
+        self.pump_calls_at_log = 0;
+        self.bytes_in_at_log = 0;
+        self.dump_header_written = false;
+    }
+
+    /// Tick rate (ticks per second) since last log.
+    pub fn tick_rate(&self, dt_ms: i64) -> f64 {
+        let dt = dt_ms.max(1) as f64 / 1000.0;
+        (self.ticks - self.ticks_at_log) as f64 / dt
+    }
+
+    /// Pump rate (calls per second) since last log.
+    pub fn pump_rate(&self, dt_ms: i64) -> f64 {
+        let dt = dt_ms.max(1) as f64 / 1000.0;
+        (self.pump_calls - self.pump_calls_at_log) as f64 / dt
+    }
+
+    /// Bytes-in rate (B/s) since last log.
+    pub fn bytes_rate(&self, dt_ms: i64) -> f64 {
+        let dt = dt_ms.max(1) as f64 / 1000.0;
+        (self.bytes_in - self.bytes_in_at_log) as f64 / dt
+    }
+
+    /// Collect raw tick duration values from the ring buffer for the overlay histogram.
+    pub fn tick_histogram_ms(&self) -> Vec<f64> {
+        self.tick_durations_ns
+            .data
+            .iter()
+            .take(self.tick_durations_ns.len())
+            .map(|&v| v as f64 / 1_000_000.0)
+            .collect()
+    }
 }
 
 impl VaultStatus {
@@ -306,6 +544,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             quick_connect_panel: QuickConnectPanel::default(),
             quick_connect_query: String::new(),
             quick_connect_flow: QuickConnectFlow::Idle,
+            connection_stage: ConnectionStage::None,
             quick_connect_error_kind: None,
             quick_connect_interactive: None,
             host_key_prompt: None,

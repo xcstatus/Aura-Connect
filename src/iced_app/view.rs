@@ -391,6 +391,10 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
         // Vault unlock modal must be above all other modals.
         // (e.g. connect-from-saved requiring vault unlock, or post-connect save-credential prompt)
         layers.push(vault_unlock_modal_stack(state));
+        // Debug overlay: toggled with Ctrl+Shift+D; renders on top of everything.
+        if state.perf.debug_overlay_enabled {
+            layers.push(super::widgets::debug_overlay::make_debug_overlay(state));
+        }
         Stack::with_children(layers)
             .width(iced::Length::Fill)
             .height(iced::Length::Fill)
@@ -1133,7 +1137,10 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
     let is_connected = state.active_session_is_connected();
     let flow = state.quick_connect_flow;
     let err_kind = state.quick_connect_error_kind;
+    let stage = state.connection_stage;
+    let is_connecting = matches!(flow, super::state::QuickConnectFlow::Connecting);
 
+    // Form inputs are disabled while connecting.
     let host_row = row![
         text_input(i18n.tr("iced.field.host"), &state.model.draft.host)
             .on_input(Message::HostChanged)
@@ -1225,6 +1232,37 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
             .into(),
         ),
         _ => None,
+    };
+
+    // Animated connecting progress indicator: shows current connection stage with animated dots.
+    let connecting_progress: Option<Element<'_, Message>> = if is_connecting {
+        let dots = match state.tick_count % 3 {
+            0 => "",
+            1 => ".",
+            _ => "..",
+        };
+        let stage_label = match stage {
+            super::state::ConnectionStage::VaultLoading => "正在解密凭据",
+            super::state::ConnectionStage::SshConnecting => "正在连接服务器",
+            super::state::ConnectionStage::Authenticating => "正在验证身份",
+            super::state::ConnectionStage::SessionSetup => "正在初始化会话",
+            _ => "正在连接",
+        };
+        Some(
+            container(
+                row![
+                    text("⟳").size(14),
+                    text(format!("{stage_label}{dots}")).size(12),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
+            )
+            .padding(10)
+            .style(top_bar_material_style)
+            .into(),
+        )
+    } else {
+        None
     };
 
     let key_row: Option<Element<'_, Message>> = if matches!(
@@ -1323,8 +1361,16 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
                 })
         });
 
+    // Loading spinner: animated rotating symbol based on tick parity.
+    let spinner = if state.tick_count % 2 == 0 { "◐" } else { "◓" };
+    let connecting_label = i18n.tr("iced.btn.connecting");
+    let connect_btn_text = if is_connecting {
+        format!("{spinner} {connecting_label}")
+    } else {
+        i18n.tr("iced.btn.connect").to_string()
+    };
     let actions = row![
-        button(text(i18n.tr("iced.btn.connect")).size(13))
+        button(text(connect_btn_text).size(13))
             .on_press_maybe(
                 (!matches!(
                     flow,
@@ -1345,7 +1391,17 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
     .spacing(8)
     .align_y(Alignment::Center);
 
-    let mut form_cols = column![
+    // During connecting: hide back/dismiss buttons and show a spinner in the header.
+    let header_row: Element<'_, Message> = if is_connecting {
+        row![
+            Space::new().width(iced::Length::Fixed(22.0)),
+            text(format!("{spinner} {connecting_label}")).size(16),
+            Space::new().width(iced::Length::Fill),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .into()
+    } else {
         row![
             button(text(i18n.tr("iced.quick_connect.back")).size(12))
                 .on_press(Message::QuickConnectBackToList)
@@ -1359,13 +1415,18 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
                 .style(style_top_icon(14.0)),
         ]
         .spacing(8)
-        .align_y(Alignment::Center),
-        text(i18n.tr("iced.title.subtitle")).size(12),
-    ]
-    .spacing(14)
-    .width(iced::Length::Fill);
+        .align_y(Alignment::Center)
+        .into()
+    };
+
+    let mut form_cols = column![header_row, text(i18n.tr("iced.title.subtitle")).size(12)]
+        .spacing(14)
+        .width(iced::Length::Fill);
     if let Some(b) = flow_banner {
         form_cols = form_cols.push(b);
+    }
+    if let Some(p) = connecting_progress {
+        form_cols = form_cols.push(p);
     }
     if let Some(h) = saved_session_hint {
         form_cols = form_cols.push(h);

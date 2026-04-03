@@ -139,6 +139,8 @@ pub(crate) enum Message {
     /// Ack for clipboard write task (copy).
     ClipboardWriteDone,
     SaveSettings,
+    /// Toggle the debug overlay visibility (Ctrl+Shift+D).
+    ToggleDebugOverlay,
 }
 
 impl std::fmt::Debug for Message {
@@ -216,6 +218,7 @@ impl std::fmt::Debug for Message {
             Message::ClipboardPaste(t) => write!(f, "Message::ClipboardPaste({:?})", t.as_ref().map(|_| "...")),
             Message::ClipboardWriteDone => write!(f, "Message::ClipboardWriteDone"),
             Message::SaveSettings => write!(f, "Message::SaveSettings"),
+            Message::ToggleDebugOverlay => write!(f, "Message::ToggleDebugOverlay"),
         }
     }
 }

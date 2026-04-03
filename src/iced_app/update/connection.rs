@@ -4,7 +4,7 @@ use secrecy::ExposeSecret;
 use crate::backend::ssh_session::AsyncSession;
 
 use super::super::message::Message;
-use super::super::state::{IcedState, QuickConnectFlow};
+use super::super::state::{ConnectionStage, IcedState, QuickConnectFlow};
 
 /// Handle ConnectPressed message - core connection logic.
 pub(crate) fn handle_connect(state: &mut IcedState) -> Task<Message> {
@@ -67,6 +67,7 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
     state.active_pane_mut().terminal.inject_local_lines(&[msg]);
     state.quick_connect_flow = QuickConnectFlow::Connecting;
     state.quick_connect_error_kind = None;
+    state.connection_stage = ConnectionStage::SshConnecting;
 
     let host = state.model.draft.host.trim().to_string();
     let user = state.model.draft.user.trim().to_string();
@@ -80,15 +81,18 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
         Err(_e) => {
             state.quick_connect_flow = QuickConnectFlow::Failed;
             state.quick_connect_error_kind = Some(crate::app_model::ConnectErrorKind::HostUnreachable);
+            state.connection_stage = ConnectionStage::None;
             return Task::none();
         }
     };
 
+    state.connection_stage = ConnectionStage::Authenticating;
     let (sess, step) = match state.rt.block_on(sess.start()) {
         Ok(v) => v,
         Err(_e) => {
             state.quick_connect_flow = QuickConnectFlow::Failed;
             state.quick_connect_error_kind = Some(crate::app_model::ConnectErrorKind::Unknown);
+            state.connection_stage = ConnectionStage::None;
             return Task::none();
         }
     };
@@ -104,6 +108,7 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
                 Err(_e) => {
                     state.quick_connect_flow = QuickConnectFlow::Failed;
                     state.quick_connect_error_kind = Some(crate::app_model::ConnectErrorKind::Unknown);
+                    state.connection_stage = ConnectionStage::None;
                     Task::none()
                 }
             }
@@ -111,6 +116,7 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
         crate::backend::ssh_session::KeyboardInteractiveStep::Failure => {
             state.quick_connect_flow = QuickConnectFlow::Failed;
             state.quick_connect_error_kind = Some(crate::app_model::ConnectErrorKind::AuthFailed);
+            state.connection_stage = ConnectionStage::None;
             Task::none()
         }
         crate::backend::ssh_session::KeyboardInteractiveStep::InfoRequest(info) => {
@@ -126,6 +132,7 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
             });
             state.quick_connect_flow = QuickConnectFlow::NeedAuthInteractive;
             state.quick_connect_error_kind = None;
+            state.connection_stage = ConnectionStage::Authenticating;
             Task::none()
         }
     }
@@ -138,6 +145,13 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
     state.quick_connect_flow = QuickConnectFlow::Connecting;
     state.quick_connect_error_kind = None;
 
+    // Set initial connection stage: vault loading if credentials need to be decrypted.
+    state.connection_stage = if state.model.vault_master_password.is_some() {
+        ConnectionStage::VaultLoading
+    } else {
+        ConnectionStage::SshConnecting
+    };
+
     // Merge persisted known hosts and runtime overrides ("accept once").
     let mut merged_known_hosts = state.model.settings.security.known_hosts.clone();
     for r in &state.runtime_known_hosts {
@@ -148,6 +162,9 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
             merged_known_hosts.push(r.clone());
         }
     }
+
+    // Advance to SSH connecting stage before the async call.
+    state.connection_stage = ConnectionStage::SshConnecting;
 
     let result = state.rt.block_on(async {
         let saved = std::mem::take(&mut state.model.settings.security.known_hosts);
@@ -160,10 +177,12 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
 
     match result {
         (Ok(session), _merged) => {
+            state.connection_stage = ConnectionStage::SessionSetup;
             handle_connect_success(state, session);
             Task::none()
         }
         (Err(kind), merged) => {
+            state.connection_stage = ConnectionStage::None;
             // Set draft error state
             state.model.draft.last_error = Some(kind.clone());
             state.model.draft.host_key_error = None;
@@ -179,6 +198,7 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
 
 /// Internal error handler (returns Task::none).
 fn internal_handle_connect_error(state: &mut IcedState, e: crate::app_model::ConnectErrorKind) {
+    state.connection_stage = ConnectionStage::None;
     if e == crate::app_model::ConnectErrorKind::AuthFailed
         && matches!(state.model.draft.auth, crate::session::AuthMethod::Password)
     {
@@ -317,6 +337,7 @@ fn handle_connect_success(state: &mut IcedState, session: Box<dyn AsyncSession>)
     super::super::update::complete_new_ssh_session(state, session, recent, label, profile_id);
     state.quick_connect_flow = QuickConnectFlow::Connected;
     state.quick_connect_error_kind = None;
+    state.connection_stage = ConnectionStage::None;
 
     let msg = state.model.i18n.tr("iced.term.connected");
     state.active_pane_mut().terminal.inject_local_lines(&[msg]);
@@ -483,12 +504,14 @@ pub(crate) fn handle_interactive_submit(state: &mut IcedState) -> Task<Message> 
         return Task::none();
     };
 
+    state.connection_stage = ConnectionStage::Authenticating;
     let answers = flow.ui.answers.clone();
     let (sess, step) = match state.rt.block_on(flow.session.respond(answers)) {
         Ok(v) => v,
         Err(_e) => {
             state.quick_connect_flow = QuickConnectFlow::Failed;
             state.quick_connect_error_kind = Some(crate::app_model::ConnectErrorKind::Unknown);
+            state.connection_stage = ConnectionStage::None;
             return Task::none();
         }
     };
@@ -505,21 +528,25 @@ pub(crate) fn handle_interactive_submit(state: &mut IcedState) -> Task<Message> 
                     let recent = state
                         .model
                         .recent_record_for_draft_with_profile(label.clone(), profile_id.clone());
+                    state.connection_stage = ConnectionStage::SessionSetup;
                     super::super::update::complete_new_ssh_session(
                         state, session, recent, label, profile_id,
                     );
                     state.quick_connect_flow = QuickConnectFlow::Connected;
                     state.quick_connect_error_kind = None;
+                    state.connection_stage = ConnectionStage::None;
                 }
                 Err(_e) => {
                     state.quick_connect_flow = QuickConnectFlow::Failed;
                     state.quick_connect_error_kind = Some(crate::app_model::ConnectErrorKind::Unknown);
+                    state.connection_stage = ConnectionStage::None;
                 }
             }
         }
         crate::backend::ssh_session::KeyboardInteractiveStep::Failure => {
             state.quick_connect_flow = QuickConnectFlow::Failed;
             state.quick_connect_error_kind = Some(crate::app_model::ConnectErrorKind::AuthFailed);
+            state.connection_stage = ConnectionStage::None;
         }
         crate::backend::ssh_session::KeyboardInteractiveStep::InfoRequest(info) => {
             state.quick_connect_interactive = Some(super::super::state::InteractiveAuthFlow {
