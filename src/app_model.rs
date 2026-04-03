@@ -212,7 +212,7 @@ impl AppModel {
         });
         recent.insert(0, rec);
         recent.truncate(max);
-        let _ = self.settings.save();
+        self.settings.save_with_log();
     }
 
     pub fn recent_connections(&self) -> &[RecentConnectionRecord] {

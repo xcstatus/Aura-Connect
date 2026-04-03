@@ -551,7 +551,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
         Message::AutoProbeConsentAlwaysAllow => {
             state.model.settings.security.auto_probe_consent =
                 crate::settings::AutoProbeConsent::AlwaysAllow;
-            let _ = state.model.settings.save();
+            state.model.settings.save_with_log();
             state.auto_probe_consent_modal = None;
             update(state, Message::ConnectPressed)
         }

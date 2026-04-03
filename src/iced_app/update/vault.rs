@@ -123,7 +123,7 @@ pub(crate) fn handle_vault_submit(state: &mut IcedState) -> Task<Message> {
     }
 
     state.model.settings.security.vault = Some(new_meta);
-    let _ = state.model.settings.save();
+    state.model.settings.save_with_log();
     // Unlock with the new derived secret for this runtime.
     state.model.vault_master_password = Some(SecretString::from(
         state

@@ -81,7 +81,8 @@ pub(crate) struct TabPane {
 
 impl TabPane {
     pub fn new(terminal_settings: &TerminalSettings) -> Self {
-        let mut terminal = TerminalController::new(terminal_settings);
+        let mut terminal = TerminalController::new(terminal_settings)
+            .expect("Failed to initialize terminal controller - libghostty VT initialization failed");
         terminal.apply_terminal_palette_for_scheme(&terminal_settings.color_scheme);
         Self {
             session: None,

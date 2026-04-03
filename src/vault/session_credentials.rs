@@ -1,10 +1,12 @@
 use anyhow::{Result, anyhow};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 use crate::settings::Settings;
 use crate::storage::StorageManager;
 use crate::vault::core::CredentialVault;
+use crate::vault::manager::VaultManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SshCredentialPayload {
@@ -12,19 +14,32 @@ pub struct SshCredentialPayload {
     pub passphrase: Option<String>,
 }
 
-fn vault_password_from_settings(settings: &Settings) -> Result<SecretString> {
+/// 派生独立的加密密钥（通过 encryption_salt），用于会话凭据加密。
+/// 此函数保留作为设计说明：当前会话凭据存储在 CredentialVault 内部，
+/// 密钥派生由 CredentialVault::initialize/unlock 处理（使用 auth salt）。
+/// 当需要认证密钥和加密密钥完全分离时，可使用此函数并重构 CredentialVault。
+fn derive_credential_key(settings: &Settings) -> Result<Zeroizing<[u8; 32]>> {
     let meta = settings
         .security
         .vault
         .as_ref()
-        .ok_or_else(|| anyhow!("Vault 未初始化，请先在安全设置中设置主密码"))?;
-    // Current project only persists verifier hash; use it as a deterministic
-    // secret for local vault encryption key derivation.
-    Ok(SecretString::from(meta.verifier_hash.clone()))
+        .ok_or_else(|| anyhow!("Vault 未初始化"))?;
+    let password = SecretString::from(meta.verifier_hash.clone());
+    VaultManager::derive_encryption_key(&password, meta)
 }
 
-fn load_or_init_unlocked_vault(settings: &Settings) -> Result<CredentialVault> {
-    let password = vault_password_from_settings(settings)?;
+// 加载 vault 并解锁（用于存储/检索会话凭据）
+// 使用与 vault 文件相同的密钥派生方式（从 auth salt 派生）
+fn load_unlocked_vault_for_credentials(settings: &Settings) -> Result<CredentialVault> {
+    let password = SecretString::from(
+        settings
+            .security
+            .vault
+            .as_ref()
+            .ok_or_else(|| anyhow!("Vault 未初始化"))?
+            .verifier_hash
+            .clone(),
+    );
     let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
 
     if path.exists() {
@@ -32,9 +47,8 @@ fn load_or_init_unlocked_vault(settings: &Settings) -> Result<CredentialVault> {
         vault.unlock(&password)?;
         Ok(vault)
     } else {
-        let vault = CredentialVault::initialize(&password)?;
-        vault.save_to_file(&path)?;
-        Ok(vault)
+        // 不自动初始化——凭据 vault 依赖于 settings 中的 vault 元数据已存在
+        Err(anyhow!("Vault 文件不存在，请先在安全设置中初始化 Vault"))
     }
 }
 
@@ -71,7 +85,7 @@ pub fn save_ssh_credentials(
         return Ok(None);
     }
 
-    let mut vault = load_or_init_unlocked_vault(settings)?;
+    let mut vault = load_unlocked_vault_for_credentials(settings)?;
     let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
     let credential_id = format!("ssh:{}", session_id);
     let payload = SshCredentialPayload {
@@ -101,7 +115,7 @@ pub fn sync_ssh_credentials(
         .map(|s| s.expose_secret().trim().to_string())
         .filter(|s| !s.is_empty());
 
-    let mut vault = load_or_init_unlocked_vault(settings)?;
+    let mut vault = load_unlocked_vault_for_credentials(settings)?;
     let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
     let credential_id = format!("ssh:{}", session_id);
 
@@ -125,7 +139,7 @@ pub fn load_ssh_credentials(
     settings: &Settings,
     credential_id: &str,
 ) -> Result<Option<SshCredentialPayload>> {
-    let vault = load_or_init_unlocked_vault(settings)?;
+    let vault = load_unlocked_vault_for_credentials(settings)?;
     let raw = vault.get_credential(credential_id)?;
     let Some(raw) = raw else {
         return Ok(None);
@@ -221,7 +235,7 @@ pub fn delete_credential_with_master(
 }
 
 pub fn delete_credential(settings: &Settings, credential_id: &str) -> Result<()> {
-    let mut vault = load_or_init_unlocked_vault(settings)?;
+    let mut vault = load_unlocked_vault_for_credentials(settings)?;
     let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
     vault.delete_credential(credential_id)?;
     vault.save_to_file(&path)?;

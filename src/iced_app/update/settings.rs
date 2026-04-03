@@ -45,7 +45,7 @@ pub(crate) fn handle_biometrics_toggle(state: &mut IcedState, desired: bool) -> 
         match crate::security::biometric_auth::authenticate_user_presence(reason) {
             Ok(()) => {
                 state.model.settings.security.use_biometrics = true;
-                let _ = state.model.settings.save();
+                state.model.settings.save_with_log();
                 state.model.status = state.model.i18n.tr("toast.biometrics.updated").to_string();
             }
             Err(e) => {
@@ -54,7 +54,7 @@ pub(crate) fn handle_biometrics_toggle(state: &mut IcedState, desired: bool) -> 
         }
     } else {
         state.model.settings.security.use_biometrics = false;
-        let _ = state.model.settings.save();
+        state.model.settings.save_with_log();
     }
     Task::none()
 }
@@ -154,7 +154,7 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
         }
     }
 
-    let _ = state.model.settings.save();
+    state.model.settings.save_with_log();
 
     if sync_layout {
         if state.model.settings.quick_connect.single_shared_session {

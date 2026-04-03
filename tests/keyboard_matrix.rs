@@ -7,7 +7,7 @@ use rust_ssh::terminal_core::{TerminalController, TerminalModifiers};
 #[test]
 fn key_encoding_invariants() {
     let settings = TerminalSettings::default();
-    let mut term = TerminalController::new(&settings);
+    let mut term = TerminalController::new(&settings).expect("terminal init should succeed");
 
     // Arrow keys must encode to ESC-prefixed sequences (common terminal convention).
     for code in [
@@ -51,7 +51,7 @@ fn key_encoding_invariants() {
 fn focus_and_paste_mode_invariants() {
     let mut settings = TerminalSettings::default();
     settings.bracketed_paste = true;
-    let mut term = TerminalController::new(&settings);
+    let mut term = TerminalController::new(&settings).expect("terminal init should succeed");
 
     // Focus report is emitted only when DECSET 1004 is enabled.
     assert!(

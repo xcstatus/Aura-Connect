@@ -233,10 +233,11 @@ fn internal_handle_host_key_error(state: &mut IcedState, e: &crate::app_model::C
                             added_ms: crate::settings::unix_time_ms(),
                         },
                     );
-                    let _ = state.model.settings.save();
-                    state.host_key_prompt = None;
-                    state.quick_connect_flow = QuickConnectFlow::Connecting;
-                    drop(state.model.draft.host_key_error.take());
+                    if state.model.settings.save_with_log() {
+                        state.host_key_prompt = None;
+                        state.quick_connect_flow = QuickConnectFlow::Connecting;
+                        drop(state.model.draft.host_key_error.take());
+                    }
                 }
                 crate::settings::HostKeyPolicy::Ask => {
                     state.host_key_prompt = Some(super::super::state::HostKeyPromptState { info });
@@ -404,7 +405,7 @@ pub(crate) fn handle_host_key_always_trust(state: &mut IcedState) -> Task<Messag
         fingerprint: info.fingerprint,
         added_ms: crate::settings::unix_time_ms(),
     });
-    let _ = state.model.settings.save();
+    state.model.settings.save_with_log();
     super::super::update::update(state, Message::ConnectPressed)
 }
 

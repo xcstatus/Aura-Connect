@@ -166,6 +166,8 @@ pub struct SshSession {
     data_rx: Option<Arc<tokio::sync::Mutex<mpsc::Receiver<Vec<u8>>>>>,
     cmd_tx: Option<mpsc::UnboundedSender<SessionCmd>>,
     read_buffer: Vec<u8>,
+    /// Task handle for the data pump loop - enables abort on drop.
+    pump_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl SshSession {
@@ -175,6 +177,7 @@ impl SshSession {
             data_rx: None,
             cmd_tx: None,
             read_buffer: Vec::new(),
+            pump_task: None,
         }
     }
 
@@ -308,8 +311,7 @@ impl SshSession {
         // 启动数据收发处理循环 (UI <-> SSH)
         // 增加 Keep-Alive 心跳间隔轮询: 每30秒发送一次 ping 以防被防火墙剔除
         let mut keep_alive_interval = tokio::time::interval(std::time::Duration::from_secs(30));
-
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             loop {
                 tokio::select! {
                     _ = keep_alive_interval.tick() => {
@@ -354,6 +356,7 @@ impl SshSession {
                 }
             }
         });
+        self.pump_task = Some(handle);
 
         Ok(())
     }
@@ -376,6 +379,25 @@ impl SshSession {
             &[],
         )
         .await
+    }
+
+    /// 断开 SSH 连接并清理后台任务
+    pub fn disconnect(&mut self) {
+        // 中止后台数据泵任务
+        if let Some(handle) = self.pump_task.take() {
+            handle.abort();
+        }
+        // 清理 SSH 句柄和通道
+        self.handle = None;
+        self.data_rx = None;
+        self.cmd_tx = None;
+        self.read_buffer.clear();
+    }
+}
+
+impl Drop for SshSession {
+    fn drop(&mut self) {
+        self.disconnect();
     }
 }
 
