@@ -18,19 +18,19 @@ use crate::backend::ghostty_vt::ffi;
 use crate::backend::ghostty_vt::{CursorState, VtStyledCell, VtStyledRow, VtStyledRun};
 use crate::terminal_core::{ScrollState, StyledFragment, TerminalController};
 use crate::theme::layout::{SCROLLBAR_WIDTH, TERMINAL_SCROLLBAR_OVERLAY_PAD_RIGHT};
+use iced::alignment::{Horizontal, Vertical};
 use iced::font::{self, Font};
-use iced::widget::{column, rich_text, scrollable, span, text, Row};
+use iced::widget::scrollable::{Direction as ScrollDirection, Scrollbar};
 use iced::widget::text::LineHeight;
 use iced::widget::text::Span;
-use iced::widget::{container, row, Space, Stack};
-use iced::widget::scrollable::{Direction as ScrollDirection, Scrollbar};
-use iced::alignment::{Horizontal, Vertical};
+use iced::widget::{Row, column, rich_text, scrollable, span, text};
+use iced::widget::{Space, Stack, container, row};
 use iced::{Color, Element, Length, Padding, Theme};
 
+use super::engine_adapter::EngineAdapter;
 use super::message::Message;
 use super::state::IcedState;
 use super::terminal_viewport;
-use super::engine_adapter::EngineAdapter;
 
 /// Per-row Iced widget cache entry: cached fragments and the `generation` it was built for.
 ///
@@ -53,7 +53,9 @@ pub(crate) struct RowWidgetCache {
 
 impl RowWidgetCache {
     pub(crate) fn new() -> Self {
-        Self { entries: RefCell::new(Vec::new()) }
+        Self {
+            entries: RefCell::new(Vec::new()),
+        }
     }
 
     /// Ensure the cache has at least `n` slots, filling with `None` if needed.
@@ -110,7 +112,10 @@ impl Default for RowWidgetCache {
 /// `terminal_viewport`). Otherwise `rich_text`/`Paragraph::min_bounds()` can be ~2× the line height,
 /// which makes consecutive visible lines ~`2*ch` apart while `floor(local_y/ch)` still uses `ch`.
 #[inline]
-fn fixed_terminal_row<'a>(line_px: iced::Pixels, inner: Element<'a, Message>) -> Element<'a, Message> {
+fn fixed_terminal_row<'a>(
+    line_px: iced::Pixels,
+    inner: Element<'a, Message>,
+) -> Element<'a, Message> {
     container(inner)
         .height(Length::Fixed(line_px.0))
         .width(Length::Fill)
@@ -119,7 +124,8 @@ fn fixed_terminal_row<'a>(line_px: iced::Pixels, inner: Element<'a, Message>) ->
 }
 
 /// Selection highlight: full cell fill (span-level bg only wraps glyphs and leaves gaps between cells).
-const SELECTION_CELL_FILL: Color = Color::from_rgba(60.0 / 255.0, 120.0 / 255.0, 200.0 / 255.0, 0.45);
+const SELECTION_CELL_FILL: Color =
+    Color::from_rgba(60.0 / 255.0, 120.0 / 255.0, 200.0 / 255.0, 0.45);
 
 /// Fixed-size terminal cell; `fill` paints the **entire** `cell_w × line_h` (used for selection).
 #[inline]
@@ -206,7 +212,11 @@ fn terminal_grid_cell_from_fragment(
     cell_w: f32,
 ) -> Element<'static, Message> {
     let line_h = line_px.0;
-    let piece_owned = if frag.text.is_empty() { " ".to_string() } else { frag.text.clone() };
+    let piece_owned = if frag.text.is_empty() {
+        " ".to_string()
+    } else {
+        frag.text.clone()
+    };
     let mut fg = ghost_rgb(&frag.fg);
     if frag.dim {
         fg = fg.scale_alpha(0.72);
@@ -311,21 +321,18 @@ pub(crate) fn terminal_main_area<'a>(state: &'a IcedState) -> Element<'a, Messag
         terminal_viewport::terminal_scroll_cell_geometry(state.window_size, &spec, cols);
     let (selection, scroll, in_scrollback) = {
         let engine = EngineAdapter::active(state);
-        (engine.selection(), engine.scroll(), engine.is_in_scrollback())
+        (
+            engine.selection(),
+            engine.scroll(),
+            engine.is_in_scrollback(),
+        )
     };
     let tick_count = state.tick_count;
     let terminal = &*state.active_terminal();
     let cache = &state.tab_panes[state.active_tab].styled_row_cache;
     terminal_with_scrollbar(
         styled_terminal(
-            terminal,
-            cache,
-            selection,
-            font_px,
-            line_px,
-            base_font,
-            cell_w_hit,
-            tick_count,
+            terminal, cache, selection, font_px, line_px, base_font, cell_w_hit, tick_count,
         ),
         scroll,
         in_scrollback,
@@ -366,12 +373,21 @@ fn terminal_scrollbar_overlay<'a>(scroll: ScrollState) -> Element<'a, Message> {
     let track = container(
         column![
             Space::new().height(Length::Fixed(top_pad)),
-            container(Space::new().width(Length::Fill).height(Length::Fixed(thumb_h)))
-                .style(|theme: &Theme| {
-                    let c = theme.extended_palette().background.base.text.scale_alpha(0.25);
-                    container::Style::default().background(iced::Background::Color(c))
-                })
-                .width(Length::Fill),
+            container(
+                Space::new()
+                    .width(Length::Fill)
+                    .height(Length::Fixed(thumb_h))
+            )
+            .style(|theme: &Theme| {
+                let c = theme
+                    .extended_palette()
+                    .background
+                    .base
+                    .text
+                    .scale_alpha(0.25);
+                container::Style::default().background(iced::Background::Color(c))
+            })
+            .width(Length::Fill),
             Space::new().height(Length::Fixed((track_h - top_pad - thumb_h).max(0.0))),
         ]
         .spacing(0),
@@ -379,7 +395,12 @@ fn terminal_scrollbar_overlay<'a>(scroll: ScrollState) -> Element<'a, Message> {
     .width(Length::Fixed(SCROLLBAR_WIDTH))
     .height(Length::Fixed(track_h))
     .style(|theme: &Theme| {
-        let c = theme.extended_palette().background.base.text.scale_alpha(0.08);
+        let c = theme
+            .extended_palette()
+            .background
+            .base
+            .text
+            .scale_alpha(0.08);
         container::Style::default().background(iced::Background::Color(c))
     })
     .padding(0);
@@ -401,7 +422,12 @@ fn terminal_scrollback_badge<'a>() -> Element<'a, Message> {
     container(iced::widget::text("回滚").size(11))
         .padding([4, 8])
         .style(|theme: &Theme| {
-            let bg = theme.extended_palette().background.strong.color.scale_alpha(0.92);
+            let bg = theme
+                .extended_palette()
+                .background
+                .strong
+                .color
+                .scale_alpha(0.92);
             container::Style::default().background(iced::Background::Color(bg))
         })
         .into()
@@ -426,15 +452,7 @@ pub(crate) fn styled_terminal<'a>(
             col = col.push(fixed_terminal_row(
                 line_px,
                 styled_row_line(
-                    row,
-                    y,
-                    cursor,
-                    blink_on,
-                    selection,
-                    font_px,
-                    line_px,
-                    base_font,
-                    cell_w,
+                    row, y, cursor, blink_on, selection, font_px, line_px, base_font, cell_w,
                 ),
             ));
             continue;
@@ -447,15 +465,7 @@ pub(crate) fn styled_terminal<'a>(
             col = col.push(fixed_terminal_row(
                 line_px,
                 styled_row_line(
-                    row,
-                    y,
-                    cursor,
-                    blink_on,
-                    None,
-                    font_px,
-                    line_px,
-                    base_font,
-                    cell_w,
+                    row, y, cursor, blink_on, None, font_px, line_px, base_font, cell_w,
                 ),
             ));
             continue;
@@ -524,7 +534,11 @@ fn span_from_fragment_cached(
     font_px: f32,
     base_font: Font,
 ) -> Span<'static, (), Font> {
-    let piece = if frag.text.is_empty() { " ".to_string() } else { frag.text.clone() };
+    let piece = if frag.text.is_empty() {
+        " ".to_string()
+    } else {
+        frag.text.clone()
+    };
     let mut fg = ghost_rgb(&frag.fg);
     if frag.dim {
         fg = fg.scale_alpha(0.72);
@@ -576,7 +590,11 @@ fn span_from_fragment<'a>(
     invisible: bool,
 ) -> Span<'a, (), Font> {
     let piece: String = piece.into();
-    let piece = if piece.is_empty() { " ".to_string() } else { piece };
+    let piece = if piece.is_empty() {
+        " ".to_string()
+    } else {
+        piece
+    };
     let mut fg = ghost_rgb(&run.fg);
     if run.dim {
         fg = fg.scale_alpha(0.72);
@@ -608,8 +626,7 @@ fn styled_row_line<'a>(
     cell_w: f32,
 ) -> Element<'a, Message> {
     let cy = row_ix as u16;
-    let apply_cursor =
-        blink_on && cursor.is_some_and(|c| c.visible && c.has_pos && c.y == cy);
+    let apply_cursor = blink_on && cursor.is_some_and(|c| c.visible && c.has_pos && c.y == cy);
     let cx = cursor.map(|c| c.x).unwrap_or(0);
 
     if row.runs.is_empty() {
@@ -649,7 +666,11 @@ fn styled_row_line<'a>(
             for cell in &run.cells {
                 let selected = cell_in_selection(selection, x, cy);
                 let invisible = cell.continuation;
-                let t = if cell.text.is_empty() { " " } else { cell.text.as_str() };
+                let t = if cell.text.is_empty() {
+                    " "
+                } else {
+                    cell.text.as_str()
+                };
                 let el = if selected {
                     cell_selected(run, t, font_px, line_px, base_font, cell_w, invisible)
                 } else {
@@ -700,7 +721,11 @@ fn styled_row_line<'a>(
                     None,
                 ));
             }
-            let mid_text = if mid.text.is_empty() { " " } else { mid.text.as_str() };
+            let mid_text = if mid.text.is_empty() {
+                " "
+            } else {
+                mid.text.as_str()
+            };
             let sp = cursor_cell_span(mid_text, cur, run, font_px, base_font);
             children.push(fixed_width_cell(
                 rich_text_single(sp, base_font, font_px, line_px),
@@ -747,7 +772,9 @@ fn normalize_sel(a: (u16, u16), b: (u16, u16)) -> ((u16, u16), (u16, u16)) {
 }
 
 fn cell_in_selection(sel: Option<((u16, u16), (u16, u16))>, x: u16, y: u16) -> bool {
-    let Some((a, b)) = sel else { return false; };
+    let Some((a, b)) = sel else {
+        return false;
+    };
     let ((sx, sy), (ex, ey)) = normalize_sel(a, b);
     if y < sy || y > ey {
         return false;
@@ -789,9 +816,9 @@ fn cursor_cell_span<'a>(
     let cc = ghost_rgb(&cursor.color);
 
     let mut s = span(if mid.is_empty() { " " } else { mid })
-    .size(font_px)
-    .font(run_font(run, base_font))
-    .strikethrough(run.strikethrough);
+        .size(font_px)
+        .font(run_font(run, base_font))
+        .strikethrough(run.strikethrough);
 
     match cursor.visual_style {
         ffi::GhosttyRenderStateCursorVisualStyle_GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE => {
