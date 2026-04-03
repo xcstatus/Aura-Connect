@@ -114,6 +114,8 @@ pub(crate) enum Message {
     QuickConnectKeyPathChanged(String),
     QuickConnectPassphraseChanged(String),
     ConnectPressed,
+    /// Connection result callback (triggered by Task::perform).
+    ConnectResult(Result<std::sync::Arc<Box<dyn crate::backend::ssh_session::AsyncSession>>, crate::app_model::ConnectErrorKind>),
     /// Keyboard-interactive: update answer field.
     QuickConnectInteractiveAnswerChanged(usize, String),
     /// Keyboard-interactive: submit current answers (advance auth state machine).
@@ -198,6 +200,7 @@ impl std::fmt::Debug for Message {
             Message::QuickConnectKeyPathChanged(v) => write!(f, "Message::QuickConnectKeyPathChanged({})", v),
             Message::QuickConnectPassphraseChanged(_) => write!(f, "Message::QuickConnectPassphraseChanged(...)"),
             Message::ConnectPressed => write!(f, "Message::ConnectPressed"),
+            Message::ConnectResult(_) => write!(f, "Message::ConnectResult(...)"),
             Message::QuickConnectInteractiveAnswerChanged(i, v) => write!(f, "Message::QuickConnectInteractiveAnswerChanged({}, {})", i, v),
             Message::QuickConnectInteractiveSubmit => write!(f, "Message::QuickConnectInteractiveSubmit"),
             Message::HostKeyAcceptOnce => write!(f, "Message::HostKeyAcceptOnce"),

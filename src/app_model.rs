@@ -68,6 +68,7 @@ impl ConnectErrorKind {
         }
     }
 }
+#[derive(Clone)]
 pub struct ConnectionDraft {
     pub host: String,
     pub port: String,
@@ -136,6 +137,27 @@ pub struct AppModel {
 }
 
 impl AppModel {
+    /// Create a minimal AppModel for SSH connection (used in async connect tasks).
+    pub fn new_for_connect(draft: ConnectionDraft, settings: Settings) -> Self {
+        let i18n = I18n::new(Locale::from_language_code(&settings.general.language));
+        let sessions_path = StorageManager::get_sessions_path()
+            .unwrap_or_else(|| std::path::PathBuf::from("sessions.json"));
+        let store = Arc::new(JsonSessionStore::new(sessions_path));
+        let session_manager = SessionManager::new(store);
+
+        Self {
+            settings,
+            i18n,
+            session_manager,
+            terminal_capture_mode: true,
+            command_input: String::new(),
+            draft,
+            selected_session_id: None,
+            status: String::new(),
+            vault_master_password: None,
+        }
+    }
+
     pub fn load() -> Self {
         let settings = Settings::load();
         let i18n = I18n::new(Locale::from_language_code(&settings.general.language));

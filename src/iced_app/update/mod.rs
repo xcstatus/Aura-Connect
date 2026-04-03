@@ -494,6 +494,21 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
 
         // --- Connection ---
         Message::ConnectPressed => connection::handle_connect(state),
+        Message::ConnectResult(result) => {
+            match result {
+                Ok(session) => {
+                    // Unwrap the Arc - we know there's only one reference
+                    let session: Box<dyn crate::backend::ssh_session::AsyncSession> =
+                        std::sync::Arc::into_inner(session)
+                            .unwrap();
+                    connection::handle_connect_success(state, session);
+                }
+                Err(kind) => {
+                    connection::internal_handle_connect_error(state, kind);
+                }
+            }
+            Task::none()
+        }
         Message::HostKeyAcceptOnce => connection::handle_host_key_accept_once(state),
         Message::HostKeyAlwaysTrust => connection::handle_host_key_always_trust(state),
         Message::HostKeyReject => connection::handle_host_key_reject(state),

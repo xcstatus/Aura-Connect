@@ -165,61 +165,15 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
     }
 }
 
-/// Standard SSH connection (synchronous via rt.block_on).
+/// Standard SSH connection - returns async Task for non-blocking UI.
 fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
-    let draft = &state.model.draft;
-    let host = draft.host.trim();
-    let port = draft.port.trim();
-    let user = draft.user.trim();
-
-    // 收集连接信息行，用于成功后清理
-    let mut lines: Vec<String> = Vec::new();
-
-    // 1. 连接目标
-    let connecting_msg = state.model.i18n.tr("iced.term.ssh.connecting")
-        .replace("{user}", user)
-        .replace("{host}", host)
-        .replace("{port}", port);
-    lines.push(connecting_msg);
-
-    // 2. 主机指纹（如果已知）
-    if let Some(rec) = state.model.settings.security.known_hosts.iter().find(|r| r.host == host) {
-        let fp_msg = state.model.i18n.tr("iced.term.ssh.host_fingerprint")
-            .replace("{algo}", &rec.algo)
-            .replace("{fp}", &rec.fingerprint);
-        lines.push(fp_msg);
-    }
-
-    // 3. 认证方式
-    let auth_name = match &draft.auth {
-        crate::session::AuthMethod::Password => state.model.i18n.tr("iced.auth.password"),
-        crate::session::AuthMethod::Key { .. } => state.model.i18n.tr("iced.auth.public_key"),
-        crate::session::AuthMethod::Interactive => state.model.i18n.tr("iced.auth.keyboard_interactive"),
-        crate::session::AuthMethod::Agent => state.model.i18n.tr("iced.auth.agent"),
-    };
-    let auth_msg = state.model.i18n.tr("iced.term.ssh.auth_method")
-        .replace("{method}", auth_name);
-    lines.push(auth_msg);
-
-    // 注入终端
-    let line_refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
-    state.active_pane_mut().terminal.inject_local_lines(&line_refs);
-
-    // 记录行数，用于成功后清理
-    state.preconnect_info_line_count = lines.len();
-
-    state.quick_connect_flow = QuickConnectFlow::Connecting;
-    state.quick_connect_error_kind = None;
-
-    // Set initial connection stage: vault loading if credentials need to be decrypted.
-    state.connection_stage = if state.model.vault_master_password.is_some() {
-        ConnectionStage::VaultLoading
-    } else {
-        ConnectionStage::SshConnecting
-    };
+    let draft = state.model.draft.clone();
+    let host = draft.host.trim().to_string();
+    let settings = state.model.settings.clone();
+    let i18n = state.model.i18n.clone();
 
     // Merge persisted known hosts and runtime overrides ("accept once").
-    let mut merged_known_hosts = state.model.settings.security.known_hosts.clone();
+    let mut merged_known_hosts = settings.security.known_hosts.clone();
     for r in &state.runtime_known_hosts {
         if !merged_known_hosts
             .iter()
@@ -229,41 +183,75 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
         }
     }
 
-    // Advance to SSH connecting stage before the async call.
-    state.connection_stage = ConnectionStage::SshConnecting;
+    // Collect connection info lines for display
+    let mut lines: Vec<String> = Vec::new();
 
-    let result = state.rt.block_on(async {
-        let saved = std::mem::take(&mut state.model.settings.security.known_hosts);
-        state.model.settings.security.known_hosts = merged_known_hosts.clone();
-        let out = state.model.connect_from_draft().await;
-        // Restore known hosts
-        state.model.settings.security.known_hosts = saved;
-        (out, merged_known_hosts)
-    });
+    // 1. Connection target
+    let connecting_msg = i18n
+        .tr("iced.term.ssh.connecting")
+        .replace("{user}", &draft.user)
+        .replace("{host}", &host)
+        .replace("{port}", &draft.port);
+    lines.push(connecting_msg);
 
-    match result {
-        (Ok(session), _merged) => {
-            state.connection_stage = ConnectionStage::SessionSetup;
-            handle_connect_success(state, session);
-            Task::none()
-        }
-        (Err(kind), merged) => {
-            state.connection_stage = ConnectionStage::None;
-            // Set draft error state
-            state.model.draft.last_error = Some(kind.clone());
-            state.model.draft.host_key_error = None;
-
-            // Restore known hosts
-            state.model.settings.security.known_hosts = merged;
-
-            internal_handle_connect_error(state, kind);
-            Task::none()
-        }
+    // 2. Host fingerprint (if known)
+    if let Some(rec) = merged_known_hosts.iter().find(|r| r.host == host) {
+        let fp_msg = i18n
+            .tr("iced.term.ssh.host_fingerprint")
+            .replace("{algo}", &rec.algo)
+            .replace("{fp}", &rec.fingerprint);
+        lines.push(fp_msg);
     }
+
+    // 3. Auth method
+    let auth_name = match &draft.auth {
+        crate::session::AuthMethod::Password => i18n.tr("iced.auth.password"),
+        crate::session::AuthMethod::Key { .. } => i18n.tr("iced.auth.public_key"),
+        crate::session::AuthMethod::Interactive => i18n.tr("iced.auth.keyboard_interactive"),
+        crate::session::AuthMethod::Agent => i18n.tr("iced.auth.agent"),
+    };
+    let auth_msg = i18n
+        .tr("iced.term.ssh.auth_method")
+        .replace("{method}", auth_name);
+    lines.push(auth_msg);
+
+    // Record line count for cleanup
+    let line_count = lines.len();
+    let line_refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+
+    // Display connection info in terminal
+    state.active_pane_mut().terminal.inject_local_lines(&line_refs);
+    state.preconnect_info_line_count = line_count;
+    state.quick_connect_flow = QuickConnectFlow::Connecting;
+    state.quick_connect_error_kind = None;
+
+    // Set initial connection stage
+    state.connection_stage = if state.model.vault_master_password.is_some() {
+        ConnectionStage::VaultLoading
+    } else {
+        ConnectionStage::SshConnecting
+    };
+
+    // Build async task - this will run without blocking the UI thread
+    let task = async move {
+        // Create a temporary AppModel for the async connection
+        let mut temp_model = crate::app_model::AppModel::new_for_connect(draft, settings);
+        temp_model.settings.security.known_hosts = merged_known_hosts;
+
+        // Perform the connection
+        let result = temp_model.connect_from_draft().await;
+
+        match result {
+            Ok(session) => Ok(std::sync::Arc::new(session)),
+            Err(kind) => Err(kind),
+        }
+    };
+
+    Task::perform(task, Message::ConnectResult)
 }
 
 /// Internal error handler (returns Task::none).
-fn internal_handle_connect_error(state: &mut IcedState, e: crate::app_model::ConnectErrorKind) {
+pub(crate) fn internal_handle_connect_error(state: &mut IcedState, e: crate::app_model::ConnectErrorKind) {
     state.connection_stage = ConnectionStage::None;
     if e == crate::app_model::ConnectErrorKind::AuthFailed
         && matches!(state.model.draft.auth, crate::session::AuthMethod::Password)
@@ -340,7 +328,7 @@ fn internal_handle_host_key_error(state: &mut IcedState, e: &crate::app_model::C
 }
 
 /// Handle successful SSH connection.
-fn handle_connect_success(state: &mut IcedState, session: Box<dyn AsyncSession>) {
+pub(crate) fn handle_connect_success(state: &mut IcedState, session: Box<dyn AsyncSession>) {
     let host = state.model.draft.host.trim().to_string();
     let user = state.model.draft.user.trim().to_string();
     let port: u16 = state.model.draft.port.trim().parse().unwrap_or(22);
@@ -570,11 +558,14 @@ pub(crate) fn handle_profile_connect(
                 }
             }
 
-            state.quick_connect_open = true;
-            state.quick_connect_panel = super::super::state::QuickConnectPanel::NewConnection;
             if can_auto_connect {
+                // 直接连接，不打开弹窗
                 return super::super::update::update(state, Message::ConnectPressed);
             }
+
+            // 需要用户输入时才打开弹窗
+            state.quick_connect_open = true;
+            state.quick_connect_panel = super::super::state::QuickConnectPanel::NewConnection;
         }
         Err(msg) => {
             state.model.status = msg;

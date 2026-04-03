@@ -278,6 +278,11 @@ pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message>
     }
 
     if let Some(prof) = pending_connect {
+        // 关闭弹窗，直接在终端显示连接信息
+        state.quick_connect_open = false;
+        state.vault_unlock = None;
+
+        // 清除终端并显示解锁消息
         let a = state.model.i18n.tr("iced.term.vault_unlocked");
         let b = state.model.i18n.tr("iced.term.connecting");
         {
@@ -285,7 +290,12 @@ pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message>
             pane.terminal.clear_local_preconnect_ui();
             pane.terminal.inject_local_lines(&[a, b]);
         }
-        return super::super::update::update(state, Message::ProfileConnect(prof));
+
+        // 填充 draft 并直接触发连接（不打开弹窗）
+        let master = state.model.vault_master_password.clone();
+        if state.model.fill_draft_from_profile(&prof, master.as_ref()).is_ok() {
+            return super::super::update::update(state, Message::ConnectPressed);
+        }
     }
 
     Task::none()
