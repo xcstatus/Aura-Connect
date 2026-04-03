@@ -2,7 +2,7 @@ use iced::Task;
 use iced::{Point, Size};
 
 use crate::app_model::AppModel;
-use crate::backend::ssh_session::AsyncSession;
+use crate::iced_app::session_manager::SessionManager;
 use crate::iced_app::terminal_rich::RowWidgetCache;
 use crate::settings::TerminalSettings;
 use crate::storage::StorageManager;
@@ -60,15 +60,11 @@ pub(crate) struct IcedTab {
     pub profile_id: Option<String>,
 }
 
-/// Per-tab SSH session and [`TerminalController`] (**1:1** with one [`IcedTab`]).
+/// Per-tab terminal controller and runtime state (**1:1** with one [`IcedTab`]).
 ///
-/// **Policy** — [`crate::settings::QuickConnectSettings::single_shared_session`]:
-/// - `true` (**default**, rollback-friendly): at most one tab holds `session`; connect clears other
-///   tabs' sessions; switching away from a connected tab **disconnects** that session so the strip
-///   cannot imply a different host than the live PTY.
-/// - `false`: each tab may retain its own `session`; all connected tabs are pumped each tick.
+/// SSH sessions are managed by [`SessionManager`] in [`IcedState`], shared across all tabs.
+/// This keeps `TabPane` focused on terminal-local concerns (viewport, cache, focus latch).
 pub(crate) struct TabPane {
-    pub session: Option<Box<dyn AsyncSession>>,
     pub terminal: TerminalController,
     /// Per-session focus latch (DECSET 1004): last effective focus we reported to this tab's PTY.
     pub last_terminal_focus_sent: Option<bool>,
@@ -85,7 +81,6 @@ impl TabPane {
             .expect("Failed to initialize terminal controller - libghostty VT initialization failed");
         terminal.apply_terminal_palette_for_scheme(&terminal_settings.color_scheme);
         Self {
-            session: None,
             terminal,
             last_terminal_focus_sent: None,
             last_pump_ms: 0,
@@ -101,6 +96,8 @@ pub(crate) struct IcedState {
     pub tabs: Vec<IcedTab>,
     /// Same length as `tabs`; `tab_panes[i]` is the runtime for `tabs[i]`.
     pub tab_panes: Vec<TabPane>,
+    /// Unified SSH session registry: each tab may have an independent live session.
+    pub session_manager: SessionManager,
     pub active_tab: usize,
     pub window_size: Size,
     /// 主窗口是否键盘焦点（用于 DEC 1004 与捕获勾选组合）。
@@ -169,9 +166,8 @@ impl IcedState {
 
     /// Whether the **active** tab has a live SSH session that reports connected.
     pub(crate) fn active_session_is_connected(&self) -> bool {
-        self.active_pane()
-            .session
-            .as_ref()
+        self.session_manager
+            .get_session(self.active_tab)
             .is_some_and(|s| s.is_connected())
     }
 }
@@ -286,6 +282,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
     let model = AppModel::load();
     let first_title = model.i18n.tr("iced.tab.new").to_string();
     let tab_panes = vec![TabPane::new(&model.settings.terminal)];
+    let session_manager = SessionManager::new(1); // one tab at boot
     let vault_status = VaultStatus::compute(&model.settings, model.vault_master_password.is_some());
     let now = crate::settings::unix_time_ms();
     let dump_path = std::env::var("RUST_SSH_PERF_DUMP")
@@ -301,6 +298,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
                 profile_id: None,
             }],
             tab_panes,
+            session_manager,
             active_tab: 0,
             window_size: Size::new(1280.0, 800.0),
             window_focused: true,

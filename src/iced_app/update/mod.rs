@@ -22,7 +22,6 @@ use iced::widget::Id;
 use iced::widget::operation::{AbsoluteOffset, scroll_by};
 
 use crate::backend::ssh_session::AsyncSession;
-use crate::terminal_core::TerminalController;
 
 use super::chrome::TAB_STRIP_SCROLLABLE_ID;
 use super::message::Message;
@@ -31,90 +30,54 @@ use super::terminal_event::TerminalEvent;
 use super::terminal_host::TerminalHost;
 use super::terminal_viewport;
 
-/// Resize PTY/grid from window size and emit `term_viewport` log when geometry changes.
-pub(crate) fn apply_terminal_grid_resize(
-    window: Size,
-    terminal: &mut TerminalController,
-    session: &mut dyn AsyncSession,
-    terminal_settings: &crate::settings::TerminalSettings,
-) {
-    let spec = terminal_viewport::terminal_viewport_spec_for_settings(terminal_settings);
-    let (cols, rows) = terminal_viewport::grid_from_window_size_with_spec(window, &spec);
-    let pty_sent = match terminal.resize_and_sync_pty(session, cols, rows) {
-        Ok(b) => b,
-        Err(e) => {
-            log::warn!(target: "term_viewport", "resize_and_sync_pty failed: {e}");
-            false
-        }
-    };
-    terminal_viewport::log_viewport_geometry_if_changed(window, &spec, cols, rows, pty_sent);
-}
-
+/// Resize PTY/grid from window size for a single tab.
 pub(crate) fn apply_terminal_grid_resize_for_pane(
-    window: Size,
     pane: &mut TabPane,
+    window: Size,
     terminal_settings: &crate::settings::TerminalSettings,
 ) {
     let spec = terminal_viewport::terminal_viewport_spec_for_settings(terminal_settings);
     let (cols, rows) = terminal_viewport::grid_from_window_size_with_spec(window, &spec);
+
     let prev_rows = pane.terminal.grid_size().1;
-    if let Some(session) = pane.session.as_mut() {
-        let _ = pane
-            .terminal
-            .resize_and_sync_pty(session.as_mut(), cols, rows);
-    } else {
-        pane.terminal.resize(cols, rows);
-    }
+    pane.terminal.resize(cols, rows);
+
     // Invalidate row widget cache when viewport row count changes (e.g. resize).
-    // When rows shrink the cache is trimmed lazily; when it grows it's filled lazily.
     if prev_rows != rows {
         pane.styled_row_cache.clear();
     }
 }
 
+/// Resize the active tab's PTY to current window size (syncs to SSH PTY if session exists).
 pub(crate) fn sync_terminal_grid_to_session(state: &mut IcedState) {
-    let term_settings = state.model.settings.terminal.clone();
+    let term_settings = &state.model.settings.terminal;
+    let pane = &mut state.tab_panes[state.active_tab];
     let window_size = state.window_size;
-    let pane = state.active_pane_mut();
-    let Some(session) = pane.session.as_mut() else {
-        return;
+    let (cols, rows) = {
+        let spec = terminal_viewport::terminal_viewport_spec_for_settings(term_settings);
+        terminal_viewport::grid_from_window_size_with_spec(window_size, &spec)
     };
-    apply_terminal_grid_resize(
-        window_size,
-        &mut pane.terminal,
-        session.as_mut(),
-        &term_settings,
-    );
+    let prev_rows = pane.terminal.grid_size().1;
+    if let Some(session) = state.session_manager.session_mut(state.active_tab) {
+        let _ = pane.terminal.resize_and_sync_pty(session, cols, rows);
+    } else {
+        pane.terminal.resize(cols, rows);
+    }
+    if prev_rows != rows {
+        pane.styled_row_cache.clear();
+    }
 }
 
 pub(crate) fn disconnect_active_tab_session(state: &mut IcedState) {
-    let pane = state.active_pane_mut();
-    pane.session = None;
-    pane.terminal.clear_pty_resize_anchor();
+    state
+        .session_manager
+        .detach_session(state.active_tab);
+    state.active_pane_mut().terminal.clear_pty_resize_anchor();
     state.model.status = "Disconnected".to_string();
     state.last_activity_ms = crate::settings::unix_time_ms();
 }
 
-/// If `single_shared_session`, disconnect sessions on all tabs except `keep_tab` (if any).
-pub(crate) fn enforce_single_session_policy(state: &mut IcedState, keep_tab: Option<usize>) {
-    if !state.model.settings.quick_connect.single_shared_session {
-        return;
-    }
-    for (i, p) in state.tab_panes.iter_mut().enumerate() {
-        if keep_tab == Some(i) {
-            continue;
-        }
-        p.session = None;
-        p.terminal.clear_pty_resize_anchor();
-        // Clear viewport state including the styled row widget cache.
-        p.styled_row_cache.clear();
-    }
-}
-
 /// Install session on the **active** tab, PTY resize, then DEC 1004 focus once.
-///
-/// **Order:** the tab's `session` must be set before [`sync_terminal_focus_report`], which only
-/// writes to the current session - otherwise the first CSI I/O for a new PTY would be dropped.
 pub(crate) fn complete_new_ssh_session(
     state: &mut IcedState,
     session: Box<dyn AsyncSession>,
@@ -122,28 +85,14 @@ pub(crate) fn complete_new_ssh_session(
     tab_title: String,
     profile_id: Option<String>,
 ) {
-    let term_settings = state.model.settings.terminal.clone();
-    if state.model.settings.quick_connect.single_shared_session {
-        enforce_single_session_policy(state, None);
-    } else {
-        let pane = state.active_pane_mut();
-        pane.session = None;
-        pane.terminal.clear_pty_resize_anchor();
-    }
-    {
-        let window_size = state.window_size;
-        let pane = state.active_pane_mut();
-        pane.session = Some(session);
-        let Some(sess) = pane.session.as_mut() else {
-            return;
-        };
-        apply_terminal_grid_resize(
-            window_size,
-            &mut pane.terminal,
-            sess.as_mut(),
-            &term_settings,
-        );
-    }
+    // Attach session to the active tab (replaces any existing session on that tab).
+    state
+        .session_manager
+        .attach_session(state.active_tab, session);
+
+    // Resize PTY to current window size (active tab already has the new session attached).
+    sync_terminal_grid_to_session(state);
+
     state.active_pane_mut().last_terminal_focus_sent = None;
     TerminalHost::sync_focus_report(state);
     state.model.status = "Connected".to_string();
@@ -173,22 +122,10 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
         // --- Window ---
         Message::WindowResized(size) => {
             state.window_size = size;
-            if state.model.settings.quick_connect.single_shared_session {
-                sync_terminal_grid_to_session(state);
-            } else {
-                let term_settings = state.model.settings.terminal.clone();
-                let window_size = state.window_size;
-                for p in &mut state.tab_panes {
-                    let Some(session) = p.session.as_mut() else {
-                        continue;
-                    };
-                    apply_terminal_grid_resize(
-                        window_size,
-                        &mut p.terminal,
-                        session.as_mut(),
-                        &term_settings,
-                    );
-                }
+            let term_settings = state.model.settings.terminal.clone();
+            let window_size = state.window_size;
+            for pane in &mut state.tab_panes {
+                apply_terminal_grid_resize_for_pane(pane, window_size, &term_settings);
             }
             Task::none()
         }

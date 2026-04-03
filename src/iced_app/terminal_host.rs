@@ -28,10 +28,9 @@ impl TerminalHost {
             &mut EngineAdapterMut<'_>,
         ) -> R,
     ) -> Option<R> {
-        let pane = state.active_pane_mut();
-        let session = pane.session.as_mut()?;
-        let mut engine = EngineAdapterMut::new(&mut pane.terminal);
-        Some(f(session.as_mut(), &mut engine))
+        let tab = state.active_tab;
+        let session = state.session_manager.session_mut(tab)?;
+        Some(f(session, &mut EngineAdapterMut::new(&mut state.tab_panes[tab].terminal)))
     }
 
     #[inline]
@@ -138,9 +137,9 @@ impl TerminalHost {
         if pane.last_terminal_focus_sent == Some(eff) {
             return;
         }
-        if let Some(session) = pane.session.as_mut() {
+        if let Some(session) = state.session_manager.session_mut(tab) {
             let mut engine = EngineAdapterMut::new(&mut pane.terminal);
-            let _ = Self::write_if_any(session.as_mut(), engine.encode_focus_event(eff));
+            let _ = Self::write_if_any(session, engine.encode_focus_event(eff));
         }
         pane.last_terminal_focus_sent = Some(eff);
     }
@@ -211,7 +210,7 @@ impl TerminalHost {
                     return Task::none();
                 }
                 // Don't allow selection on an empty/unconnected terminal pane.
-                if state.active_pane().session.is_none() {
+                if !state.session_manager.has_session(state.active_tab) {
                     return Task::none();
                 }
                 state.last_cursor_pos = Some(p);
@@ -442,10 +441,12 @@ mod tests {
     }
 
     fn attach_dummy_session(state: &mut IcedState) {
-        state.active_pane_mut().session = Some(Box::new(DummySession {
-            writes: Vec::new(),
-            connected: true,
-        }));
+        state
+            .session_manager
+            .attach_session(state.active_tab, Box::new(DummySession {
+                writes: Vec::new(),
+                connected: true,
+            }));
     }
 
     #[test]

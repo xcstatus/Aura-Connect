@@ -2,6 +2,7 @@ use iced::Task;
 
 use super::super::message::{Message, SettingsField};
 use super::super::state::IcedState;
+use super::super::terminal_viewport;
 
 /// Handle SettingsDismiss message.
 pub(crate) fn handle_settings_dismiss(state: &mut IcedState) -> Task<Message> {
@@ -136,14 +137,9 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
         SettingsField::ScrollbackLimit(v) => s.terminal.scrollback_limit = v,
         SettingsField::HistorySearch(v) => s.terminal.history_search_enabled = v,
         SettingsField::PathCompletion(v) => s.terminal.local_path_completion_enabled = v,
-        SettingsField::SingleSharedSession(v) => {
-            s.quick_connect.single_shared_session = v;
-            if v {
-                let keep = state.active_tab;
-                super::super::update::enforce_single_session_policy(state, Some(keep));
-                super::super::update::sync_terminal_grid_to_session(state);
-                super::super::terminal_host::TerminalHost::sync_focus_report(state);
-            }
+        SettingsField::SingleSharedSession(_v) => {
+            // No-op: all tabs now pump independently regardless of this setting.
+            // Kept for backward compatibility (stored in settings file).
         }
         SettingsField::IdleTimeoutMins(v) => s.security.idle_timeout_mins = v,
         SettingsField::LockOnSleep(v) => s.security.lock_on_sleep = v,
@@ -157,17 +153,20 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
     state.model.settings.save_with_log();
 
     if sync_layout {
-        if state.model.settings.quick_connect.single_shared_session {
-            super::super::update::sync_terminal_grid_to_session(state);
-        } else {
-            let window_size = state.window_size;
-            let term_settings = state.model.settings.terminal.clone();
-            for p in &mut state.tab_panes {
-                super::super::update::apply_terminal_grid_resize_for_pane(
-                    window_size,
-                    p,
-                    &term_settings,
-                );
+        let window_size = state.window_size;
+        let term_settings = state.model.settings.terminal.clone();
+        for (i, pane) in state.tab_panes.iter_mut().enumerate() {
+            let spec = terminal_viewport::terminal_viewport_spec_for_settings(&term_settings);
+            let (cols, rows) =
+                terminal_viewport::grid_from_window_size_with_spec(window_size, &spec);
+            let prev_rows = pane.terminal.grid_size().1;
+            if let Some(session) = state.session_manager.session_mut(i) {
+                let _ = pane.terminal.resize_and_sync_pty(session, cols, rows);
+            } else {
+                pane.terminal.resize(cols, rows);
+            }
+            if prev_rows != rows {
+                pane.styled_row_cache.clear();
             }
         }
     }

@@ -17,6 +17,7 @@ pub(crate) fn handle_add_tab(state: &mut IcedState) -> Task<Message> {
     state
         .tab_panes
         .push(TabPane::new(&state.model.settings.terminal));
+    state.session_manager.add_tab();
     state.active_tab = state.tabs.len() - 1;
     state.model.status = "New tab: use Quick connect (⚡) to open a session".to_string();
     Task::none()
@@ -35,18 +36,7 @@ pub(crate) fn handle_tab_selected(state: &mut IcedState, i: usize) -> Task<Messa
         super::super::terminal_host::TerminalHost::sync_focus_report_for_tab(state, old, false);
     }
 
-    if state.model.settings.quick_connect.single_shared_session
-        && old != i
-        && state
-            .tab_panes
-            .get(old)
-            .is_some_and(|p| p.session.is_some())
-    {
-        state.tab_panes[old].session = None;
-        state.tab_panes[old].terminal.clear_pty_resize_anchor();
-        state.model.status = "Disconnected previous tab (single-session mode)".to_string();
-    }
-
+    state.session_manager.set_active_tab(i);
     state.active_tab = i;
 
     if let Some(pid) = state.tabs[i].profile_id.clone() {
@@ -70,6 +60,8 @@ pub(crate) fn handle_tab_close(state: &mut IcedState, i: usize) -> Task<Message>
     let was_active = i == state.active_tab;
     state.tabs.remove(i);
     state.tab_panes.remove(i);
+    // Also remove from session manager (returns the dropped session, if any).
+    let _ = state.session_manager.remove_tab(i);
 
     let len = state.tabs.len();
     if was_active {
@@ -77,6 +69,7 @@ pub(crate) fn handle_tab_close(state: &mut IcedState, i: usize) -> Task<Message>
     } else if i < state.active_tab {
         state.active_tab -= 1;
     }
+    state.session_manager.set_active_tab(state.active_tab);
 
     if let Some(pid) = state.tabs[state.active_tab].profile_id.clone() {
         state.model.select_profile(pid);
