@@ -138,6 +138,18 @@ pub fn tr(key: &'static str) -> &'static str {
         }
         "iced.term.vault_unlock_to_continue" => "[rustssh] Unlock Vault to continue…",
         "iced.term.vault_unlocked" => "[rustssh] Vault unlocked.",
+        "iced.term.ssh.connecting" => "SSH  Connecting to {user}@{host}:{port}",
+        "iced.term.ssh.host_fingerprint" => "SSH  Host key: {algo} {fp}",
+        "iced.term.ssh.auth_method" => "SSH  Auth: {method}",
+        "iced.term.ssh.authenticating" => "SSH  Authenticating...",
+        "iced.auth.password" => "password",
+        "iced.auth.public_key" => "public key",
+        "iced.auth.keyboard_interactive" => "keyboard-interactive",
+        "iced.auth.agent" => "SSH Agent",
+        "iced.stage.vault_loading" => "Decrypting credentials...",
+        "iced.stage.ssh_connecting" => "Connecting to server",
+        "iced.stage.authenticating" => "Verifying identity",
+        "iced.stage.session_setup" => "Initializing session",
         "settings.security.vault.title" => "Vault Security",
         "settings.security.auto_lock.label" => "Auto-lock timeout",
         "settings.security.auto_lock.help" => {

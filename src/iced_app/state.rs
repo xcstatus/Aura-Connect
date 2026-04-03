@@ -238,6 +238,8 @@ pub(crate) struct IcedState {
     pub vault_unlock: Option<VaultUnlockState>,
     /// 首次自动探测授权提醒（一次性）。
     pub auto_probe_consent_modal: Option<AutoProbeConsentModalState>,
+    /// 连接信息行数，用于连接成功后清理终端中的连接提示。
+    pub preconnect_info_line_count: usize,
 }
 
 impl IcedState {
@@ -569,6 +571,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             session_editor: None,
             vault_unlock: None,
             auto_probe_consent_modal: None,
+            preconnect_info_line_count: 0,
         },
         Task::none(),
     )

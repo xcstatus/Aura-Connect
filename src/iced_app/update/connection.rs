@@ -63,8 +63,35 @@ pub(crate) fn handle_connect(state: &mut IcedState) -> Task<Message> {
 
 /// Handle interactive auth (synchronous - requires multi-step state).
 fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
-    let msg = state.model.i18n.tr("iced.term.connecting");
-    state.active_pane_mut().terminal.inject_local_lines(&[msg]);
+    let draft = &state.model.draft;
+    let host = draft.host.trim();
+    let port = draft.port.trim();
+    let user = draft.user.trim();
+
+    // 收集连接信息行
+    let mut lines: Vec<String> = Vec::new();
+    let connecting_msg = state.model.i18n.tr("iced.term.ssh.connecting")
+        .replace("{user}", user)
+        .replace("{host}", host)
+        .replace("{port}", port);
+    lines.push(connecting_msg);
+
+    if let Some(rec) = state.model.settings.security.known_hosts.iter().find(|r| r.host == host) {
+        let fp_msg = state.model.i18n.tr("iced.term.ssh.host_fingerprint")
+            .replace("{algo}", &rec.algo)
+            .replace("{fp}", &rec.fingerprint);
+        lines.push(fp_msg);
+    }
+
+    let auth_name = state.model.i18n.tr("iced.auth.keyboard_interactive");
+    let auth_msg = state.model.i18n.tr("iced.term.ssh.auth_method")
+        .replace("{method}", auth_name);
+    lines.push(auth_msg);
+
+    let line_refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+    state.active_pane_mut().terminal.inject_local_lines(&line_refs);
+    state.preconnect_info_line_count = lines.len();
+
     state.quick_connect_flow = QuickConnectFlow::Connecting;
     state.quick_connect_error_kind = None;
     state.connection_stage = ConnectionStage::SshConnecting;
@@ -140,8 +167,47 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
 
 /// Standard SSH connection (synchronous via rt.block_on).
 fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
-    let msg = state.model.i18n.tr("iced.term.connecting");
-    state.active_pane_mut().terminal.inject_local_lines(&[msg]);
+    let draft = &state.model.draft;
+    let host = draft.host.trim();
+    let port = draft.port.trim();
+    let user = draft.user.trim();
+
+    // 收集连接信息行，用于成功后清理
+    let mut lines: Vec<String> = Vec::new();
+
+    // 1. 连接目标
+    let connecting_msg = state.model.i18n.tr("iced.term.ssh.connecting")
+        .replace("{user}", user)
+        .replace("{host}", host)
+        .replace("{port}", port);
+    lines.push(connecting_msg);
+
+    // 2. 主机指纹（如果已知）
+    if let Some(rec) = state.model.settings.security.known_hosts.iter().find(|r| r.host == host) {
+        let fp_msg = state.model.i18n.tr("iced.term.ssh.host_fingerprint")
+            .replace("{algo}", &rec.algo)
+            .replace("{fp}", &rec.fingerprint);
+        lines.push(fp_msg);
+    }
+
+    // 3. 认证方式
+    let auth_name = match &draft.auth {
+        crate::session::AuthMethod::Password => state.model.i18n.tr("iced.auth.password"),
+        crate::session::AuthMethod::Key { .. } => state.model.i18n.tr("iced.auth.public_key"),
+        crate::session::AuthMethod::Interactive => state.model.i18n.tr("iced.auth.keyboard_interactive"),
+        crate::session::AuthMethod::Agent => state.model.i18n.tr("iced.auth.agent"),
+    };
+    let auth_msg = state.model.i18n.tr("iced.term.ssh.auth_method")
+        .replace("{method}", auth_name);
+    lines.push(auth_msg);
+
+    // 注入终端
+    let line_refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+    state.active_pane_mut().terminal.inject_local_lines(&line_refs);
+
+    // 记录行数，用于成功后清理
+    state.preconnect_info_line_count = lines.len();
+
     state.quick_connect_flow = QuickConnectFlow::Connecting;
     state.quick_connect_error_kind = None;
 
@@ -221,12 +287,16 @@ fn internal_handle_connect_error(state: &mut IcedState, e: crate::app_model::Con
         state.quick_connect_error_kind = Some(e);
     }
 
+    // 显示连接失败信息（不清理预连接信息，保留用于排查）
     let fail = state.model.i18n.tr("iced.term.connection_failed");
-    let reason = format!("[rustssh] Reason: {:?}", e);
+    let reason = format!("SSH  {}", e.user_message());
     state
         .active_pane_mut()
         .terminal
         .inject_local_lines(&[fail, &reason]);
+
+    // 重置预连接信息行计数（失败时不清理）
+    state.preconnect_info_line_count = 0;
 
     internal_handle_host_key_error(state, &e);
 }
@@ -339,8 +409,23 @@ fn handle_connect_success(state: &mut IcedState, session: Box<dyn AsyncSession>)
     state.quick_connect_error_kind = None;
     state.connection_stage = ConnectionStage::None;
 
+    // 显示连接成功信息
     let msg = state.model.i18n.tr("iced.term.connected");
     state.active_pane_mut().terminal.inject_local_lines(&[msg]);
+
+    // 清理预连接信息行
+    let lines_to_clear = state.preconnect_info_line_count;
+    if lines_to_clear > 0 {
+        state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
+    }
+    state.preconnect_info_line_count = 0;
+
+    // 立即 pump 一次，读取 MOTD
+    let active_tab = state.active_tab;
+    let pane = &mut state.tab_panes[active_tab];
+    if let Some(sess) = state.session_manager.session_mut(active_tab) {
+        let _ = pane.terminal.pump_output(sess);
+    }
 }
 
 /// Save credentials to vault after successful connect.
@@ -535,6 +620,21 @@ pub(crate) fn handle_interactive_submit(state: &mut IcedState) -> Task<Message> 
                     state.quick_connect_flow = QuickConnectFlow::Connected;
                     state.quick_connect_error_kind = None;
                     state.connection_stage = ConnectionStage::None;
+
+                    // 显示连接成功并清理预连接信息
+                    let msg = state.model.i18n.tr("iced.term.connected");
+                    state.active_pane_mut().terminal.inject_local_lines(&[msg]);
+                    let lines_to_clear = state.preconnect_info_line_count;
+                    if lines_to_clear > 0 {
+                        state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
+                    }
+                    state.preconnect_info_line_count = 0;
+
+                    let active_tab = state.active_tab;
+                    let pane = &mut state.tab_panes[active_tab];
+                    if let Some(sess) = state.session_manager.session_mut(active_tab) {
+                        let _ = pane.terminal.pump_output(sess);
+                    }
                 }
                 Err(_e) => {
                     state.quick_connect_flow = QuickConnectFlow::Failed;

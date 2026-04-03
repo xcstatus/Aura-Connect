@@ -234,6 +234,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
             state.connection_stage = super::state::ConnectionStage::None;
+            state.preconnect_info_line_count = 0;
             state.model.status = "Quick connect".to_string();
             Task::none()
         }
@@ -253,6 +254,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
             state.connection_stage = super::state::ConnectionStage::None;
+            state.preconnect_info_line_count = 0;
             Task::none()
         }
         Message::QuickConnectNewConnection => {
@@ -263,6 +265,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
             state.connection_stage = super::state::ConnectionStage::None;
+            state.preconnect_info_line_count = 0;
             Task::none()
         }
         Message::QuickConnectBackToList => {
@@ -272,6 +275,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
             state.connection_stage = super::state::ConnectionStage::None;
+            state.preconnect_info_line_count = 0;
             Task::none()
         }
         Message::QuickConnectQueryChanged(q) => {
@@ -300,6 +304,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             }
             state.quick_connect_error_kind = None;
             state.connection_stage = super::state::ConnectionStage::None;
+            state.preconnect_info_line_count = 0;
             state.quick_connect_panel = QuickConnectPanel::NewConnection;
             Task::none()
         }
@@ -325,6 +330,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
             state.connection_stage = super::state::ConnectionStage::None;
+            state.preconnect_info_line_count = 0;
             Task::none()
         }
 
@@ -406,6 +412,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
+            state.preconnect_info_line_count = 0;
             Task::none()
         }
         Message::PortChanged(v) => {
@@ -417,6 +424,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
+            state.preconnect_info_line_count = 0;
             Task::none()
         }
         Message::UserChanged(v) => {
@@ -428,6 +436,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
+            state.preconnect_info_line_count = 0;
             Task::none()
         }
         Message::PasswordChanged(v) => {
@@ -445,6 +454,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
                 state.quick_connect_error_kind = None;
             }
             state.quick_connect_interactive = None;
+            state.preconnect_info_line_count = 0;
             Task::none()
         }
         Message::QuickConnectAuthChanged(v) => {
@@ -456,6 +466,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
+            state.preconnect_info_line_count = 0;
             Task::none()
         }
         Message::QuickConnectKeyPathChanged(v) => {
@@ -466,6 +477,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_flow = super::state::QuickConnectFlow::Idle;
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
+            state.preconnect_info_line_count = 0;
             Task::none()
         }
         Message::QuickConnectPassphraseChanged(v) => {
@@ -476,6 +488,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.quick_connect_flow = super::state::QuickConnectFlow::Idle;
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
+            state.preconnect_info_line_count = 0;
             Task::none()
         }
 

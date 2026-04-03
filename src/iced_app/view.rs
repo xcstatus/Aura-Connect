@@ -1200,11 +1200,12 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
             .into(),
         ),
         super::state::QuickConnectFlow::NeedAuthPassword => {
-            let mut msg = "需要密码：请输入密码后重试。".to_string();
-            if err_kind == Some(crate::app_model::ConnectErrorKind::AuthFailed) {
+            let msg = if err_kind == Some(crate::app_model::ConnectErrorKind::AuthFailed) {
                 let n = state.model.draft.password_error_count;
-                msg = format!("密码错误（{n}/3）：请重新输入密码。");
-            }
+                format!("SSH  密码错误（{}/3）：请重新输入密码。", n)
+            } else {
+                "SSH  需要密码认证。".to_string()
+            };
             Some(
                 container(text(msg).size(12))
                     .padding(10)
@@ -1213,7 +1214,7 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
             )
         }
         super::state::QuickConnectFlow::AuthLocked => Some(
-            container(text("密码多次错误，已中断本次连接。请编辑后重试或切换认证方式。").size(12))
+            container(text("SSH  密码多次错误，已中断本次连接。请编辑后重试或切换认证方式。").size(12))
                 .padding(10)
                 .style(top_bar_material_style)
                 .into(),
@@ -1242,11 +1243,19 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
             _ => "..",
         };
         let stage_label = match stage {
-            super::state::ConnectionStage::VaultLoading => "正在解密凭据",
-            super::state::ConnectionStage::SshConnecting => "正在连接服务器",
-            super::state::ConnectionStage::Authenticating => "正在验证身份",
-            super::state::ConnectionStage::SessionSetup => "正在初始化会话",
-            _ => "正在连接",
+            super::state::ConnectionStage::VaultLoading => {
+                state.model.i18n.tr("iced.stage.vault_loading")
+            }
+            super::state::ConnectionStage::SshConnecting => {
+                state.model.i18n.tr("iced.stage.ssh_connecting")
+            }
+            super::state::ConnectionStage::Authenticating => {
+                state.model.i18n.tr("iced.stage.authenticating")
+            }
+            super::state::ConnectionStage::SessionSetup => {
+                state.model.i18n.tr("iced.stage.session_setup")
+            }
+            _ => state.model.i18n.tr("iced.term.connecting"),
         };
         Some(
             container(

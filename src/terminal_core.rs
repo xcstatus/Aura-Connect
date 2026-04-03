@@ -568,6 +568,27 @@ impl TerminalController {
         self.inject_local_output(b"\x1b[2J\x1b[H");
     }
 
+    /// Clear the specified number of pre-connect info lines from the terminal.
+    ///
+    /// This is used after a successful connection to remove the connection progress
+    /// messages (e.g., "SSH  Connecting to...", "SSH  Host key:...", etc.)
+    /// that were displayed during the connection phase.
+    pub fn clear_preconnect_lines(&mut self, count: usize) {
+        if count == 0 {
+            return;
+        }
+        self.selection.clear();
+        // Move cursor up 'count' lines, then erase from cursor to end of screen
+        for _ in 0..count {
+            self.inject_local_output(b"\x1b[1A"); // CUU: cursor up
+        }
+        self.inject_local_output(b"\x1b[J"); // ED: erase from cursor to end of screen
+        // Move cursor back to original position
+        for _ in 0..count {
+            self.inject_local_output(b"\x1b[1B"); // CUD: cursor down
+        }
+    }
+
     /// Scroll terminal viewport by delta rows (negative = up).
     ///
     /// This affects what the render state exposes as the current viewport; call updates snapshots so
