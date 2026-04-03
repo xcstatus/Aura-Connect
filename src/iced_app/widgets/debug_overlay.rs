@@ -70,8 +70,9 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
         0.0
     };
 
-    let vt_ms = perf.vt_update_ns_total as f64 / 1_000_000.0;
-    let frame_ms = perf.vt_frame_ns_total as f64 / 1_000_000.0;
+    let ticks_nonzero = perf.ticks.max(1) as f64;
+    let vt_ms = perf.vt_update_ns_total as f64 / 1_000_000.0 / ticks_nonzero;
+    let frame_ms = perf.vt_frame_ns_total as f64 / 1_000_000.0 / ticks_nonzero;
 
     let avg_tick_ms = perf.tick_durations_ns.average_ns().unwrap_or(0.0) / 1_000_000.0;
     let max_tick = perf
@@ -126,12 +127,15 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
 
     let tab_lines: Vec<iced::Element<'_, Message>> = (0..n)
         .map(|i| {
+            let pump_calls = (*perf.tab_pump_calls.get(i).unwrap_or(&0)).max(1) as f64;
+            let vt_ns = *perf.tab_vt_ns.get(i).unwrap_or(&0) as f64;
+            let frame_ns = *perf.tab_vt_frame_ns.get(i).unwrap_or(&0) as f64;
             iced::Element::from(TabLine {
                 idx: i,
                 pump: *perf.tab_pump_calls.get(i).unwrap_or(&0),
                 bytes: *perf.tab_bytes_in.get(i).unwrap_or(&0),
-                vt_ms: *perf.tab_vt_ns.get(i).unwrap_or(&0) as f64 / 1_000_000.0,
-                frame_ms: *perf.tab_vt_frame_ns.get(i).unwrap_or(&0) as f64 / 1_000_000.0,
+                vt_ms: vt_ns / 1_000_000.0 / pump_calls,
+                frame_ms: frame_ns / 1_000_000.0 / pump_calls,
             })
         })
         .collect();

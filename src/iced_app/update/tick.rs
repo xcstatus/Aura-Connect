@@ -91,17 +91,18 @@ fn pump_all_sessions(state: &mut IcedState, now: i64, bg_pump_every_ms: i64) {
     }
 }
 
-/// The vt_start.elapsed() timer variable — need to track it separately.
+/// Handle cursor blink and frame tick — active tab only.
 fn handle_cursor_blink(state: &mut IcedState, now: i64) {
     let blink_due = now.saturating_sub(state.last_blink_tick_ms) >= 500;
     if blink_due && state.window_focused {
-        for (i, pane) in state.tab_panes.iter_mut().enumerate() {
+        let active = state.active_tab;
+        if let Some(pane) = state.tab_panes.get_mut(active) {
             let frame_start = std::time::Instant::now();
             pane.terminal.on_frame_tick();
             let frame_elapsed = frame_start.elapsed().as_nanos() as u64;
             state.perf.vt_frame_ns_total += frame_elapsed;
-            if i < state.perf.tab_vt_frame_ns.len() {
-                state.perf.tab_vt_frame_ns[i] += frame_elapsed;
+            if active < state.perf.tab_vt_frame_ns.len() {
+                state.perf.tab_vt_frame_ns[active] += frame_elapsed;
             }
         }
         state.last_blink_tick_ms = now;
@@ -168,14 +169,14 @@ fn handle_perf_log(state: &mut IcedState) {
 
     log::debug!(
         target: "term-prof",
-        "perf tick={:.1}/s pump={:.1}/s bytes={:.0}/s empty={:.1}% slow={} vt_upd={:.1}ms vt_frame={:.1}ms focus={} tabs={}",
+        "perf tick={:.1}/s pump={:.1}/s bytes={:.0}/s empty={:.1}% slow={} vt_upd={:.3}ms vt_frame={:.3}ms (per-tick avg) focus={} tabs={}",
         tick_rate,
         pump_rate,
         bytes_rate,
         empty_pct,
         slow_ticks_delta,
-        state.perf.vt_update_ns_total as f64 / 1_000_000.0,
-        state.perf.vt_frame_ns_total as f64 / 1_000_000.0,
+        state.perf.vt_update_ns_total as f64 / 1_000_000.0 / (state.perf.ticks.max(1) as f64),
+        state.perf.vt_frame_ns_total as f64 / 1_000_000.0 / (state.perf.ticks.max(1) as f64),
         state.window_focused,
         state.tab_panes.len()
     );
@@ -235,15 +236,20 @@ fn write_perf_dump(
         0.0
     };
 
-    let vt_update_ms = state.perf.vt_update_ns_total as f64 / 1_000_000.0;
-    let vt_frame_ms = state.perf.vt_frame_ns_total as f64 / 1_000_000.0;
+    let ticks_nonzero = state.perf.ticks.max(1);
+    let vt_update_ms = state.perf.vt_update_ns_total as f64 / 1_000_000.0 / ticks_nonzero as f64;
+    let vt_frame_ms = state.perf.vt_frame_ns_total as f64 / 1_000_000.0 / ticks_nonzero as f64;
 
-    // Per-tab VT timing details.
+    // Per-tab VT timing details (also per-tick averages).
     let tab_vt_details: String = (0..state.tab_panes.len())
         .map(|i| {
             let p_ns = *state.perf.tab_vt_ns.get(i).unwrap_or(&0);
             let f_ns = *state.perf.tab_vt_frame_ns.get(i).unwrap_or(&0);
-            format!("{i}={:.1}/{:.1}", p_ns as f64 / 1_000_000.0, f_ns as f64 / 1_000_000.0)
+            format!(
+                "{i}={:.3}/{:.3}",
+                p_ns as f64 / 1_000_000.0 / ticks_nonzero as f64,
+                f_ns as f64 / 1_000_000.0 / ticks_nonzero as f64,
+            )
         })
         .collect::<Vec<_>>()
         .join(",");

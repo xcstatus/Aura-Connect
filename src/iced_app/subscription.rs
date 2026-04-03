@@ -34,24 +34,26 @@ pub(crate) fn subscription(state: &IcedState) -> Subscription<Message> {
         Subscription::none()
     };
 
-    // Dynamic tick:
-    // - Active (recent I/O or input): 16ms
-    // - Idle: 150ms (background pump cadence)
-    // - Unfocused: 250ms
+    // Dynamic tick: driven by `target_fps` setting and idle state.
+    // - Active (recent I/O): use target_fps (default 60fps → 16ms)
+    // - Idle 1-5s:         cap at 30fps equivalent
+    // - Idle >5s:          cap at 10fps equivalent
+    // - Unfocused:         floor 250ms regardless of target_fps
     let now = crate::settings::unix_time_ms();
     let idle_ms = now.saturating_sub(state.last_activity_ms).max(0) as u64;
+    let target_fps = state.model.settings.terminal.target_fps.clamp(10, 240);
     let tick_ms = if !state.window_focused {
         250
     } else if idle_ms <= 1_000 {
-        16
+        (1000 / target_fps).max(16)
     } else if idle_ms <= 5_000 {
-        100
+        (1000 / target_fps.min(30)).max(33)
     } else {
-        200
+        (1000 / target_fps.min(10)).max(100)
     };
 
     Subscription::batch([
-        iced::time::every(Duration::from_millis(tick_ms)).map(|_| Message::Tick),
+        iced::time::every(Duration::from_millis(tick_ms as u64)).map(|_| Message::Tick),
         iced::window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
         iced::event::listen().map(Message::EventOccurred),
         escape_overlay,
