@@ -1,6 +1,7 @@
 use std::os::raw::c_char;
 
 use anyhow::Result;
+use thiserror::Error;
 use iced::keyboard::key::Code;
 
 use crate::backend::ghostty_vt::{
@@ -9,6 +10,15 @@ use crate::backend::ghostty_vt::{
 use crate::backend::ssh_session::AsyncSession;
 use crate::settings::TerminalSettings;
 use crate::terminal_selection::TerminalSelection;
+
+#[derive(Error, Debug)]
+pub enum TerminalInitError {
+    #[error("Failed to initialize libghostty VT: {0}")]
+    GhosttyVtInit(String),
+}
+
+/// Terminal initialization result type.
+pub type TerminalResult<T> = Result<T, TerminalInitError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ScrollState {
@@ -214,12 +224,12 @@ impl TerminalController {
         }
     }
 
-    pub fn new(settings: &TerminalSettings) -> Self {
+    pub fn new(settings: &TerminalSettings) -> TerminalResult<Self> {
         let cols = 120;
         let rows = 36;
         let scrollback = settings.scrollback_limit.max(256);
         let vt = GhosttyVtTerminal::new(cols, rows, scrollback)
-            .expect("failed to create ghostty terminal");
+            .map_err(|e| TerminalInitError::GhosttyVtInit(e.to_string()))?;
         let bracketed_paste = settings.bracketed_paste;
         let s = Self {
             vt,
@@ -238,7 +248,7 @@ impl TerminalController {
             key_fallback_named: 0,
             key_fallback_text: 0,
         };
-        s
+        Ok(s)
     }
 
     pub fn set_bracketed_paste(&mut self, enabled: bool) {
@@ -368,7 +378,10 @@ impl TerminalController {
         let _ = self.vt.update_render_state();
         self.lines.resize(rows as usize, String::new());
         self.styled_row_gen.resize(rows as usize, 0);
-        self.styled_fragments.resize_with(rows as usize, Vec::new);
+        // Pre-allocate with capacity to reduce dynamic reallocation during terminal I/O.
+        // Typical terminal rows have few fragments; 16 is a reasonable upper bound for
+        // most color scheme changes without frequent reallocation.
+        self.styled_fragments.resize_with(rows as usize, || Vec::with_capacity(16));
         self.styled_dirty_rows_tmp.clear();
         let _ = self.vt.update_dirty_styled_rows_and_clear_dirty_collect(
             &mut self.styled_rows,

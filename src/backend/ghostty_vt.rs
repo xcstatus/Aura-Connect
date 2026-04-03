@@ -1,3 +1,24 @@
+//! libghostty FFI bindings for terminal VT parsing and rendering.
+//!
+//! # FFI Safety Notes
+//!
+//! This module wraps C APIs from the ghostty terminal emulator via bindgen-generated
+//! FFI bindings. The following invariants must be maintained:
+//!
+//! - All `ghostty_*_new` functions allocate resources that must be freed via their
+//!   corresponding `ghostty_*_free` functions in `Drop` implementation.
+//! - Out-parameters (e.g., `&mut ptr`) are initialized by the C library; reading them
+//!   before the library writes to them is UB.
+//! - Pointer validity: all `*_ptr` fields must remain valid for the lifetime of
+//!   `GhosttyVtTerminal`. They are internal to the C library and must not be aliased
+//!   from Rust code.
+//! - `GhosttyCell` and `GhosttyStyle` are FFI structs with no Drop semantics; they
+//!   are passed by value and must be initialized before use via the library's getter
+//!   functions.
+//!
+//! All FFI calls are wrapped in `unsafe {}` blocks. Callers must ensure the preconditions
+//! documented above are met.
+
 use std::ffi::c_void;
 #[cfg(debug_assertions)]
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -764,6 +785,9 @@ impl GhosttyVtTerminal {
                 let mut x: usize = 0;
                 while x < cols && ffi::ghostty_render_state_row_cells_next(self.row_cells) {
                     // Raw cell metadata (width / spacer markers).
+                    // SAFETY: GhosttyCell is a plain FFI struct (no interior mutability, no Drop).
+                    // We initialize it with zeroed bytes because the C library will overwrite
+                    // all fields via ghostty_render_state_row_cells_get before we read them.
                     let mut raw_cell: ffi::GhosttyCell = std::mem::zeroed();
                     let _ = ffi::ghostty_render_state_row_cells_get(
                         self.row_cells,

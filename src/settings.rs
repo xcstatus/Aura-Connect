@@ -226,7 +226,9 @@ impl Settings {
             }
         }
         let default = Self::default();
-        let _ = default.save();
+        if let Err(e) = default.save() {
+            log::warn!("Failed to create default settings file: {}", e);
+        }
         default
     }
 
@@ -238,8 +240,37 @@ impl Settings {
                 return Err(e);
             }
         }
-        let content = serde_json::to_string_pretty(self).unwrap();
-        std::fs::write(path, content)
+        let content = serde_json::to_string_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+        // Atomic write: write to temp file, then rename.
+        // This prevents corruption if the process crashes mid-write.
+        let tmp_path = path.with_extension("json.tmp");
+        std::fs::write(&tmp_path, &content)?;
+
+        // Sync the temp file to disk for durability, then rename atomically.
+        #[cfg(unix)]
+        {
+            // Sync the temp file to disk for durability before rename.
+            if let Ok(file) = std::fs::File::open(&tmp_path) {
+                let _ = file.sync_all();
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            // On non-Unix, sync is not available; rename still provides atomicity.
+        }
+
+        std::fs::rename(&tmp_path, &path)?;
+        Ok(())
+    }
+    pub fn save_with_log(&self) -> bool {
+        if let Err(e) = self.save() {
+            log::error!("Failed to save settings: {}", e);
+            false
+        } else {
+            true
+        }
     }
 
     fn get_path() -> PathBuf {

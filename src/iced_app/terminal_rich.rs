@@ -47,9 +47,20 @@ struct RowCacheEntry {
 ///
 /// Grows lazily to `viewport_rows` on first use and stays resident across frames.
 /// Each slot holds the cached `Element` for one row and the generation it was built for.
+///
+/// # Capacity Management
+///
+/// The cache uses a bounded grow strategy:
+/// - Grows up to `MAX_CACHE_ROWS` entries (4096) to prevent memory bloat from extreme resize.
+/// - Exceeding the bound triggers an automatic clear-and-shrink to reclaim memory.
+/// - `ensure_capacity` checks the bound and silently discards excess entries if needed.
+/// - The cache is always explicitly cleared on resize or disconnect, so stale entries are
+///   not a correctness concern.
 pub(crate) struct RowWidgetCache {
     entries: RefCell<Vec<Option<RowCacheEntry>>>,
 }
+
+const MAX_CACHE_ROWS: usize = 4096;
 
 impl RowWidgetCache {
     pub(crate) fn new() -> Self {
@@ -59,8 +70,16 @@ impl RowWidgetCache {
     }
 
     /// Ensure the cache has at least `n` slots, filling with `None` if needed.
+    /// If `n` exceeds `MAX_CACHE_ROWS`, the cache is shrunk to reclaim memory.
     pub(crate) fn ensure_capacity(&self, n: usize) {
         let mut entries = self.entries.borrow_mut();
+        if n > MAX_CACHE_ROWS {
+            // Bound exceeded: clear and shrink to prevent memory bloat from extreme resize.
+            // This is safe because `clear()` is also called on resize/disconnect paths.
+            entries.clear();
+            entries.resize(MAX_CACHE_ROWS, None);
+            return;
+        }
         while entries.len() < n {
             entries.push(None);
         }
