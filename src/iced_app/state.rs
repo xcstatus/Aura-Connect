@@ -95,6 +95,7 @@ impl TabPane {
 
 pub(crate) struct IcedState {
     pub model: AppModel,
+    /// Tokio runtime for session manager file operations (fast IO).
     pub rt: tokio::runtime::Runtime,
     pub tabs: Vec<IcedTab>,
     /// Same length as `tabs`; `tab_panes[i]` is the runtime for `tabs[i]`.

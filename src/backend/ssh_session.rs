@@ -392,7 +392,7 @@ pub struct KeyboardInteractiveInfo {
     pub prompts: Vec<KeyboardInteractivePrompt>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum KeyboardInteractiveStep {
     Success,
     Failure,

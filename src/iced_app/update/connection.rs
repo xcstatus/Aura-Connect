@@ -1,7 +1,7 @@
 use iced::Task;
 use secrecy::ExposeSecret;
 
-use crate::backend::ssh_session::{AsyncSession, InteractiveAuthSession};
+use crate::backend::ssh_session::AsyncSession;
 
 use super::super::message::Message;
 use super::super::state::{IcedState, QuickConnectFlow};
@@ -49,7 +49,7 @@ pub(crate) fn handle_connect(state: &mut IcedState) -> Task<Message> {
         return super::super::update::update(state, Message::AutoProbeConsentOpen);
     }
 
-    // Interactive auth path.
+    // Interactive auth path (synchronous - needs to keep session for multi-step auth).
     if matches!(
         state.model.draft.auth,
         crate::session::AuthMethod::Interactive
@@ -57,11 +57,11 @@ pub(crate) fn handle_connect(state: &mut IcedState) -> Task<Message> {
         return handle_interactive_auth(state);
     }
 
-    // Standard SSH connection path.
-    standard_ssh_connect(state)
+    // Standard SSH connection path (asynchronous via Task::perform).
+    start_ssh_connect(state)
 }
 
-/// Handle keyboard-interactive authentication flow.
+/// Handle interactive auth (synchronous - requires multi-step state).
 fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
     let msg = state.model.i18n.tr("iced.term.connecting");
     state.active_pane_mut().terminal.inject_local_lines(&[msg]);
@@ -73,16 +73,13 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
     let port: u16 = state.model.draft.port.trim().parse().unwrap_or(22);
     let known_hosts = state.model.settings.security.known_hosts.clone();
 
-    let start = state.rt.block_on(async {
-        InteractiveAuthSession::connect(&host, port, &user, &known_hosts).await
-    });
-
-    let sess = match start {
+    let sess = match state.rt.block_on(
+        crate::backend::ssh_session::InteractiveAuthSession::connect(&host, port, &user, &known_hosts)
+    ) {
         Ok(s) => s,
         Err(_e) => {
-            let kind = crate::app_model::ConnectErrorKind::HostUnreachable;
             state.quick_connect_flow = QuickConnectFlow::Failed;
-            state.quick_connect_error_kind = Some(kind);
+            state.quick_connect_error_kind = Some(crate::app_model::ConnectErrorKind::HostUnreachable);
             return Task::none();
         }
     };
@@ -98,17 +95,15 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
 
     match step {
         crate::backend::ssh_session::KeyboardInteractiveStep::Success => {
-            let out = state.rt.block_on(sess.finish_into_session());
-            match out {
+            match state.rt.block_on(sess.finish_into_session()) {
                 Ok(ssh_sess) => {
                     let session: Box<dyn AsyncSession> = Box::new(ssh_sess);
-                    handle_interactive_success(state, session);
+                    handle_connect_success(state, session);
                     Task::none()
                 }
                 Err(_e) => {
                     state.quick_connect_flow = QuickConnectFlow::Failed;
-                    state.quick_connect_error_kind =
-                        Some(crate::app_model::ConnectErrorKind::Unknown);
+                    state.quick_connect_error_kind = Some(crate::app_model::ConnectErrorKind::Unknown);
                     Task::none()
                 }
             }
@@ -136,75 +131,8 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
     }
 }
 
-fn handle_interactive_success(state: &mut IcedState, session: Box<dyn AsyncSession>) {
-    let host = state.model.draft.host.trim().to_string();
-    let user = state.model.draft.user.trim().to_string();
-    let port: u16 = state.model.draft.port.trim().parse().unwrap_or(22);
-    let mut profile_id = state.model.selected_session_id.clone();
-
-    if profile_id.is_none()
-        && matches!(
-            state.model.draft.source,
-            crate::app_model::DraftSource::DirectInput
-        )
-        && !host.is_empty()
-        && !user.is_empty()
-    {
-        let existing = state.model.profiles().iter().find(|p| {
-            let crate::session::TransportConfig::Ssh(ssh) = &p.transport else {
-                return false;
-            };
-            ssh.host == host && ssh.port == port && ssh.user == user
-        });
-        let id = existing
-            .map(|p| p.id.clone())
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let profile = if let Some(ex) = existing.cloned() {
-            ex
-        } else {
-            crate::session::SessionProfile {
-                id: id.clone(),
-                name: format!("{user}@{host}"),
-                folder: None,
-                color_tag: None,
-                transport: crate::session::TransportConfig::Ssh(crate::session::SshConfig {
-                    host: host.clone(),
-                    port,
-                    user: user.clone(),
-                    auth: state.model.draft.auth.clone(),
-                    credential_id: None,
-                }),
-            }
-        };
-        let _ = state
-            .rt
-            .block_on(state.model.session_manager.upsert_session(profile));
-        profile_id = Some(id.clone());
-        state.model.selected_session_id = profile_id.clone();
-    }
-
-    let label = match &profile_id {
-        Some(pid) => state
-            .model
-            .profiles()
-            .iter()
-            .find(|s| s.id == *pid)
-            .map(|p| p.name.clone())
-            .unwrap_or_else(|| format!("{user}@{host}")),
-        None => format!("{user}@{host}"),
-    };
-
-    let recent = state
-        .model
-        .recent_record_for_draft_with_profile(label.clone(), profile_id.clone());
-
-    super::super::update::complete_new_ssh_session(state, session, recent, label, profile_id);
-    state.quick_connect_flow = QuickConnectFlow::Connected;
-    state.quick_connect_error_kind = None;
-}
-
-/// Standard SSH connection (non-interactive).
-fn standard_ssh_connect(state: &mut IcedState) -> Task<Message> {
+/// Standard SSH connection (synchronous via rt.block_on).
+fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
     let msg = state.model.i18n.tr("iced.term.connecting");
     state.active_pane_mut().terminal.inject_local_lines(&[msg]);
     state.quick_connect_flow = QuickConnectFlow::Connecting;
@@ -223,20 +151,99 @@ fn standard_ssh_connect(state: &mut IcedState) -> Task<Message> {
 
     let result = state.rt.block_on(async {
         let saved = std::mem::take(&mut state.model.settings.security.known_hosts);
-        state.model.settings.security.known_hosts = merged_known_hosts;
+        state.model.settings.security.known_hosts = merged_known_hosts.clone();
         let out = state.model.connect_from_draft().await;
+        // Restore known hosts
         state.model.settings.security.known_hosts = saved;
-        out
+        (out, merged_known_hosts)
     });
 
     match result {
-        Ok(session) => {
+        (Ok(session), _merged) => {
             handle_connect_success(state, session);
             Task::none()
         }
-        Err(e) => {
-            handle_connect_error(state, e);
+        (Err(kind), merged) => {
+            // Set draft error state
+            state.model.draft.last_error = Some(kind.clone());
+            state.model.draft.host_key_error = None;
+
+            // Restore known hosts
+            state.model.settings.security.known_hosts = merged;
+
+            internal_handle_connect_error(state, kind);
             Task::none()
+        }
+    }
+}
+
+/// Internal error handler (returns Task::none).
+fn internal_handle_connect_error(state: &mut IcedState, e: crate::app_model::ConnectErrorKind) {
+    if e == crate::app_model::ConnectErrorKind::AuthFailed
+        && matches!(state.model.draft.auth, crate::session::AuthMethod::Password)
+    {
+        state.model.draft.password_error_count =
+            state.model.draft.password_error_count.saturating_add(1);
+        if state.model.draft.password_error_count >= 3 {
+            state.quick_connect_flow = QuickConnectFlow::AuthLocked;
+            state.quick_connect_error_kind = Some(e);
+            return;
+        }
+    }
+
+    if e == crate::app_model::ConnectErrorKind::AuthFailed
+        && matches!(state.model.draft.auth, crate::session::AuthMethod::Password)
+    {
+        state.quick_connect_flow = QuickConnectFlow::NeedAuthPassword;
+        state.quick_connect_error_kind = Some(e);
+    } else {
+        state.quick_connect_flow = QuickConnectFlow::Failed;
+        state.quick_connect_error_kind = Some(e);
+    }
+
+    let fail = state.model.i18n.tr("iced.term.connection_failed");
+    let reason = format!("[rustssh] Reason: {:?}", e);
+    state
+        .active_pane_mut()
+        .terminal
+        .inject_local_lines(&[fail, &reason]);
+
+    internal_handle_host_key_error(state, &e);
+}
+
+/// Internal host key error handler.
+fn internal_handle_host_key_error(state: &mut IcedState, e: &crate::app_model::ConnectErrorKind) {
+    if matches!(
+        e,
+        crate::app_model::ConnectErrorKind::HostKeyUnknown
+            | crate::app_model::ConnectErrorKind::HostKeyChanged
+    ) {
+        if let Some(info) = state.model.draft.host_key_error.clone() {
+            match state.model.settings.security.host_key_policy {
+                crate::settings::HostKeyPolicy::AcceptNew
+                    if e == &crate::app_model::ConnectErrorKind::HostKeyUnknown =>
+                {
+                    state.model.settings.security.known_hosts.retain(|r| !(r.host == info.host && r.port == info.port));
+                    state.model.settings.security.known_hosts.push(
+                        crate::settings::KnownHostRecord {
+                            host: info.host.clone(),
+                            port: info.port,
+                            algo: info.algo.clone(),
+                            fingerprint: info.fingerprint.clone(),
+                            added_ms: crate::settings::unix_time_ms(),
+                        },
+                    );
+                    let _ = state.model.settings.save();
+                    state.host_key_prompt = None;
+                    state.quick_connect_flow = QuickConnectFlow::Connecting;
+                    drop(state.model.draft.host_key_error.take());
+                }
+                crate::settings::HostKeyPolicy::Ask => {
+                    state.host_key_prompt = Some(super::super::state::HostKeyPromptState { info });
+                    state.quick_connect_open = false;
+                }
+                _ => {}
+            }
         }
     }
 }
@@ -247,7 +254,7 @@ fn handle_connect_success(state: &mut IcedState, session: Box<dyn AsyncSession>)
     let user = state.model.draft.user.trim().to_string();
     let port: u16 = state.model.draft.port.trim().parse().unwrap_or(22);
 
-    // Strategy A: upsert session profile for direct input.
+    // Upsert session profile for direct input.
     let mut profile_id = state.model.selected_session_id.clone();
     if profile_id.is_none()
         && matches!(
@@ -283,9 +290,7 @@ fn handle_connect_success(state: &mut IcedState, session: Box<dyn AsyncSession>)
                 }),
             }
         };
-        let _ = state
-            .rt
-            .block_on(state.model.session_manager.upsert_session(profile));
+        let _ = state.rt.block_on(state.model.session_manager.upsert_session(profile));
         profile_id = Some(id.clone());
         state.model.selected_session_id = profile_id.clone();
     }
@@ -343,9 +348,9 @@ fn save_credentials_after_connect(state: &mut IcedState, profile_id: &Option<Str
                                     transport: crate::session::TransportConfig::Ssh(ssh),
                                     ..existing
                                 };
-                                let _ = state
-                                    .rt
-                                    .block_on(state.model.session_manager.upsert_session(updated));
+                                let _ = state.rt.block_on(
+                                    state.model.session_manager.upsert_session(updated),
+                                );
                             }
                         }
                     }
@@ -355,7 +360,6 @@ fn save_credentials_after_connect(state: &mut IcedState, profile_id: &Option<Str
                     state.model.vault_master_password.is_some(),
                 );
             } else {
-                // Vault initialized but locked: prompt to unlock.
                 state.vault_unlock = Some(super::super::state::VaultUnlockState {
                     pending_connect: None,
                     pending_delete_profile_id: None,
@@ -369,104 +373,20 @@ fn save_credentials_after_connect(state: &mut IcedState, profile_id: &Option<Str
     }
 }
 
-/// Handle connection error.
-fn handle_connect_error(state: &mut IcedState, e: crate::app_model::ConnectErrorKind) {
-    if e == crate::app_model::ConnectErrorKind::AuthFailed
-        && matches!(state.model.draft.auth, crate::session::AuthMethod::Password)
-    {
-        state.model.draft.password_error_count =
-            state.model.draft.password_error_count.saturating_add(1);
-        if state.model.draft.password_error_count >= 3 {
-            state.quick_connect_flow = QuickConnectFlow::AuthLocked;
-            state.quick_connect_error_kind = Some(e);
-            return;
-        }
-    }
-
-    if e == crate::app_model::ConnectErrorKind::AuthFailed
-        && matches!(state.model.draft.auth, crate::session::AuthMethod::Password)
-    {
-        state.quick_connect_flow = QuickConnectFlow::NeedAuthPassword;
-        state.quick_connect_error_kind = Some(e);
-    } else {
-        state.quick_connect_flow = QuickConnectFlow::Failed;
-        state.quick_connect_error_kind = Some(e);
-    }
-
-    let fail = state.model.i18n.tr("iced.term.connection_failed");
-    let reason = format!("[rustssh] Reason: {:?}", e);
-    state
-        .active_pane_mut()
-        .terminal
-        .inject_local_lines(&[fail, &reason]);
-
-    // Host key policy branching.
-    handle_host_key_error(state, &e);
-}
-
-/// Handle host key related errors.
-fn handle_host_key_error(state: &mut IcedState, e: &crate::app_model::ConnectErrorKind) {
-    if matches!(
-        e,
-        crate::app_model::ConnectErrorKind::HostKeyUnknown
-            | crate::app_model::ConnectErrorKind::HostKeyChanged
-    ) {
-        if let Some(info) = state.model.draft.host_key_error.clone() {
-            match state.model.settings.security.host_key_policy {
-                crate::settings::HostKeyPolicy::AcceptNew
-                    if e == &crate::app_model::ConnectErrorKind::HostKeyUnknown =>
-                {
-                    state
-                        .model
-                        .settings
-                        .security
-                        .known_hosts
-                        .retain(|r| !(r.host == info.host && r.port == info.port));
-                    state.model.settings.security.known_hosts.push(
-                        crate::settings::KnownHostRecord {
-                            host: info.host.clone(),
-                            port: info.port,
-                            algo: info.algo.clone(),
-                            fingerprint: info.fingerprint.clone(),
-                            added_ms: crate::settings::unix_time_ms(),
-                        },
-                    );
-                    let _ = state.model.settings.save();
-                    state.host_key_prompt = None;
-                    // Retry connection
-                    state.quick_connect_flow = QuickConnectFlow::Connecting;
-                    drop(state.model.draft.host_key_error.take());
-                    // Re-enter connection flow
-                    // Note: This creates a recursive call pattern handled by the update loop
-                }
-                crate::settings::HostKeyPolicy::Ask => {
-                    state.host_key_prompt = Some(super::super::state::HostKeyPromptState { info });
-                    state.quick_connect_open = false;
-                }
-                _ => {}
-            }
-        }
-    }
-}
-
 /// Handle HostKeyAcceptOnce message.
 pub(crate) fn handle_host_key_accept_once(state: &mut IcedState) -> Task<Message> {
     let Some(p) = state.host_key_prompt.take() else {
         return Task::none();
     };
     let info = p.info;
-    state
-        .runtime_known_hosts
-        .retain(|r| !(r.host == info.host && r.port == info.port));
-    state
-        .runtime_known_hosts
-        .push(crate::settings::KnownHostRecord {
-            host: info.host,
-            port: info.port,
-            algo: info.algo,
-            fingerprint: info.fingerprint,
-            added_ms: crate::settings::unix_time_ms(),
-        });
+    state.runtime_known_hosts.retain(|r| !(r.host == info.host && r.port == info.port));
+    state.runtime_known_hosts.push(crate::settings::KnownHostRecord {
+        host: info.host,
+        port: info.port,
+        algo: info.algo,
+        fingerprint: info.fingerprint,
+        added_ms: crate::settings::unix_time_ms(),
+    });
     super::super::update::update(state, Message::ConnectPressed)
 }
 
@@ -476,24 +396,14 @@ pub(crate) fn handle_host_key_always_trust(state: &mut IcedState) -> Task<Messag
         return Task::none();
     };
     let info = p.info;
-    state
-        .model
-        .settings
-        .security
-        .known_hosts
-        .retain(|r| !(r.host == info.host && r.port == info.port));
-    state
-        .model
-        .settings
-        .security
-        .known_hosts
-        .push(crate::settings::KnownHostRecord {
-            host: info.host,
-            port: info.port,
-            algo: info.algo,
-            fingerprint: info.fingerprint,
-            added_ms: crate::settings::unix_time_ms(),
-        });
+    state.model.settings.security.known_hosts.retain(|r| !(r.host == info.host && r.port == info.port));
+    state.model.settings.security.known_hosts.push(crate::settings::KnownHostRecord {
+        host: info.host,
+        port: info.port,
+        algo: info.algo,
+        fingerprint: info.fingerprint,
+        added_ms: crate::settings::unix_time_ms(),
+    });
     let _ = state.model.settings.save();
     super::super::update::update(state, Message::ConnectPressed)
 }
@@ -516,7 +426,6 @@ pub(crate) fn handle_profile_connect(
     state: &mut IcedState,
     profile: crate::session::SessionProfile,
 ) -> Task<Message> {
-    // Vault check.
     let needs_vault = match &profile.transport {
         crate::session::TransportConfig::Ssh(ssh) => ssh.credential_id.is_some(),
         _ => false,
@@ -534,17 +443,13 @@ pub(crate) fn handle_profile_connect(
     }
 
     let master = state.model.vault_master_password.clone();
-    match state
-        .model
-        .fill_draft_from_profile(&profile, master.as_ref())
-    {
+    match state.model.fill_draft_from_profile(&profile, master.as_ref()) {
         Ok(()) => {
             let mut can_auto_connect = false;
             if let crate::session::TransportConfig::Ssh(_ssh) = &profile.transport {
                 match &state.model.draft.auth {
                     crate::session::AuthMethod::Password => {
-                        can_auto_connect =
-                            !state.model.draft.password.expose_secret().trim().is_empty();
+                        can_auto_connect = !state.model.draft.password.expose_secret().trim().is_empty();
                     }
                     crate::session::AuthMethod::Key { private_key_path } => {
                         can_auto_connect = !private_key_path.trim().is_empty();
@@ -594,8 +499,7 @@ pub(crate) fn handle_interactive_submit(state: &mut IcedState) -> Task<Message> 
                     let session: Box<dyn AsyncSession> = Box::new(ssh_sess);
                     let host = state.model.draft.host.trim().to_string();
                     let user = state.model.draft.user.trim().to_string();
-                    let port: u16 = state.model.draft.port.trim().parse().unwrap_or(22);
-                    let label = format!("{user}@{host}:{port}");
+                    let label = format!("{user}@{host}");
                     let profile_id = state.model.selected_session_id.clone();
                     let recent = state
                         .model
@@ -608,8 +512,7 @@ pub(crate) fn handle_interactive_submit(state: &mut IcedState) -> Task<Message> 
                 }
                 Err(_e) => {
                     state.quick_connect_flow = QuickConnectFlow::Failed;
-                    state.quick_connect_error_kind =
-                        Some(crate::app_model::ConnectErrorKind::Unknown);
+                    state.quick_connect_error_kind = Some(crate::app_model::ConnectErrorKind::Unknown);
                 }
             }
         }

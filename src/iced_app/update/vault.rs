@@ -265,9 +265,7 @@ pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message>
                             transport: crate::session::TransportConfig::Ssh(ssh),
                             ..existing
                         };
-                        let _ = state
-                            .rt
-                            .block_on(state.model.session_manager.upsert_session(updated));
+                        let _ = state.rt.block_on(state.model.session_manager.upsert_session(updated));
                     }
                 }
             }

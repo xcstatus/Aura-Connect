@@ -306,9 +306,7 @@ pub(crate) fn handle_session_editor_save(state: &mut IcedState) -> Task<Message>
         }),
     };
 
-    let res = state
-        .rt
-        .block_on(state.model.session_manager.upsert_session(profile));
+    let res = state.rt.block_on(state.model.session_manager.upsert_session(profile));
 
     state.model.status = match res {
         Ok(()) => "Session saved".to_string(),
@@ -348,9 +346,7 @@ pub(crate) fn handle_delete_session(state: &mut IcedState, id: String) -> Task<M
         state.model.vault_master_password.is_some(),
     );
 
-    let res = state
-        .rt
-        .block_on(state.model.session_manager.delete_session(&id));
+    let res = state.rt.block_on(state.model.session_manager.delete_session(&id));
 
     state.model.status = match res {
         Ok(()) => vault_cleanup_err.unwrap_or_else(|| {

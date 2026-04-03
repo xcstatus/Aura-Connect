@@ -43,7 +43,8 @@ pub(crate) enum SettingsField {
     SingleSharedSession(bool),
 }
 
-#[derive(Debug, Clone)]
+/// Message type - manually implement Debug since AsyncSession doesn't implement it.
+#[derive(Clone)]
 pub(crate) enum Message {
     Tick,
     /// 主窗口尺寸（逻辑像素），用于判断标签条是否横向溢出。
@@ -59,7 +60,7 @@ pub(crate) enum Message {
     QuickConnectBackToList,
     /// 快速连接：搜索已保存会话 / 输入直连字符串。
     QuickConnectQueryChanged(String),
-    /// 快速连接：对当前输入执行“直连”动作（填入 Draft 并进入表单/或触发连接）。
+    /// 快速连接：对当前输入执行"直连"动作（填入 Draft 并进入表单/或触发连接）。
     QuickConnectDirectSubmit,
     /// 点击「最近」条目：已保存则直连；否则填入草稿并打开表单。
     QuickConnectPickRecent(crate::settings::RecentConnectionRecord),
@@ -138,4 +139,83 @@ pub(crate) enum Message {
     /// Ack for clipboard write task (copy).
     ClipboardWriteDone,
     SaveSettings,
+}
+
+impl std::fmt::Debug for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Message::Tick => write!(f, "Message::Tick"),
+            Message::WindowResized(size) => write!(f, "Message::WindowResized({:?})", size),
+            Message::EventOccurred(_) => write!(f, "Message::EventOccurred(...)"),
+            Message::TopAddTab => write!(f, "Message::TopAddTab"),
+            Message::TopQuickConnect => write!(f, "Message::TopQuickConnect"),
+            Message::QuickConnectDismiss => write!(f, "Message::QuickConnectDismiss"),
+            Message::QuickConnectNewConnection => write!(f, "Message::QuickConnectNewConnection"),
+            Message::QuickConnectBackToList => write!(f, "Message::QuickConnectBackToList"),
+            Message::QuickConnectQueryChanged(q) => write!(f, "Message::QuickConnectQueryChanged({})", q),
+            Message::QuickConnectDirectSubmit => write!(f, "Message::QuickConnectDirectSubmit"),
+            Message::QuickConnectPickRecent(rec) => write!(f, "Message::QuickConnectPickRecent({:?})", rec),
+            Message::TopOpenSettings => write!(f, "Message::TopOpenSettings"),
+            Message::SettingsDismiss => write!(f, "Message::SettingsDismiss"),
+            Message::SettingsCategoryChanged(cat) => write!(f, "Message::SettingsCategoryChanged({:?})", cat),
+            Message::SettingsSubTabChanged(i) => write!(f, "Message::SettingsSubTabChanged({})", i),
+            Message::SettingsFieldChanged(field) => write!(f, "Message::SettingsFieldChanged({:?})", field),
+            Message::BiometricsToggle(v) => write!(f, "Message::BiometricsToggle({})", v),
+            Message::SettingsRestartAcknowledged => write!(f, "Message::SettingsRestartAcknowledged"),
+            Message::VaultOpen => write!(f, "Message::VaultOpen"),
+            Message::VaultClose => write!(f, "Message::VaultClose"),
+            Message::VaultOldPasswordChanged(_) => write!(f, "Message::VaultOldPasswordChanged(...)"),
+            Message::VaultNewPasswordChanged(_) => write!(f, "Message::VaultNewPasswordChanged(...)"),
+            Message::VaultConfirmPasswordChanged(_) => write!(f, "Message::VaultConfirmPasswordChanged(...)"),
+            Message::VaultSubmit => write!(f, "Message::VaultSubmit"),
+            Message::DeleteSessionProfile(id) => write!(f, "Message::DeleteSessionProfile({})", id),
+            Message::OpenSessionEditor(id) => write!(f, "Message::OpenSessionEditor({:?})", id),
+            Message::SessionEditorClose => write!(f, "Message::SessionEditorClose"),
+            Message::SessionEditorHostChanged(v) => write!(f, "Message::SessionEditorHostChanged({})", v),
+            Message::SessionEditorPortChanged(v) => write!(f, "Message::SessionEditorPortChanged({})", v),
+            Message::SessionEditorUserChanged(v) => write!(f, "Message::SessionEditorUserChanged({})", v),
+            Message::SessionEditorAuthChanged(a) => write!(f, "Message::SessionEditorAuthChanged({:?})", a),
+            Message::SessionEditorPasswordChanged(_) => write!(f, "Message::SessionEditorPasswordChanged(...)"),
+            Message::SessionEditorClearPasswordToggled(v) => write!(f, "Message::SessionEditorClearPasswordToggled({})", v),
+            Message::SessionEditorSave => write!(f, "Message::SessionEditorSave"),
+            Message::TabSelected(i) => write!(f, "Message::TabSelected({})", i),
+            Message::TabClose(i) => write!(f, "Message::TabClose({})", i),
+            Message::TabChipHover(i) => write!(f, "Message::TabChipHover({:?})", i),
+            Message::TabStripWheel(_) => write!(f, "Message::TabStripWheel(...)"),
+            #[cfg(not(target_os = "macos"))]
+            Message::WinClose => write!(f, "Message::WinClose"),
+            #[cfg(not(target_os = "macos"))]
+            Message::WinMinimize => write!(f, "Message::WinMinimize"),
+            #[cfg(not(target_os = "macos"))]
+            Message::WinToggleMaximize => write!(f, "Message::WinToggleMaximize"),
+            Message::HostChanged(v) => write!(f, "Message::HostChanged({})", v),
+            Message::PortChanged(v) => write!(f, "Message::PortChanged({})", v),
+            Message::UserChanged(v) => write!(f, "Message::UserChanged({})", v),
+            Message::PasswordChanged(_) => write!(f, "Message::PasswordChanged(...)"),
+            Message::QuickConnectAuthChanged(a) => write!(f, "Message::QuickConnectAuthChanged({:?})", a),
+            Message::QuickConnectKeyPathChanged(v) => write!(f, "Message::QuickConnectKeyPathChanged({})", v),
+            Message::QuickConnectPassphraseChanged(_) => write!(f, "Message::QuickConnectPassphraseChanged(...)"),
+            Message::ConnectPressed => write!(f, "Message::ConnectPressed"),
+            Message::QuickConnectInteractiveAnswerChanged(i, v) => write!(f, "Message::QuickConnectInteractiveAnswerChanged({}, {})", i, v),
+            Message::QuickConnectInteractiveSubmit => write!(f, "Message::QuickConnectInteractiveSubmit"),
+            Message::HostKeyAcceptOnce => write!(f, "Message::HostKeyAcceptOnce"),
+            Message::HostKeyAlwaysTrust => write!(f, "Message::HostKeyAlwaysTrust"),
+            Message::HostKeyReject => write!(f, "Message::HostKeyReject"),
+            Message::AutoProbeConsentOpen => write!(f, "Message::AutoProbeConsentOpen"),
+            Message::AutoProbeConsentAllowOnce => write!(f, "Message::AutoProbeConsentAllowOnce"),
+            Message::AutoProbeConsentAlwaysAllow => write!(f, "Message::AutoProbeConsentAlwaysAllow"),
+            Message::AutoProbeConsentUsePassword => write!(f, "Message::AutoProbeConsentUsePassword"),
+            Message::DisconnectPressed => write!(f, "Message::DisconnectPressed"),
+            Message::ProfileConnect(p) => write!(f, "Message::ProfileConnect({:?})", p.name),
+            Message::VaultUnlockOpenConnect(_) => write!(f, "Message::VaultUnlockOpenConnect(...)"),
+            Message::VaultUnlockOpenDelete(id) => write!(f, "Message::VaultUnlockOpenDelete({})", id),
+            Message::VaultUnlockOpenSaveSession => write!(f, "Message::VaultUnlockOpenSaveSession"),
+            Message::VaultUnlockClose => write!(f, "Message::VaultUnlockClose"),
+            Message::VaultUnlockPasswordChanged(_) => write!(f, "Message::VaultUnlockPasswordChanged(...)"),
+            Message::VaultUnlockSubmit => write!(f, "Message::VaultUnlockSubmit"),
+            Message::ClipboardPaste(t) => write!(f, "Message::ClipboardPaste({:?})", t.as_ref().map(|_| "...")),
+            Message::ClipboardWriteDone => write!(f, "Message::ClipboardWriteDone"),
+            Message::SaveSettings => write!(f, "Message::SaveSettings"),
+        }
+    }
 }

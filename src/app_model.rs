@@ -224,7 +224,7 @@ impl AppModel {
         self.i18n.set_locale(Locale::from_language_code(code));
     }
 
-    fn classify_connect_error(e: &anyhow::Error) -> ConnectErrorKind {
+    pub(crate) fn classify_connect_error(e: &anyhow::Error) -> ConnectErrorKind {
         if let Some(se) = e.downcast_ref::<crate::backend::ssh_session::SshConnectError>() {
             return match se {
                 crate::backend::ssh_session::SshConnectError::AuthFailed => {
