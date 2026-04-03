@@ -1,9 +1,22 @@
 //! Styled terminal viewport: libghostty [`VtStyledRow`] → Iced `rich_text` / `span`.
+//!
+//! ## Dirty Row Optimization
+//!
+//! Each visible row is cached keyed by `(row_index, generation)` where `generation`
+//! is `TerminalController::styled_row_generation(row)`. When the generation hasn't
+//! changed since the last frame, the cached Iced `Element` is reused directly.
+//! This avoids reconstructing widget trees for rows that haven't changed, which
+//! is the dominant cost in high-throughput terminal output (e.g. `cat largefile`).
+//!
+//! The cache is invalidated automatically whenever the controller bumps a row's
+//! generation (on VT output, scroll, resize, refresh). No manual invalidation needed.
+
+use std::cell::RefCell;
+use std::sync::Arc;
 
 use crate::backend::ghostty_vt::ffi;
 use crate::backend::ghostty_vt::{CursorState, VtStyledCell, VtStyledRow, VtStyledRun};
-use crate::settings::{TerminalPlainTextUpdate, TerminalRenderMode};
-use crate::terminal_core::{ScrollState, StyledFragment};
+use crate::terminal_core::{ScrollState, StyledFragment, TerminalController};
 use crate::theme::layout::{SCROLLBAR_WIDTH, TERMINAL_SCROLLBAR_OVERLAY_PAD_RIGHT};
 use iced::font::{self, Font};
 use iced::widget::{column, rich_text, scrollable, span, text, Row};
@@ -18,6 +31,79 @@ use super::message::Message;
 use super::state::IcedState;
 use super::terminal_viewport;
 use super::engine_adapter::EngineAdapter;
+
+/// Per-row Iced widget cache entry: cached fragments and the `generation` it was built for.
+///
+/// When `generation` matches `TerminalController::styled_row_generation(row)`, the
+/// cached fragments are still valid. Storing fragments (not built widgets) avoids
+/// cloning `Element` which does not implement `Clone`.
+#[derive(Clone)]
+struct RowCacheEntry {
+    fragments: Arc<[StyledFragment]>,
+    generation: u64,
+}
+
+/// Generation-tracked row widget cache.
+///
+/// Grows lazily to `viewport_rows` on first use and stays resident across frames.
+/// Each slot holds the cached `Element` for one row and the generation it was built for.
+pub(crate) struct RowWidgetCache {
+    entries: RefCell<Vec<Option<RowCacheEntry>>>,
+}
+
+impl RowWidgetCache {
+    pub(crate) fn new() -> Self {
+        Self { entries: RefCell::new(Vec::new()) }
+    }
+
+    /// Ensure the cache has at least `n` slots, filling with `None` if needed.
+    pub(crate) fn ensure_capacity(&self, n: usize) {
+        let mut entries = self.entries.borrow_mut();
+        while entries.len() < n {
+            entries.push(None);
+        }
+    }
+
+    /// Return cached fragments for `row` if generation matches.
+    /// Implies RefCell borrow (read-only).
+    pub(crate) fn get(&self, row: usize, generation: u64) -> Option<Arc<[StyledFragment]>> {
+        let entries = self.entries.borrow();
+        entries.get(row).and_then(|e| {
+            e.as_ref().and_then(|entry| {
+                if entry.generation == generation {
+                    Some(Arc::clone(&entry.fragments))
+                } else {
+                    None
+                }
+            })
+        })
+    }
+
+    /// Store fragments for `row` at the given `generation`.
+    /// Grows capacity if needed. Implies RefCell borrow (write).
+    pub(crate) fn set(&self, row: usize, generation: u64, fragments: Arc<[StyledFragment]>) {
+        self.ensure_capacity(row + 1);
+        let mut entries = self.entries.borrow_mut();
+        entries[row] = Some(RowCacheEntry {
+            fragments: Arc::clone(&fragments),
+            generation,
+        });
+    }
+
+    /// Invalidate all entries (e.g. on resize or render mode change).
+    pub(crate) fn clear(&self) {
+        let mut entries = self.entries.borrow_mut();
+        for entry in entries.iter_mut() {
+            *entry = None;
+        }
+    }
+}
+
+impl Default for RowWidgetCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Iced font for terminal body (pick-list names map to `Font::with_name`; unknown → monospace).
 /// Lock each VT row to exactly `line_px` tall so Iced layout matches PTY `ch` (see hit-test in
@@ -37,12 +123,12 @@ const SELECTION_CELL_FILL: Color = Color::from_rgba(60.0 / 255.0, 120.0 / 255.0,
 
 /// Fixed-size terminal cell; `fill` paints the **entire** `cell_w × line_h` (used for selection).
 #[inline]
-fn fixed_width_cell<'a>(
-    inner: Element<'a, Message>,
+fn fixed_width_cell<'i>(
+    inner: Element<'i, Message>,
     cell_w: f32,
     line_h: f32,
     fill: Option<Color>,
-) -> Element<'a, Message> {
+) -> Element<'i, Message> {
     let mut c = container(inner)
         .width(Length::Fixed(cell_w))
         .height(Length::Fixed(line_h))
@@ -112,15 +198,15 @@ fn cell_from_run<'a>(
 }
 
 #[inline]
-fn terminal_grid_cell_from_fragment<'a>(
-    frag: &'a StyledFragment,
+fn terminal_grid_cell_from_fragment(
+    frag: &StyledFragment,
     font_px: f32,
     line_px: iced::Pixels,
     base_font: Font,
     cell_w: f32,
-) -> Element<'a, Message> {
+) -> Element<'static, Message> {
     let line_h = line_px.0;
-    let piece = if frag.text.is_empty() { " " } else { frag.text.as_str() };
+    let piece_owned = if frag.text.is_empty() { " ".to_string() } else { frag.text.clone() };
     let mut fg = ghost_rgb(&frag.fg);
     if frag.dim {
         fg = fg.scale_alpha(0.72);
@@ -129,11 +215,22 @@ fn terminal_grid_cell_from_fragment<'a>(
         fg = fg.scale_alpha(0.0);
     }
 
-    let inner: Element<'a, Message> = if frag.underline || frag.strikethrough {
-        let s = span_from_fragment_cached(frag, font_px, base_font);
+    let inner: Element<'static, Message> = if frag.underline || frag.strikethrough {
+        let s = {
+            let mut s = span(piece_owned.clone())
+                .color(fg)
+                .size(font_px)
+                .font(frag_font(frag, base_font))
+                .underline(frag.underline)
+                .strikethrough(frag.strikethrough);
+            if frag.has_bg {
+                s = s.background(iced::Background::Color(ghost_rgb(&frag.bg)));
+            }
+            s
+        };
         rich_text_single(s, base_font, font_px, line_px)
     } else {
-        text(piece)
+        text(piece_owned)
             .size(font_px)
             .font(frag_font(frag, base_font))
             .line_height(LineHeight::Absolute(line_px))
@@ -186,7 +283,7 @@ fn cell_selected<'a>(
     fixed_width_cell(inner, cell_w, line_h, Some(SELECTION_CELL_FILL))
 }
 
-fn iced_terminal_font(t: &crate::settings::TerminalSettings) -> Font {
+pub(crate) fn iced_terminal_font(t: &crate::settings::TerminalSettings) -> Font {
     if !t.apply_terminal_metrics {
         return Font::MONOSPACE;
     }
@@ -199,36 +296,40 @@ fn iced_terminal_font(t: &crate::settings::TerminalSettings) -> Font {
 }
 
 pub(crate) fn terminal_main_area<'a>(state: &'a IcedState) -> Element<'a, Message> {
-    let engine = EngineAdapter::active(state);
-    let spec = terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal);
+    let spec = {
+        let _engine = EngineAdapter::active(state);
+        terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal)
+    };
     let font_px = spec.term_font_px;
     let line_px = iced::Pixels(spec.term_cell_h().max(1.0));
     let base_font = iced_terminal_font(&state.model.settings.terminal);
-    let (cols, _) = engine.grid_size();
+    let (cols, _) = {
+        let engine = EngineAdapter::active(state);
+        engine.grid_size()
+    };
     let (_, cell_w_hit) =
         terminal_viewport::terminal_scroll_cell_geometry(state.window_size, &spec, cols);
-    let selection = engine.selection();
-    let scroll = engine.scroll();
-    let in_scrollback = engine.is_in_scrollback();
-    match state.model.settings.terminal.terminal_render_mode {
-        TerminalRenderMode::Plain => terminal_with_scrollbar(
-            plain_terminal(state, font_px, line_px, base_font),
-            scroll,
-            in_scrollback,
+    let (selection, scroll, in_scrollback) = {
+        let engine = EngineAdapter::active(state);
+        (engine.selection(), engine.scroll(), engine.is_in_scrollback())
+    };
+    let tick_count = state.tick_count;
+    let terminal = &*state.active_terminal();
+    let cache = &state.tab_panes[state.active_tab].styled_row_cache;
+    terminal_with_scrollbar(
+        styled_terminal(
+            terminal,
+            cache,
+            selection,
+            font_px,
+            line_px,
+            base_font,
+            cell_w_hit,
+            tick_count,
         ),
-        TerminalRenderMode::Styled => terminal_with_scrollbar(
-            styled_terminal(
-                state,
-                selection,
-                font_px,
-                line_px,
-                base_font,
-                cell_w_hit,
-            ),
-            scroll,
-            in_scrollback,
-        ),
-    }
+        scroll,
+        in_scrollback,
+    )
 }
 
 fn terminal_with_scrollbar<'a>(
@@ -306,48 +407,19 @@ fn terminal_scrollback_badge<'a>() -> Element<'a, Message> {
         .into()
 }
 
-fn plain_terminal<'a>(
-    state: &'a IcedState,
-    font_px: f32,
-    line_px: iced::Pixels,
-    base_font: Font,
-) -> Element<'a, Message> {
-    match state.model.settings.terminal.plain_text_update {
-        TerminalPlainTextUpdate::Incremental => scrollable(
-            iced::widget::text(state.active_terminal().plain_text_for_view())
-                .size(font_px)
-                .font(base_font)
-                .line_height(LineHeight::Absolute(line_px)),
-        )
-        .direction(ScrollDirection::Vertical(Scrollbar::hidden()))
-        .height(Length::Fill)
-        .into(),
-        TerminalPlainTextUpdate::Full => {
-            let terminal_text = state.active_terminal().lines().join("\n");
-            scrollable(
-                iced::widget::text(terminal_text)
-                    .size(font_px)
-                    .font(base_font)
-                    .line_height(LineHeight::Absolute(line_px)),
-            )
-            .direction(ScrollDirection::Vertical(Scrollbar::hidden()))
-            .height(Length::Fill)
-            .into()
-        }
-    }
-}
-
-fn styled_terminal<'a>(
-    state: &'a IcedState,
+pub(crate) fn styled_terminal<'a>(
+    terminal: &'a TerminalController,
+    cache: &'a RowWidgetCache,
     selection: Option<((u16, u16), (u16, u16))>,
     font_px: f32,
     line_px: iced::Pixels,
     base_font: Font,
     cell_w: f32,
+    tick_count: u64,
 ) -> Element<'a, Message> {
-    let rows = state.active_terminal().styled_rows();
-    let cursor = state.active_terminal().cursor_snapshot();
-    let blink_on = cursor_blink_on(state, cursor);
+    let rows = terminal.styled_rows();
+    let cursor = terminal.cursor_snapshot();
+    let blink_on = cursor_blink_on(tick_count, cursor);
     let mut col = column![].spacing(0).width(Length::Fill);
     for (y, row) in rows.iter().enumerate() {
         if selection.is_some() {
@@ -389,12 +461,21 @@ fn styled_terminal<'a>(
             continue;
         }
 
-        // Fast path: use core-maintained fragments (updated only on dirty rows).
-        let frags = state.active_terminal().styled_row_fragments(y);
-        col = col.push(fixed_terminal_row(
-            line_px,
-            styled_row_line_from_fragments(frags, font_px, line_px, base_font, cell_w),
-        ));
+        // Fast path: use cache + generation to skip unchanged rows.
+        let row_gen = terminal.styled_row_generation(y);
+        if let Some(frags) = cache.get(y, row_gen) {
+            // Cache hit: reuse the cached fragments (cheap Arc clone, no Element cloning).
+            let el = styled_row_line_from_fragments(frags, font_px, line_px, base_font, cell_w);
+            col = col.push(fixed_terminal_row(line_px, el));
+            continue;
+        }
+
+        // Cache miss or stale: fetch fresh fragments and cache them.
+        let frags_owned = terminal.styled_row_fragments(y);
+        let frags_arc: Arc<[StyledFragment]> = frags_owned.to_vec().into_boxed_slice().into();
+        cache.set(y, row_gen, Arc::clone(&frags_arc));
+        let el = styled_row_line_from_fragments(frags_arc, font_px, line_px, base_font, cell_w);
+        col = col.push(fixed_terminal_row(line_px, el));
     }
     scrollable(col)
         .direction(ScrollDirection::Vertical(Scrollbar::hidden()))
@@ -402,14 +483,14 @@ fn styled_terminal<'a>(
         .into()
 }
 
-fn cursor_blink_on(state: &IcedState, cursor: Option<&CursorState>) -> bool {
+fn cursor_blink_on(tick_count: u64, cursor: Option<&CursorState>) -> bool {
     let Some(c) = cursor else {
         return true;
     };
     if !c.blinking {
         return true;
     }
-    (state.tick_count / 32) % 2 == 0
+    (tick_count / 32) % 2 == 0
 }
 
 fn ghost_rgb(c: &ffi::GhosttyColorRgb) -> Color {
@@ -438,11 +519,11 @@ fn frag_font(f: &StyledFragment, base: Font) -> Font {
     }
 }
 
-fn span_from_fragment_cached<'a>(
+fn span_from_fragment_cached(
     frag: &StyledFragment,
     font_px: f32,
     base_font: Font,
-) -> Span<'a, (), Font> {
+) -> Span<'static, (), Font> {
     let piece = if frag.text.is_empty() { " ".to_string() } else { frag.text.clone() };
     let mut fg = ghost_rgb(&frag.fg);
     if frag.dim {
@@ -463,15 +544,15 @@ fn span_from_fragment_cached<'a>(
     s
 }
 
-fn styled_row_line_from_fragments<'a>(
-    frags: &'a [StyledFragment],
+fn styled_row_line_from_fragments(
+    frags: Arc<[StyledFragment]>,
     font_px: f32,
     line_px: iced::Pixels,
     base_font: Font,
     cell_w: f32,
-) -> Element<'a, Message> {
+) -> Element<'static, Message> {
     if frags.is_empty() {
-        let el: Element<'a, Message> = text(" ")
+        let el: Element<'static, Message> = text(" ")
             .size(font_px)
             .font(base_font)
             .line_height(LineHeight::Absolute(line_px))
@@ -480,10 +561,10 @@ fn styled_row_line_from_fragments<'a>(
             .spacing(0.0)
             .into();
     }
-    let mut children: Vec<Element<'a, Message>> = Vec::with_capacity(frags.len());
-    for f in frags {
-        children.push(terminal_grid_cell_from_fragment(f, font_px, line_px, base_font, cell_w));
-    }
+    let children: Vec<Element<'static, Message>> = frags
+        .iter()
+        .map(|f| terminal_grid_cell_from_fragment(f, font_px, line_px, base_font, cell_w))
+        .collect();
     Row::with_children(children).spacing(0.0).clip(true).into()
 }
 
