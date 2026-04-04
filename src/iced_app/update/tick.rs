@@ -8,6 +8,23 @@ use super::super::state::IcedState;
 /// Slow tick threshold: ticks taking longer than this are logged as warnings.
 const SLOW_TICK_NS: u64 = 5_000_000; // 5ms
 
+/// Compute dynamic tick interval (ms) — must match the logic in `subscription.rs`.
+fn compute_tick_ms(state: &IcedState) -> u32 {
+    use crate::settings;
+    let now = settings::unix_time_ms();
+    let idle_ms = now.saturating_sub(state.last_activity_ms).max(0) as u64;
+    let target_fps = state.model.settings.terminal.target_fps.clamp(10, 240);
+    if !state.window_focused {
+        250
+    } else if idle_ms <= 1_000 {
+        (1000 / target_fps).max(16)
+    } else if idle_ms <= 5_000 {
+        (1000 / target_fps.min(30)).max(33)
+    } else {
+        (1000 / target_fps.min(10)).max(100)
+    }
+}
+
 /// Handle Tick message: pump SSH sessions, update perf counters, cursor blink.
 pub(crate) fn handle_tick(state: &mut IcedState) -> Task<Message> {
     let now = settings::unix_time_ms();
@@ -18,6 +35,10 @@ pub(crate) fn handle_tick(state: &mut IcedState) -> Task<Message> {
 
     // Ensure tab arrays match current tab count (grows with new tabs).
     state.perf.ensure_tabs(state.tab_panes.len());
+
+    let tick_ms = compute_tick_ms(state) as f32;
+    state.tick_tab_anims(tick_ms);
+    state.tick_modal_anims(tick_ms);
 
     let bg_pump_every_ms: i64 = if state.window_focused { 200 } else { 250 };
     pump_all_sessions(state, now, bg_pump_every_ms);

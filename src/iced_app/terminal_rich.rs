@@ -23,8 +23,7 @@ use iced::font::{self, Font};
 use iced::widget::scrollable::{Direction as ScrollDirection, Scrollbar};
 use iced::widget::text::LineHeight;
 use iced::widget::text::Span;
-use iced::widget::{Row, column, rich_text, scrollable, span, text};
-use iced::widget::{Space, Stack, container, row};
+use iced::widget::{Row, column, container, mouse_area, rich_text, row, scrollable, span, text, Space, Stack};
 use iced::{Color, Element, Length, Padding, Theme};
 
 use super::engine_adapter::EngineAdapter;
@@ -347,6 +346,8 @@ pub(crate) fn terminal_main_area<'a>(state: &'a IcedState) -> Element<'a, Messag
         )
     };
     let tick_count = state.tick_count;
+    let tick_ms = state.tick_ms();
+    let scrollbar_alpha = state.scrollbar_alpha(tick_ms);
     let terminal = &*state.active_terminal();
     let cache = &state.tab_panes[state.active_tab].styled_row_cache;
     terminal_with_scrollbar(
@@ -355,6 +356,7 @@ pub(crate) fn terminal_main_area<'a>(state: &'a IcedState) -> Element<'a, Messag
         ),
         scroll,
         in_scrollback,
+        scrollbar_alpha,
     )
 }
 
@@ -362,26 +364,33 @@ fn terminal_with_scrollbar<'a>(
     body: Element<'a, Message>,
     scroll: ScrollState,
     in_scrollback: bool,
+    scrollbar_track_alpha: f32,
 ) -> Element<'a, Message> {
-    let scrollbar = terminal_scrollbar_overlay(scroll);
+    let scrollbar = terminal_scrollbar_overlay(scroll, scrollbar_track_alpha);
+    // Wrap scrollbar in mouse_area to track hover for alpha animation.
+    let scrollbar_with_hover = mouse_area(scrollbar)
+        .on_enter(Message::ScrollbarHover(true))
+        .on_exit(Message::ScrollbarHover(false));
     let badge = if in_scrollback {
         terminal_scrollback_badge().into()
     } else {
         Space::new().into()
     };
-    Stack::with_children([body, scrollbar, badge])
+    Stack::with_children([body, scrollbar_with_hover.into(), badge])
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
 }
 
-fn terminal_scrollbar_overlay<'a>(scroll: ScrollState) -> Element<'a, Message> {
+fn terminal_scrollbar_overlay<'a>(scroll: ScrollState, track_alpha: f32) -> Element<'a, Message> {
     let total = scroll.total_rows.max(1);
     let viewport = scroll.viewport_rows.max(1).min(total);
     let max_off = total.saturating_sub(viewport).max(1);
     let off = scroll.offset_rows.min(max_off);
     let thumb_ratio = (viewport as f32 / total as f32).clamp(0.02, 1.0);
     let offset_ratio = (off as f32 / max_off as f32).clamp(0.0, 1.0);
+
+    let thumb_alpha = 0.25_f32;
 
     // Use fixed pixel sizes; this is purely a visual affordance.
     let track_h = 220.0_f32;
@@ -413,13 +422,13 @@ fn terminal_scrollbar_overlay<'a>(scroll: ScrollState) -> Element<'a, Message> {
     )
     .width(Length::Fixed(SCROLLBAR_WIDTH))
     .height(Length::Fixed(track_h))
-    .style(|theme: &Theme| {
+    .style(move |theme: &Theme| {
         let c = theme
             .extended_palette()
             .background
             .base
             .text
-            .scale_alpha(0.08);
+            .scale_alpha(track_alpha);
         container::Style::default().background(iced::Background::Color(c))
     })
     .padding(0);
@@ -464,27 +473,27 @@ pub(crate) fn styled_terminal<'a>(
 ) -> Element<'a, Message> {
     let rows = terminal.styled_rows();
     let cursor = terminal.cursor_snapshot();
-    let blink_on = cursor_blink_on(tick_count, cursor);
+    let cursor_alpha = cursor_alpha(tick_count, cursor);
     let mut col = column![].spacing(0).width(Length::Fill);
     for (y, row) in rows.iter().enumerate() {
         if selection.is_some() {
             col = col.push(fixed_terminal_row(
                 line_px,
                 styled_row_line(
-                    row, y, cursor, blink_on, selection, font_px, line_px, base_font, cell_w,
+                    row, y, cursor, cursor_alpha, selection, font_px, line_px, base_font, cell_w,
                 ),
             ));
             continue;
         }
 
         let cy = y as u16;
-        let cursor_on_row = blink_on && cursor.is_some_and(|c| c.visible && c.has_pos && c.y == cy);
+        let cursor_on_row = cursor.is_some_and(|c| c.visible && c.has_pos && c.y == cy);
         if cursor_on_row {
             // Cursor overlay needs cell-precise logic: keep the existing path for this row only.
             col = col.push(fixed_terminal_row(
                 line_px,
                 styled_row_line(
-                    row, y, cursor, blink_on, None, font_px, line_px, base_font, cell_w,
+                    row, y, cursor, cursor_alpha, None, font_px, line_px, base_font, cell_w,
                 ),
             ));
             continue;
@@ -512,14 +521,17 @@ pub(crate) fn styled_terminal<'a>(
         .into()
 }
 
-fn cursor_blink_on(tick_count: u64, cursor: Option<&CursorState>) -> bool {
+fn cursor_alpha(tick_count: u64, cursor: Option<&CursorState>) -> f32 {
     let Some(c) = cursor else {
-        return true;
+        return 1.0;
     };
     if !c.blinking {
-        return true;
+        return 1.0;
     }
-    (tick_count / 32) % 2 == 0
+    // sin-driven alpha: smooth oscillation with no frame jumps.
+    // Period ≈ 31 ticks. Maps [-1, 1] → [0, 1].
+    let phase = (tick_count as f32 * 0.2).sin();
+    (phase + 1.0) / 2.0
 }
 
 fn ghost_rgb(c: &ffi::GhosttyColorRgb) -> Color {
@@ -637,7 +649,7 @@ fn styled_row_line<'a>(
     row: &'a VtStyledRow,
     row_ix: usize,
     cursor: Option<&'a CursorState>,
-    blink_on: bool,
+    cursor_alpha: f32,
     selection: Option<((u16, u16), (u16, u16))>,
     font_px: f32,
     line_px: iced::Pixels,
@@ -645,7 +657,7 @@ fn styled_row_line<'a>(
     cell_w: f32,
 ) -> Element<'a, Message> {
     let cy = row_ix as u16;
-    let apply_cursor = blink_on && cursor.is_some_and(|c| c.visible && c.has_pos && c.y == cy);
+    let apply_cursor = cursor.is_some_and(|c| c.visible && c.has_pos && c.y == cy);
     let cx = cursor.map(|c| c.x).unwrap_or(0);
 
     if row.runs.is_empty() {
@@ -653,7 +665,7 @@ fn styled_row_line<'a>(
             (true, Some(cur)) => {
                 let placeholder = VtStyledRun::default();
                 rich_text_single(
-                    cursor_cell_span(" ", cur, &placeholder, font_px, base_font),
+                    cursor_cell_span(" ", cur, &placeholder, font_px, base_font, cursor_alpha),
                     base_font,
                     font_px,
                     line_px,
@@ -745,7 +757,7 @@ fn styled_row_line<'a>(
             } else {
                 mid.text.as_str()
             };
-            let sp = cursor_cell_span(mid_text, cur, run, font_px, base_font);
+            let sp = cursor_cell_span(mid_text, cur, run, font_px, base_font, cursor_alpha);
             children.push(fixed_width_cell(
                 rich_text_single(sp, base_font, font_px, line_px),
                 cell_w,
@@ -825,6 +837,7 @@ fn cursor_cell_span<'a>(
     run: &VtStyledRun,
     font_px: f32,
     base_font: Font,
+    cursor_alpha: f32,
 ) -> Span<'a, (), Font> {
     let fg = ghost_rgb(&run.fg);
     let cell_bg = if run.has_bg {
@@ -833,6 +846,8 @@ fn cursor_cell_span<'a>(
         Color::from_rgb8(10, 10, 15)
     };
     let cc = ghost_rgb(&cursor.color);
+    // Blend cursor color with alpha (smooth sin-driven blink).
+    let cc_blended = blend_alpha(cell_bg, cc, cursor_alpha);
 
     let mut s = span(if mid.is_empty() { " " } else { mid })
         .size(font_px)
@@ -845,20 +860,32 @@ fn cursor_cell_span<'a>(
             if run.dim {
                 fg_u = fg_u.scale_alpha(0.72);
             }
-            s = s.color(fg_u).underline(true);
+            // Blend cursor color into foreground for underline style.
+            let underline_color = blend_alpha(fg_u, cc, cursor_alpha);
+            s = s.color(underline_color).underline(true);
             if run.has_bg {
                 s = s.background(iced::Background::Color(ghost_rgb(&run.bg)));
             }
         }
         ffi::GhosttyRenderStateCursorVisualStyle_GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR => {
+            let bar_color = blend_alpha(Color::TRANSPARENT, cc, cursor_alpha);
             s = span("▎")
-                .color(cc)
+                .color(bar_color)
                 .size(font_px)
                 .font(base_font);
         }
         _ => {
-            s = s.color(cell_bg).background(iced::Background::Color(cc));
+            s = s.color(cell_bg).background(iced::Background::Color(cc_blended));
         }
     }
     s
+}
+
+fn blend_alpha(base: Color, overlay: Color, alpha: f32) -> Color {
+    Color {
+        r: base.r + (overlay.r - base.r) * alpha,
+        g: base.g + (overlay.g - base.g) * alpha,
+        b: base.b + (overlay.b - base.b) * alpha,
+        a: base.a.max(overlay.a * alpha),
+    }
 }

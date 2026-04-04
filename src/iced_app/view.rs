@@ -6,7 +6,7 @@ use iced::widget::{
     Space, Stack, button, checkbox, column, container, mouse_area, pick_list, row, scrollable,
     text, text_input, tooltip,
 };
-use iced::{Element, Theme};
+use iced::{Color, Element, Theme};
 
 use secrecy::ExposeSecret;
 
@@ -50,10 +50,13 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
     )
     .1;
 
+    let tick_ms = state.tick_ms();
+
     let mut tabs_row = row![].spacing(4).align_y(Alignment::Center);
     for (i, tab) in state.tabs.iter().enumerate() {
         let active = i == state.active_tab;
         let tab_label = tab.title.clone();
+        let tab_w = state.tab_animated_width(i, tick_ms);
         let select_btn = button(text(tab_label).size(11))
             .on_press(Message::TabSelected(i))
             .width(iced::Length::Fill)
@@ -93,14 +96,14 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
                             .spacing(0)
                             .align_y(Alignment::Center),
                     )
-                    .width(iced::Length::Fixed(126.0))
+                    .width(iced::Length::Fixed(tab_w))
                     .height(iced::Length::Fixed(body_h))
                     .align_y(Alignment::Center),
                 ]
                 .spacing(0),
             )
             .padding([0, 4])
-            .width(iced::Length::Fixed(134.0))
+            .width(iced::Length::Fixed(tab_w + 8.0))
             .height(iced::Length::Fixed(TOP_BAR_H)),
         )
         .on_enter(Message::TabChipHover(Some(i)))
@@ -378,10 +381,12 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
 
     let under_top_bar: Element<'_, Message> = {
         let mut layers: Vec<Element<'_, Message>> = vec![below_top_fill.into()];
-        if state.quick_connect_open {
+        // Render quick connect modal when anim phase is opening/open/closing
+        // (not yet fully closed). This allows the close animation to play.
+        if state.quick_connect_anim.phase != super::state::ModalAnimPhase::Closed {
             layers.push(quick_connect_modal_stack(state));
         }
-        if state.settings_modal_open {
+        if state.settings_anim.phase != super::state::ModalAnimPhase::Closed {
             layers.push(settings_modal::modal_stack(state));
             layers.push(session_editor_modal_stack(state));
             layers.push(vault_modal_stack(state));
@@ -846,20 +851,27 @@ fn vault_modal_stack(state: &IcedState) -> Element<'_, Message> {
 }
 
 fn modal_scrim_style(_theme: &Theme) -> container::Style {
-    container::Style::default().background(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.42))
+    container::Style::default().background(Color::from_rgba(0.0, 0.0, 0.0, 0.42))
+}
+
+fn modal_scrim_alpha(alpha: f32) -> impl Fn(&Theme) -> container::Style + 'static {
+    move |_| container::Style::default().background(Color::from_rgba(0.0, 0.0, 0.0, alpha))
 }
 
 fn quick_connect_modal_stack(state: &IcedState) -> Element<'_, Message> {
+    let tick_ms = state.tick_ms();
+    let scrim_alpha = state.quick_connect_anim_alpha(tick_ms);
     let scrim = mouse_area(
         container(
             Space::new()
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill),
         )
-        .style(modal_scrim_style),
+        .style(modal_scrim_alpha(scrim_alpha)),
     )
     .on_press(Message::QuickConnectDismiss);
 
+    let offset_y = state.quick_connect_anim_offset(tick_ms);
     let anchored = container(
         container(quick_connect_panel_content(state))
             .max_width(520.0)
@@ -870,7 +882,7 @@ fn quick_connect_modal_stack(state: &IcedState) -> Element<'_, Message> {
     .align_x(iced::alignment::Horizontal::Center)
     .align_y(iced::alignment::Vertical::Top)
     .padding(iced::Padding {
-        top: 6.0,
+        top: 6.0 - offset_y,
         right: 16.0,
         bottom: 16.0,
         left: 16.0,

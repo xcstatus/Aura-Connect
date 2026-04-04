@@ -226,6 +226,11 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
         Message::TopAddTab => session::handle_add_tab(state),
         Message::TopQuickConnect => {
             state.settings_modal_open = false;
+            if state.quick_connect_anim.phase != super::state::ModalAnimPhase::Opening
+                && state.quick_connect_anim.phase != super::state::ModalAnimPhase::Open
+            {
+                state.quick_connect_anim = super::state::ModalAnimState::opening(state.tick_count);
+            }
             state.quick_connect_open = true;
             state.quick_connect_panel = QuickConnectPanel::Picker;
             state.quick_connect_query.clear();
@@ -239,6 +244,11 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::TopOpenSettings => {
+            if state.settings_anim.phase != super::state::ModalAnimPhase::Opening
+                && state.settings_anim.phase != super::state::ModalAnimPhase::Open
+            {
+                state.settings_anim = super::state::ModalAnimState::opening(state.tick_count);
+            }
             state.quick_connect_open = false;
             state.quick_connect_panel = QuickConnectPanel::Picker;
             state.settings_modal_open = true;
@@ -247,7 +257,11 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
 
         // --- Quick connect panels ---
         Message::QuickConnectDismiss => {
-            state.quick_connect_open = false;
+            if state.quick_connect_anim.phase == super::state::ModalAnimPhase::Closed {
+                state.quick_connect_open = false;
+            } else if state.quick_connect_anim.phase != super::state::ModalAnimPhase::Closing {
+                state.quick_connect_anim = super::state::ModalAnimState::closing(state.tick_count);
+            }
             state.quick_connect_panel = QuickConnectPanel::Picker;
             state.quick_connect_flow = super::state::QuickConnectFlow::Idle;
             state.quick_connect_error_kind = None;
@@ -366,6 +380,15 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
 
         // --- Tabs ---
         Message::TabChipHover(ix) => session::handle_tab_chip_hover(state, ix),
+        Message::ScrollbarHover(hovered) => {
+            if state.scrollbar_hovered != hovered {
+                if hovered {
+                    state.scrollbar_hover_enter_tick = Some(state.tick_count);
+                }
+                state.scrollbar_hovered = hovered;
+            }
+            Task::none()
+        }
         Message::TabStripWheel(delta) => {
             let dx = tab_strip_wheel_to_offset_x(delta);
             if dx.abs() < f32::EPSILON {

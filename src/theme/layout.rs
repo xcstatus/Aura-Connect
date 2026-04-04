@@ -57,7 +57,22 @@ pub const DURATION_TAB_MS: u16 = 150;
 
 /// 点击缩放比例（规范 0.97）
 pub const SCALE_CLICK: f32 = 0.97;
+/// 悬停放大比例
+pub const SCALE_HOVER: f32 = 1.02;
+
+/// 模态弹窗打开时长（ms）
+pub const DURATION_MODAL_MS: u16 = 200;
+/// 模态弹窗关闭时长（ms）
+pub const DURATION_MODAL_CLOSE_MS: u16 = 150;
+/// 新建 Tab 展开时长（ms）
+pub const DURATION_TAB_NEW_MS: u16 = 200;
+/// 关闭 Tab 收缩时长（ms）
+pub const DURATION_TAB_CLOSE_MS: u16 = 150;
 
 /// 焦点环：2px、Accent 60% 透明（描边实现放在具体控件）
 pub const FOCUS_OUTLINE_WIDTH: f32 = 2.0;
 pub const FOCUS_OUTLINE_ALPHA: f32 = 0.6;
+
+/// 滚动条透明度常量
+pub const SCROLLBAR_HIDE_ALPHA: f32 = 0.08;
+pub const SCROLLBAR_HOVER_ALPHA: f32 = 0.25;

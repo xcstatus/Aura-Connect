@@ -6,7 +6,11 @@ use super::super::terminal_viewport;
 
 /// Handle SettingsDismiss message.
 pub(crate) fn handle_settings_dismiss(state: &mut IcedState) -> Task<Message> {
-    state.settings_modal_open = false;
+    if state.settings_anim.phase == super::super::state::ModalAnimPhase::Closed {
+        state.settings_modal_open = false;
+    } else if state.settings_anim.phase != super::super::state::ModalAnimPhase::Closing {
+        state.settings_anim = super::super::state::ModalAnimState::closing(state.tick_count);
+    }
     Task::none()
 }
 
