@@ -1,12 +1,9 @@
 use anyhow::{Result, anyhow};
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroizing;
 
-use crate::settings::Settings;
 use crate::storage::StorageManager;
 use crate::vault::core::CredentialVault;
-use crate::vault::manager::VaultManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SshCredentialPayload {
@@ -14,230 +11,152 @@ pub struct SshCredentialPayload {
     pub passphrase: Option<String>,
 }
 
-/// 派生独立的加密密钥（通过 encryption_salt），用于会话凭据加密。
-/// 此函数保留作为设计说明：当前会话凭据存储在 CredentialVault 内部，
-/// 密钥派生由 CredentialVault::initialize/unlock 处理（使用 auth salt）。
-/// 当需要认证密钥和加密密钥完全分离时，可使用此函数并重构 CredentialVault。
-fn derive_credential_key(settings: &Settings) -> Result<Zeroizing<[u8; 32]>> {
-    let meta = settings
-        .security
-        .vault
-        .as_ref()
-        .ok_or_else(|| anyhow!("Vault 未初始化"))?;
-    let password = SecretString::from(meta.verifier_hash.clone());
-    VaultManager::derive_encryption_key(&password, meta)
-}
-
-// 加载 vault 并解锁（用于存储/检索会话凭据）
-// 使用与 vault 文件相同的密钥派生方式（从 auth salt 派生）
-fn load_unlocked_vault_for_credentials(settings: &Settings) -> Result<CredentialVault> {
-    let password = SecretString::from(
-        settings
-            .security
-            .vault
-            .as_ref()
-            .ok_or_else(|| anyhow!("Vault 未初始化"))?
-            .verifier_hash
-            .clone(),
-    );
+/// 加载并解锁 vault（使用显式 master_password）。
+/// 若 vault 文件不存在但 settings 中存在 vault 元数据，则自动初始化一个新的空 vault。
+fn load_unlocked_vault(master_password: &str) -> Result<CredentialVault> {
+    use secrecy::SecretString;
     let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
 
     if path.exists() {
         let mut vault = CredentialVault::load_from_file(&path)?;
-        vault.unlock(&password)?;
+        vault.unlock(&SecretString::from(master_password.to_owned()))?;
         Ok(vault)
     } else {
-        // 不自动初始化——凭据 vault 依赖于 settings 中的 vault 元数据已存在
-        Err(anyhow!("Vault 文件不存在，请先在安全设置中初始化 Vault"))
-    }
-}
-
-fn load_or_init_unlocked_vault_with_master(
-    _settings: &Settings,
-    master_password: &SecretString,
-) -> Result<CredentialVault> {
-    let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
-    if path.exists() {
-        let mut vault = CredentialVault::load_from_file(&path)?;
-        vault.unlock(master_password)?;
-        Ok(vault)
-    } else {
-        let vault = CredentialVault::initialize(master_password)?;
+        // Vault 文件不存在时，生成随机 salt 并初始化。
+        let salt = crate::vault::crypto::generate_salt();
+        let vault = CredentialVault::initialize(&SecretString::from(master_password.to_owned()), salt)?;
         vault.save_to_file(&path)?;
         Ok(vault)
     }
 }
 
-pub fn save_ssh_credentials(
-    settings: &Settings,
-    session_id: &str,
-    password: Option<&SecretString>,
-    passphrase: Option<&SecretString>,
-) -> Result<Option<String>> {
-    let pwd = password
-        .map(|s| s.expose_secret().trim().to_string())
-        .filter(|s| !s.is_empty());
-    let pph = passphrase
-        .map(|s| s.expose_secret().trim().to_string())
-        .filter(|s| !s.is_empty());
-
-    if pwd.is_none() && pph.is_none() {
-        return Ok(None);
-    }
-
-    let mut vault = load_unlocked_vault_for_credentials(settings)?;
-    let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
-    let credential_id = format!("ssh:{}", session_id);
-    let payload = SshCredentialPayload {
-        password: pwd,
-        passphrase: pph,
-    };
-    let bytes = serde_json::to_vec(&payload)?;
-    vault.set_credential(&credential_id, &bytes)?;
-    vault.save_to_file(&path)?;
-    Ok(Some(credential_id))
-}
-
-/// Upsert SSH credentials for a session.
+/// 保存 SSH 会话凭据（密码和私钥口令）。
 ///
-/// - When at least one of `password` / `passphrase` is provided (non-empty), writes to vault and returns `Some(credential_id)`.
-/// - When both are `None`/empty, deletes any existing `ssh:{session_id}` credential and returns `None`.
+/// - 当 password / passphrase 至少有一个非空时，加密写入 vault 并返回 Some(credential_id)。
+/// - 当两者都为空时，删除已存在的凭据并返回 None。
+///
+/// 需要 vault 处于解锁态（即调用方持有有效的 master_password）。
+pub fn save_ssh_credentials(
+    master_password: &str,
+    session_id: &str,
+    password: Option<&str>,
+    passphrase: Option<&str>,
+) -> Result<Option<String>> {
+    let pwd = password.filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_owned());
+    let pph = passphrase.filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_owned());
+
+    let mut vault = load_unlocked_vault(master_password)?;
+    let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
+    let credential_id = format!("ssh:{}", session_id);
+
+    if pwd.is_none() && pph.is_none() {
+        vault.delete_credential(&credential_id)?;
+        vault.save_to_file(&path)?;
+        return Ok(None);
+    }
+
+    let payload = SshCredentialPayload {
+        password: pwd,
+        passphrase: pph,
+    };
+    let bytes = serde_json::to_vec(&payload)?;
+    vault.set_credential(&credential_id, &bytes)?;
+    vault.save_to_file(&path)?;
+    Ok(Some(credential_id))
+}
+
+/// 同步 SSH 会话凭据。与 save_ssh_credentials 行为一致。
+///
+/// 需要 vault 处于解锁态。
 pub fn sync_ssh_credentials(
-    settings: &Settings,
+    master_password: &str,
     session_id: &str,
-    password: Option<&SecretString>,
-    passphrase: Option<&SecretString>,
+    password: Option<&str>,
+    passphrase: Option<&str>,
 ) -> Result<Option<String>> {
-    let pwd = password
-        .map(|s| s.expose_secret().trim().to_string())
-        .filter(|s| !s.is_empty());
-    let pph = passphrase
-        .map(|s| s.expose_secret().trim().to_string())
-        .filter(|s| !s.is_empty());
+    save_ssh_credentials(master_password, session_id, password, passphrase)
+}
 
-    let mut vault = load_unlocked_vault_for_credentials(settings)?;
+/// 加载 SSH 会话凭据。
+///
+/// 需要 vault 处于解锁态（即调用方持有有效的 master_password）。
+pub fn load_ssh_credentials(master_password: &str, credential_id: &str) -> Result<Option<SshCredentialPayload>> {
+    let vault = load_unlocked_vault(master_password)?;
+    let raw = vault.get_credential(credential_id)?;
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let payload: SshCredentialPayload = serde_json::from_slice(&raw)?;
+    Ok(Some(payload))
+}
+
+/// 删除指定凭据。
+///
+/// 需要 vault 处于解锁态。
+pub fn delete_credential(master_password: &str, credential_id: &str) -> Result<()> {
+    let mut vault = load_unlocked_vault(master_password)?;
     let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
-    let credential_id = format!("ssh:{}", session_id);
-
-    if pwd.is_none() && pph.is_none() {
-        vault.delete_credential(&credential_id)?;
-        vault.save_to_file(&path)?;
-        return Ok(None);
-    }
-
-    let payload = SshCredentialPayload {
-        password: pwd,
-        passphrase: pph,
-    };
-    let bytes = serde_json::to_vec(&payload)?;
-    vault.set_credential(&credential_id, &bytes)?;
+    vault.delete_credential(credential_id)?;
     vault.save_to_file(&path)?;
-    Ok(Some(credential_id))
+    Ok(())
 }
 
-pub fn load_ssh_credentials(
-    settings: &Settings,
-    credential_id: &str,
-) -> Result<Option<SshCredentialPayload>> {
-    let vault = load_unlocked_vault_for_credentials(settings)?;
-    let raw = vault.get_credential(credential_id)?;
-    let Some(raw) = raw else {
-        return Ok(None);
-    };
-    let payload: SshCredentialPayload = serde_json::from_slice(&raw)?;
-    Ok(Some(payload))
-}
+// ============================================================================
+// 兼容性别名（deprecated），指向新的统一 API
+// ============================================================================
 
-pub fn load_ssh_credentials_with_master(
-    settings: &Settings,
-    master_password: &SecretString,
-    credential_id: &str,
-) -> Result<Option<SshCredentialPayload>> {
-    let vault = load_or_init_unlocked_vault_with_master(settings, master_password)?;
-    let raw = vault.get_credential(credential_id)?;
-    let Some(raw) = raw else {
-        return Ok(None);
-    };
-    let payload: SshCredentialPayload = serde_json::from_slice(&raw)?;
-    Ok(Some(payload))
-}
+use secrecy::SecretString;
 
+/// [已废弃] 请使用 [`save_ssh_credentials`]。
+#[deprecated(since = "1.0", note = "使用 save_ssh_credentials 替代")]
 pub fn save_ssh_credentials_with_master(
-    settings: &Settings,
+    _settings: &crate::settings::Settings,
     master_password: &SecretString,
     session_id: &str,
     password: Option<&SecretString>,
     passphrase: Option<&SecretString>,
 ) -> Result<Option<String>> {
-    let pwd = password
-        .map(|s| s.expose_secret().trim().to_string())
-        .filter(|s| !s.is_empty());
-    let pph = passphrase
-        .map(|s| s.expose_secret().trim().to_string())
-        .filter(|s| !s.is_empty());
-    if pwd.is_none() && pph.is_none() {
-        return Ok(None);
-    }
-    let mut vault = load_or_init_unlocked_vault_with_master(settings, master_password)?;
-    let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
-    let credential_id = format!("ssh:{}", session_id);
-    let payload = SshCredentialPayload {
-        password: pwd,
-        passphrase: pph,
-    };
-    let bytes = serde_json::to_vec(&payload)?;
-    vault.set_credential(&credential_id, &bytes)?;
-    vault.save_to_file(&path)?;
-    Ok(Some(credential_id))
+    save_ssh_credentials(
+        master_password.expose_secret(),
+        session_id,
+        password.map(|s| s.expose_secret()),
+        passphrase.map(|s| s.expose_secret()),
+    )
 }
 
+/// [已废弃] 请使用 [`sync_ssh_credentials`]。
+#[deprecated(since = "1.0", note = "使用 sync_ssh_credentials 替代")]
 pub fn sync_ssh_credentials_with_master(
-    settings: &Settings,
+    _settings: &crate::settings::Settings,
     master_password: &SecretString,
     session_id: &str,
     password: Option<&SecretString>,
     passphrase: Option<&SecretString>,
 ) -> Result<Option<String>> {
-    let pwd = password
-        .map(|s| s.expose_secret().trim().to_string())
-        .filter(|s| !s.is_empty());
-    let pph = passphrase
-        .map(|s| s.expose_secret().trim().to_string())
-        .filter(|s| !s.is_empty());
-    let mut vault = load_or_init_unlocked_vault_with_master(settings, master_password)?;
-    let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
-    let credential_id = format!("ssh:{}", session_id);
-    if pwd.is_none() && pph.is_none() {
-        vault.delete_credential(&credential_id)?;
-        vault.save_to_file(&path)?;
-        return Ok(None);
-    }
-    let payload = SshCredentialPayload {
-        password: pwd,
-        passphrase: pph,
-    };
-    let bytes = serde_json::to_vec(&payload)?;
-    vault.set_credential(&credential_id, &bytes)?;
-    vault.save_to_file(&path)?;
-    Ok(Some(credential_id))
+    sync_ssh_credentials(
+        master_password.expose_secret(),
+        session_id,
+        password.map(|s| s.expose_secret()),
+        passphrase.map(|s| s.expose_secret()),
+    )
 }
 
+/// [已废弃] 请使用 [`load_ssh_credentials`]。
+#[deprecated(since = "1.0", note = "使用 load_ssh_credentials 替代")]
+pub fn load_ssh_credentials_with_master(
+    _settings: &crate::settings::Settings,
+    master_password: &SecretString,
+    credential_id: &str,
+) -> Result<Option<SshCredentialPayload>> {
+    load_ssh_credentials(master_password.expose_secret(), credential_id)
+}
+
+/// [已废弃] 请使用 [`delete_credential`]。
+#[deprecated(since = "1.0", note = "使用 delete_credential 替代")]
 pub fn delete_credential_with_master(
-    settings: &Settings,
+    _settings: &crate::settings::Settings,
     master_password: &SecretString,
     credential_id: &str,
 ) -> Result<()> {
-    let mut vault = load_or_init_unlocked_vault_with_master(settings, master_password)?;
-    let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
-    vault.delete_credential(credential_id)?;
-    vault.save_to_file(&path)?;
-    Ok(())
-}
-
-pub fn delete_credential(settings: &Settings, credential_id: &str) -> Result<()> {
-    let mut vault = load_unlocked_vault_for_credentials(settings)?;
-    let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
-    vault.delete_credential(credential_id)?;
-    vault.save_to_file(&path)?;
-    Ok(())
+    delete_credential(master_password.expose_secret(), credential_id)
 }

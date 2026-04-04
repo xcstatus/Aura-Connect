@@ -43,6 +43,12 @@ pub(crate) enum SettingsField {
     SingleSharedSession(bool),
 }
 
+/// Type alias for connect result error info (error kind + optional host key error details).
+pub type ConnectResultError = (crate::app_model::ConnectErrorKind, Option<crate::app_model::HostKeyErrorInfo>);
+
+/// Wrapped session type for async connection result.
+pub type ConnectSession = std::sync::Arc<Box<dyn crate::backend::ssh_session::AsyncSession>>;
+
 /// Message type - manually implement Debug since AsyncSession doesn't implement it.
 #[derive(Clone)]
 pub(crate) enum Message {
@@ -52,6 +58,8 @@ pub(crate) enum Message {
     EventOccurred(iced::event::Event),
     TopAddTab,
     TopQuickConnect,
+    /// 保存快速连接表单中的连接信息为会话。
+    QuickConnectSaveSession,
     /// 关闭快速连接弹窗（遮罩、标题栏 ×、Esc）。
     QuickConnectDismiss,
     /// 快速连接：进入新建连接表单。
@@ -115,7 +123,8 @@ pub(crate) enum Message {
     QuickConnectPassphraseChanged(String),
     ConnectPressed,
     /// Connection result callback (triggered by Task::perform).
-    ConnectResult(Result<std::sync::Arc<Box<dyn crate::backend::ssh_session::AsyncSession>>, crate::app_model::ConnectErrorKind>),
+    /// Contains: Result<session, (error_kind, host_key_error_info)>
+    ConnectResult(Result<ConnectSession, ConnectResultError>),
     /// Keyboard-interactive: update answer field.
     QuickConnectInteractiveAnswerChanged(usize, String),
     /// Keyboard-interactive: submit current answers (advance auth state machine).
@@ -136,6 +145,8 @@ pub(crate) enum Message {
     VaultUnlockClose,
     VaultUnlockPasswordChanged(String),
     VaultUnlockSubmit,
+    /// Async vault unlock result (callback from background KDF task).
+    VaultUnlockComplete(Result<String, crate::vault::VaultUnlockError>),
     /// Clipboard contents for terminal paste (bracketed when DEC 2004 is on).
     ClipboardPaste(Option<String>),
     /// Ack for clipboard write task (copy).
@@ -155,6 +166,7 @@ impl std::fmt::Debug for Message {
             Message::TopQuickConnect => write!(f, "Message::TopQuickConnect"),
             Message::QuickConnectDismiss => write!(f, "Message::QuickConnectDismiss"),
             Message::QuickConnectNewConnection => write!(f, "Message::QuickConnectNewConnection"),
+            Message::QuickConnectSaveSession => write!(f, "Message::QuickConnectSaveSession"),
             Message::QuickConnectBackToList => write!(f, "Message::QuickConnectBackToList"),
             Message::QuickConnectQueryChanged(q) => write!(f, "Message::QuickConnectQueryChanged({})", q),
             Message::QuickConnectDirectSubmit => write!(f, "Message::QuickConnectDirectSubmit"),
@@ -218,6 +230,7 @@ impl std::fmt::Debug for Message {
             Message::VaultUnlockClose => write!(f, "Message::VaultUnlockClose"),
             Message::VaultUnlockPasswordChanged(_) => write!(f, "Message::VaultUnlockPasswordChanged(...)"),
             Message::VaultUnlockSubmit => write!(f, "Message::VaultUnlockSubmit"),
+            Message::VaultUnlockComplete(result) => write!(f, "Message::VaultUnlockComplete({:?})", result.is_ok()),
             Message::ClipboardPaste(t) => write!(f, "Message::ClipboardPaste({:?})", t.as_ref().map(|_| "...")),
             Message::ClipboardWriteDone => write!(f, "Message::ClipboardWriteDone"),
             Message::SaveSettings => write!(f, "Message::SaveSettings"),

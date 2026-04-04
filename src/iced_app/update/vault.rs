@@ -58,18 +58,18 @@ pub(crate) fn handle_vault_submit(state: &mut IcedState) -> Task<Message> {
     let new_pwd = flow.new_password.expose_secret().trim().to_string();
     let confirm = flow.confirm_password.expose_secret().trim().to_string();
     if new_pwd.is_empty() || new_pwd != confirm {
-        flow.error = Some("两次输入的新密码不一致".to_string());
+        flow.error = Some(state.model.i18n.tr("iced.vault.error.password_mismatch").to_string());
         return Task::none();
     }
 
     if let VaultFlowMode::ChangePassword = flow.mode {
         let Some(old_meta) = state.model.settings.security.vault.as_ref() else {
-            flow.error = Some("Vault 未初始化".to_string());
+            flow.error = Some(state.model.i18n.tr("iced.vault_unlock.error.vault_not_initialized").to_string());
             return Task::none();
         };
         let old_pwd = SecretString::from(flow.old_password.expose_secret().to_string());
         if !crate::vault::VaultManager::verify_password(&old_pwd, old_meta) {
-            flow.error = Some("旧密码校验失败".to_string());
+            flow.error = Some(state.model.i18n.tr("iced.vault.error.old_password_failed").to_string());
             return Task::none();
         }
     }
@@ -78,71 +78,70 @@ pub(crate) fn handle_vault_submit(state: &mut IcedState) -> Task<Message> {
     let new_meta = match crate::vault::VaultManager::setup_vault(&new_password) {
         Ok(m) => m,
         Err(e) => {
-            flow.error = Some(format!("Vault 初始化失败：{e}"));
+            flow.error = Some(format!("{}: {}", state.model.i18n.tr("iced.vault.error.init_failed"), e));
             return Task::none();
         }
     };
 
     let Some(vault_path) = crate::storage::StorageManager::get_vault_path() else {
-        flow.error = Some("无法定位 vault 路径".to_string());
+        flow.error = Some(state.model.i18n.tr("iced.vault.error.vault_path_not_found").to_string());
         return Task::none();
     };
 
-    let new_secret = SecretString::from(new_meta.verifier_hash.clone());
+    // Derive encryption salt from VaultMeta and initialize vault with user's password.
+    let enc_salt_str = new_meta.encryption_salt.as_deref().unwrap_or_default();
+    let enc_salt_bytes = enc_salt_str.as_bytes();
+    let mut enc_salt_arr = [0u8; 16];
+    let salt_len = enc_salt_bytes.len().min(16);
+    enc_salt_arr[..salt_len].copy_from_slice(&enc_salt_bytes[..salt_len]);
+
     // IMPORTANT: do NOT overwrite settings meta unless vault file operation succeeds.
     let vault_ok = match flow.mode {
-        VaultFlowMode::Initialize => crate::vault::core::CredentialVault::initialize(&new_secret)
+        VaultFlowMode::Initialize => crate::vault::core::CredentialVault::initialize(&new_password, enc_salt_arr)
             .and_then(|v| v.save_to_file(&vault_path))
             .is_ok(),
         VaultFlowMode::ChangePassword => {
             let Some(old_meta) = state.model.settings.security.vault.as_ref() else {
-                flow.error = Some("Vault 未初始化".to_string());
+                flow.error = Some(state.model.i18n.tr("iced.vault_unlock.error.vault_not_initialized").to_string());
                 return Task::none();
             };
-            let old_secret = SecretString::from(old_meta.verifier_hash.clone());
-            if vault_path.exists() {
-                crate::vault::core::CredentialVault::load_from_file(&vault_path)
-                    .and_then(|mut v| {
-                        v.unlock(&old_secret)?;
-                        v.rekey(&new_secret)?;
-                        v.save_to_file(&vault_path)?;
-                        Ok(())
-                    })
-                    .is_ok()
-            } else {
-                crate::vault::core::CredentialVault::initialize(&new_secret)
-                    .and_then(|v| v.save_to_file(&vault_path))
-                    .is_ok()
+            if !vault_path.exists() {
+                flow.error = Some(state.model.i18n.tr("iced.vault.error.file_lost").to_string());
+                return Task::none();
             }
+            let old_enc_salt_str = old_meta.encryption_salt.as_deref().unwrap_or_default();
+            let old_enc_salt_bytes = old_enc_salt_str.as_bytes();
+            let mut old_enc_salt_arr = [0u8; 16];
+            let old_salt_len = old_enc_salt_bytes.len().min(16);
+            old_enc_salt_arr[..old_salt_len].copy_from_slice(&old_enc_salt_bytes[..old_salt_len]);
+            let old_pwd_secret = SecretString::from(flow.old_password.expose_secret().to_string());
+            crate::vault::core::CredentialVault::load_from_file(&vault_path)
+                .and_then(|mut v| {
+                    v.unlock(&old_pwd_secret)?;
+                    v.rekey_with_salt(&new_password, enc_salt_arr)?;
+                    v.save_to_file(&vault_path)?;
+                    Ok(())
+                })
+                .is_ok()
         }
     };
 
     if !vault_ok {
-        flow.error = Some("Vault 文件写入/重加密失败，请检查权限或文件损坏".to_string());
+        flow.error = Some(state.model.i18n.tr("iced.vault.error.save_failed").to_string());
         return Task::none();
     }
 
     state.model.settings.security.vault = Some(new_meta);
     state.model.settings.save_with_log();
-    // Unlock with the new derived secret for this runtime.
-    state.model.vault_master_password = Some(SecretString::from(
-        state
-            .model
-            .settings
-            .security
-            .vault
-            .as_ref()
-            .unwrap()
-            .verifier_hash
-            .clone(),
-    ));
+    // Store the user's actual password for this runtime (not verifier_hash).
+    state.model.vault_master_password = Some(new_password);
     state.vault_status = VaultStatus::compute(
         &state.model.settings,
         state.model.vault_master_password.is_some(),
     );
 
     state.vault_flow = None;
-    state.model.status = "Vault 已更新".to_string();
+    state.model.status = state.model.i18n.tr("iced.term.vault_unlocked").to_string();
     Task::none()
 }
 
@@ -204,56 +203,156 @@ pub(crate) fn handle_vault_unlock_password(state: &mut IcedState, v: String) -> 
 }
 
 /// Handle VaultUnlockSubmit message.
+/// This now runs vault KDF operations asynchronously to avoid blocking the UI thread.
 pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message> {
-    let Some(u) = state.vault_unlock.as_mut() else {
+    let Some(u) = state.vault_unlock.as_ref() else {
         return Task::none();
     };
 
     let Some(meta) = state.model.settings.security.vault.as_ref() else {
-        u.error = Some("Vault 未初始化".to_string());
         return Task::none();
     };
 
-    if !crate::vault::VaultManager::verify_password(&u.password, meta) {
-        u.error = Some("密码错误".to_string());
-        return Task::none();
-    }
+    // Store pending context in state (will be used after async completion)
+    state.pending_vault_unlock = Some(super::super::state::PendingVaultUnlock {
+        verifier_hash: meta.verifier_hash.clone(),
+        pending_connect: u.pending_connect.clone(),
+        pending_delete_profile_id: u.pending_delete_profile_id.clone(),
+        pending_save_session: u.pending_save_session,
+        pending_save_credentials_profile_id: u.pending_save_credentials_profile_id.clone(),
+    });
 
-    // Vault secret key is derived from persisted verifier hash (not the raw user password).
-    state.model.vault_master_password = Some(SecretString::from(meta.verifier_hash.clone()));
+    // Capture password and meta for async task
+    let password = u.password.clone();
+    let verifier_hash = meta.verifier_hash.clone();
+    let meta_salt = meta.salt.clone();
+    let enc_salt_str = meta.encryption_salt.clone(); // Option<String>
 
-    let pending_connect = u.pending_connect.clone();
-    let pending_delete = u.pending_delete_profile_id.clone();
-    let pending_save = u.pending_save_session;
-    let pending_save_credentials = u.pending_save_credentials_profile_id.clone();
-
+    // Immediately close the vault unlock modal for responsive UI
     state.vault_unlock = None;
+
+    // Run KDF operations in background thread to avoid blocking UI
+    let task = async move {
+        let result = tokio::task::spawn_blocking(move || {
+            // Verify password using the stored salt and verifier hash
+            if !crate::vault::VaultManager::verify_password(&password, &crate::vault::VaultMeta {
+                salt: meta_salt,
+                verifier_hash: verifier_hash.clone(),
+                encryption_salt: enc_salt_str.clone(),
+            }) {
+                return Err(crate::vault::VaultUnlockError::WrongPassword);
+            }
+
+            // Parse encryption salt for vault key derivation
+            let enc_salt_str = enc_salt_str.unwrap_or_default();
+            let enc_salt_bytes = enc_salt_str.as_bytes();
+            let mut enc_salt_arr = [0u8; 16];
+            let salt_len = enc_salt_bytes.len().min(16);
+            enc_salt_arr[..salt_len].copy_from_slice(&enc_salt_bytes[..salt_len]);
+
+            // Load vault and unlock it (uses user's password + encryption salt)
+            let path = crate::storage::StorageManager::get_vault_path()
+                .ok_or_else(|| crate::vault::VaultUnlockError::VaultError("无法定位 vault 路径".into()))?;
+            let _vault = if path.exists() {
+                let mut vault = crate::vault::core::CredentialVault::load_from_file(&path)
+                    .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
+                vault.unlock(&password)
+                    .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
+                vault
+            } else {
+                let vault = crate::vault::core::CredentialVault::initialize(&password, enc_salt_arr)
+                    .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
+                vault.save_to_file(&path)
+                    .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
+                vault
+            };
+
+            // Return user's password as the vault master password
+            Ok(password.expose_secret().to_string())
+        }).await;
+
+        match result {
+            Ok(Ok(pwd)) => Message::VaultUnlockComplete(Ok(pwd)),
+            Ok(Err(e)) => Message::VaultUnlockComplete(Err(e)),
+            Err(_) => Message::VaultUnlockComplete(Err(crate::vault::VaultUnlockError::VaultError("Task cancelled".to_string()))),
+        }
+    };
+
+    Task::perform(task, |msg| msg)
+}
+
+/// Handle async vault unlock completion (after background KDF operations).
+pub(crate) fn handle_vault_unlock_complete(
+    state: &mut IcedState,
+    result: Result<String, crate::vault::VaultUnlockError>,
+) -> Task<Message> {
+    // Take pending context from state
+    let pending = match (result, state.pending_vault_unlock.take()) {
+        (Ok(verifier_hash), Some(mut ctx)) => {
+            // Success: set verifier hash and update context
+            ctx.verifier_hash = verifier_hash;
+            ctx
+        }
+        (Err(e), _) => {
+            // Error: reopen vault unlock modal with error (translate to current language)
+            let i18n = &state.model.i18n;
+            let error_msg = match &e {
+                crate::vault::VaultUnlockError::WrongPassword => {
+                    i18n.tr("iced.vault_unlock.error.wrong_password").to_string()
+                }
+                crate::vault::VaultUnlockError::VaultNotInitialized => {
+                    i18n.tr("iced.vault_unlock.error.vault_not_initialized").to_string()
+                }
+                crate::vault::VaultUnlockError::VaultError(_) => {
+                    i18n.tr("iced.vault_unlock.error.unknown").to_string()
+                }
+            };
+            state.vault_unlock = Some(super::super::state::VaultUnlockState {
+                pending_connect: None,
+                pending_delete_profile_id: None,
+                pending_save_session: false,
+                pending_save_credentials_profile_id: None,
+                password: SecretString::from(String::new()),
+                error: Some(error_msg),
+            });
+            return Task::none();
+        }
+        (Ok(_), None) => {
+            // Unexpected: no pending context
+            log::warn!("Vault unlock complete but no pending context");
+            return Task::none();
+        }
+    };
+
+    // Set vault master password
+    state.model.vault_master_password = Some(SecretString::from(pending.verifier_hash));
     state.vault_status = VaultStatus::compute(
         &state.model.settings,
-        state.model.vault_master_password.is_some(),
+        true,
     );
 
-    if pending_save {
+    // Route to pending operations
+    if pending.pending_save_session {
         return super::super::update::update(state, Message::SessionEditorSave);
     }
 
-    if let Some(id) = pending_delete {
+    if let Some(id) = pending.pending_delete_profile_id {
         return super::super::update::update(state, Message::DeleteSessionProfile(id));
     }
 
-    if let Some(pid) = pending_save_credentials {
+    if let Some(pid) = pending.pending_save_credentials_profile_id {
         // Save password entered in current draft after successful connect.
         let Some(master) = state.model.vault_master_password.as_ref() else {
             return Task::none();
         };
         let pw_ok = !state.model.draft.password.expose_secret().trim().is_empty();
         if pw_ok {
+            let pw = state.model.draft.password.expose_secret();
             if let Ok(Some(cid)) =
-                crate::vault::session_credentials::sync_ssh_credentials_with_master(
-                    &state.model.settings,
-                    master,
+                crate::vault::session_credentials::sync_ssh_credentials(
+                    master.expose_secret(),
                     &pid,
-                    Some(&state.model.draft.password),
+                    Some(pw),
                     None,
                 )
             {
@@ -277,10 +376,9 @@ pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message>
         return Task::none();
     }
 
-    if let Some(prof) = pending_connect {
+    if let Some(prof) = pending.pending_connect {
         // 关闭弹窗，直接在终端显示连接信息
         state.quick_connect_open = false;
-        state.vault_unlock = None;
 
         // 清除终端并显示解锁消息
         let a = state.model.i18n.tr("iced.term.vault_unlocked");

@@ -268,6 +268,9 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.preconnect_info_line_count = 0;
             Task::none()
         }
+        Message::QuickConnectSaveSession => {
+            session::handle_quick_connect_save_session(state)
+        }
         Message::QuickConnectBackToList => {
             state.quick_connect_panel = QuickConnectPanel::Picker;
             state.quick_connect_flow = super::state::QuickConnectFlow::Idle;
@@ -503,7 +506,9 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
                             .unwrap();
                     connection::handle_connect_success(state, session);
                 }
-                Err(kind) => {
+                Err((kind, host_key_error)) => {
+                    // Transfer host_key_error from temp_model back to state
+                    state.model.draft.host_key_error = host_key_error;
                     connection::internal_handle_connect_error(state, kind);
                 }
             }
@@ -560,6 +565,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
         Message::VaultUnlockClose => vault::handle_vault_unlock_close(state),
         Message::VaultUnlockPasswordChanged(v) => vault::handle_vault_unlock_password(state, v),
         Message::VaultUnlockSubmit => vault::handle_vault_unlock_submit(state),
+        Message::VaultUnlockComplete(result) => vault::handle_vault_unlock_complete(state, result),
         Message::ToggleDebugOverlay => {
             state.perf.debug_overlay_enabled = !state.perf.debug_overlay_enabled;
             log::info!(
