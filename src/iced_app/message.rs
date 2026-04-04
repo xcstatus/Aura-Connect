@@ -131,6 +131,11 @@ pub(crate) enum Message {
     QuickConnectInteractiveAnswerChanged(usize, String),
     /// Keyboard-interactive: submit current answers (advance auth state machine).
     QuickConnectInteractiveSubmit,
+    /// Inline password/passphrase submitted from the terminal overlay when the
+    /// quick-connect modal is closed (e.g. saved-session needs a password).
+    QuickConnectInlinePasswordSubmit(String),
+    /// Inline password field changed (live update while typing).
+    QuickConnectInlinePasswordChanged(String),
     /// Host key confirmation (Ask policy).
     HostKeyAcceptOnce,
     HostKeyAlwaysTrust,
@@ -139,6 +144,8 @@ pub(crate) enum Message {
     AutoProbeConsentAllowOnce,
     AutoProbeConsentAlwaysAllow,
     AutoProbeConsentUsePassword,
+    /// 切换认证方式（Failed/AuthLocked 状态）：返回 NewConnection 表单让用户选择其他认证方式。
+    QuickConnectSwitchAuth,
     DisconnectPressed,
     ProfileConnect(crate::session::SessionProfile),
     VaultUnlockOpenConnect(crate::session::SessionProfile),
@@ -218,6 +225,8 @@ impl std::fmt::Debug for Message {
             Message::ConnectResult(_) => write!(f, "Message::ConnectResult(...)"),
             Message::QuickConnectInteractiveAnswerChanged(i, v) => write!(f, "Message::QuickConnectInteractiveAnswerChanged({}, {})", i, v),
             Message::QuickConnectInteractiveSubmit => write!(f, "Message::QuickConnectInteractiveSubmit"),
+            Message::QuickConnectInlinePasswordSubmit(_) => write!(f, "Message::QuickConnectInlinePasswordSubmit(...)"),
+            Message::QuickConnectInlinePasswordChanged(_) => write!(f, "Message::QuickConnectInlinePasswordChanged(...)"),
             Message::HostKeyAcceptOnce => write!(f, "Message::HostKeyAcceptOnce"),
             Message::HostKeyAlwaysTrust => write!(f, "Message::HostKeyAlwaysTrust"),
             Message::HostKeyReject => write!(f, "Message::HostKeyReject"),
@@ -225,6 +234,7 @@ impl std::fmt::Debug for Message {
             Message::AutoProbeConsentAllowOnce => write!(f, "Message::AutoProbeConsentAllowOnce"),
             Message::AutoProbeConsentAlwaysAllow => write!(f, "Message::AutoProbeConsentAlwaysAllow"),
             Message::AutoProbeConsentUsePassword => write!(f, "Message::AutoProbeConsentUsePassword"),
+            Message::QuickConnectSwitchAuth => write!(f, "Message::QuickConnectSwitchAuth"),
             Message::DisconnectPressed => write!(f, "Message::DisconnectPressed"),
             Message::ProfileConnect(p) => write!(f, "Message::ProfileConnect({:?})", p.name),
             Message::VaultUnlockOpenConnect(_) => write!(f, "Message::VaultUnlockOpenConnect(...)"),

@@ -61,22 +61,58 @@ pub(crate) fn handle_connect(state: &mut IcedState) -> Task<Message> {
     start_ssh_connect(state)
 }
 
+/// Fill the draft with the inline password then retry the connection.
+pub(crate) fn handle_inline_password_submit(
+    state: &mut IcedState,
+    password: String,
+) -> Task<Message> {
+    state.model.draft.password = secrecy::SecretString::from(password);
+    state.model.draft.edited = true;
+    state.model.draft.password_error_count = 0;
+    super::super::update::update(state, Message::ConnectPressed)
+}
+
 /// Handle interactive auth (synchronous - requires multi-step state).
 fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
-    let draft = &state.model.draft;
-    let host = draft.host.trim();
-    let port = draft.port.trim();
-    let user = draft.user.trim();
+    // Extract needed fields early so the borrow of `state.model.draft` is released
+    // before any mutable borrows of `state`.
+    let host = state.model.draft.host.trim().to_string();
+    let port = state.model.draft.port.trim().to_string();
+    let user = state.model.draft.user.trim().to_string();
+    let host_str = host.clone();
+    let user_str = user.clone();
+    let port_str = port.clone();
+
+    // Retry: clear previous error/info lines before injecting new ones.
+    if matches!(
+        state.quick_connect_flow,
+        QuickConnectFlow::Failed | QuickConnectFlow::AuthLocked
+    ) {
+        let lines_to_clear = state.preconnect_info_line_count;
+        if lines_to_clear > 0 {
+            state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
+        }
+        state.preconnect_info_line_count = 0;
+    }
 
     // 收集连接信息行
     let mut lines: Vec<String> = Vec::new();
+    // Prefer session name, fall back to user@host:port
+    let target_str = state
+        .model
+        .selected_session_id
+        .as_ref()
+        .and_then(|pid| state.model.profiles().iter().find(|p| &p.id == pid))
+        .map(|p| {
+            let addr = format!("{}@{}:{}", user_str, host_str, port_str);
+            format!("\"{}\" ({})", p.name, addr)
+        })
+        .unwrap_or_else(|| format!("{}@{}:{}", user, host, port));
     let connecting_msg = state.model.i18n.tr("iced.term.ssh.connecting")
-        .replace("{user}", user)
-        .replace("{host}", host)
-        .replace("{port}", port);
+        .replace("{target}", &target_str);
     lines.push(connecting_msg);
 
-    if let Some(rec) = state.model.settings.security.known_hosts.iter().find(|r| r.host == host) {
+    if let Some(rec) = state.model.settings.security.known_hosts.iter().find(|r| r.host == host_str) {
         let fp_msg = state.model.i18n.tr("iced.term.ssh.host_fingerprint")
             .replace("{algo}", &rec.algo)
             .replace("{fp}", &rec.fingerprint);
@@ -96,9 +132,7 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
     state.quick_connect_error_kind = None;
     state.connection_stage = ConnectionStage::SshConnecting;
 
-    let host = state.model.draft.host.trim().to_string();
-    let user = state.model.draft.user.trim().to_string();
-    let port: u16 = state.model.draft.port.trim().parse().unwrap_or(22);
+    let port: u16 = port.parse().unwrap_or(22);
     let known_hosts = state.model.settings.security.known_hosts.clone();
 
     let sess = match state.rt.block_on(
@@ -172,6 +206,18 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
     let settings = state.model.settings.clone();
     let i18n = state.model.i18n.clone();
 
+    // Retry: clear previous error/info lines before injecting new ones.
+    if matches!(
+        state.quick_connect_flow,
+        QuickConnectFlow::Failed | QuickConnectFlow::AuthLocked
+    ) {
+        let lines_to_clear = state.preconnect_info_line_count;
+        if lines_to_clear > 0 {
+            state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
+        }
+        state.preconnect_info_line_count = 0;
+    }
+
     // Merge persisted known hosts and runtime overrides ("accept once").
     let mut merged_known_hosts = settings.security.known_hosts.clone();
     for r in &state.runtime_known_hosts {
@@ -186,12 +232,21 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
     // Collect connection info lines for display
     let mut lines: Vec<String> = Vec::new();
 
-    // 1. Connection target
+    // 1. Connection target: prefer session name, fall back to user@host:port
+    let target_str = state
+        .model
+        .selected_session_id
+        .as_ref()
+        .and_then(|pid| state.model.profiles().iter().find(|p| &p.id == pid))
+        .map(|p| {
+            let addr = format!("{}@{}:{}", draft.user, host, draft.port);
+            format!("\"{}\" ({})", p.name, addr)
+        })
+        .unwrap_or_else(|| format!("{}@{}:{}", draft.user, host, draft.port));
+
     let connecting_msg = i18n
         .tr("iced.term.ssh.connecting")
-        .replace("{user}", &draft.user)
-        .replace("{host}", &host)
-        .replace("{port}", &draft.port);
+        .replace("{target}", &target_str);
     lines.push(connecting_msg);
 
     // 2. Host fingerprint (if known)
@@ -255,9 +310,10 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
 /// Internal error handler (returns Task::none).
 pub(crate) fn internal_handle_connect_error(state: &mut IcedState, e: crate::app_model::ConnectErrorKind) {
     state.connection_stage = ConnectionStage::None;
-    if e == crate::app_model::ConnectErrorKind::AuthFailed
-        && matches!(state.model.draft.auth, crate::session::AuthMethod::Password)
-    {
+    let is_password_auth = e == crate::app_model::ConnectErrorKind::AuthFailed
+        && matches!(state.model.draft.auth, crate::session::AuthMethod::Password);
+
+    if is_password_auth {
         state.model.draft.password_error_count =
             state.model.draft.password_error_count.saturating_add(1);
         if state.model.draft.password_error_count >= 3 {
@@ -265,11 +321,6 @@ pub(crate) fn internal_handle_connect_error(state: &mut IcedState, e: crate::app
             state.quick_connect_error_kind = Some(e);
             return;
         }
-    }
-
-    if e == crate::app_model::ConnectErrorKind::AuthFailed
-        && matches!(state.model.draft.auth, crate::session::AuthMethod::Password)
-    {
         state.quick_connect_flow = QuickConnectFlow::NeedAuthPassword;
         state.quick_connect_error_kind = Some(e);
     } else {
@@ -359,7 +410,8 @@ pub(crate) fn handle_connect_success(state: &mut IcedState, session: Box<dyn Asy
         } else {
             crate::session::SessionProfile {
                 id: id.clone(),
-                name: format!("{user}@{host}"),
+                // 优先使用 host 作为默认名称（用户可在会话编辑器中修改）
+                name: host.clone(),
                 folder: None,
                 color_tag: None,
                 transport: crate::session::TransportConfig::Ssh(crate::session::SshConfig {
@@ -531,7 +583,11 @@ pub(crate) fn handle_profile_connect(
         && state.model.settings.security.vault.is_some()
         && state.model.vault_master_password.is_none()
     {
-        state.quick_connect_open = false;
+        // Start the modal close animation (same pattern as QuickConnectDismiss).
+        if state.quick_connect_anim.phase != super::super::state::ModalAnimPhase::Closing {
+            state.quick_connect_anim =
+                super::super::state::ModalAnimState::closing(state.tick_count);
+        }
         state.quick_connect_panel = super::super::state::QuickConnectPanel::Picker;
         let a = state.model.i18n.tr("iced.term.vault_needed");
         let b = state.model.i18n.tr("iced.term.vault_unlock_to_continue");
@@ -560,14 +616,30 @@ pub(crate) fn handle_profile_connect(
                 }
             }
 
-            if can_auto_connect {
-                // 直接连接，不打开弹窗
-                return super::super::update::update(state, Message::ConnectPressed);
+            if !can_auto_connect {
+                // Start the modal close animation (same pattern as QuickConnectDismiss).
+                if state.quick_connect_anim.phase != super::super::state::ModalAnimPhase::Closing {
+                    state.quick_connect_anim =
+                        super::super::state::ModalAnimState::closing(state.tick_count);
+                }
+                state.quick_connect_flow = QuickConnectFlow::NeedAuthPassword;
+                state.quick_connect_error_kind = None;
+
+                // Show a hint in the terminal so the user knows what to do next.
+                let hint = match &state.model.draft.auth {
+                    crate::session::AuthMethod::Password => {
+                        state.model.i18n.tr("iced.quick_connect.need_password")
+                    }
+                    crate::session::AuthMethod::Key { .. } => {
+                        state.model.i18n.tr("iced.quick_connect.need_passphrase")
+                    }
+                    _ => state.model.i18n.tr("iced.quick_connect.need_auth"),
+                };
+                state.active_pane_mut().terminal.inject_local_lines(&[hint]);
+                return Task::none();
             }
 
-            // 需要用户输入时才打开弹窗
-            state.quick_connect_open = true;
-            state.quick_connect_panel = super::super::state::QuickConnectPanel::NewConnection;
+            return super::super::update::update(state, Message::ConnectPressed);
         }
         Err(msg) => {
             state.model.status = msg;

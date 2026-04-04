@@ -249,6 +249,8 @@ pub(crate) struct IcedState {
     pub connection_stage: ConnectionStage,
     /// Quick connect: last stable error kind for UI branching (Failed/NeedAuthPassword).
     pub quick_connect_error_kind: Option<crate::app_model::ConnectErrorKind>,
+    /// Raw password input while the inline password overlay is shown (decoupled from draft).
+    pub inline_password_input: secrecy::SecretString,
     /// Keyboard-interactive auth flow state (when `quick_connect_flow == NeedAuthInteractive`).
     pub quick_connect_interactive: Option<InteractiveAuthFlow>,
     /// Host key confirmation overlay (Ask policy).
@@ -439,6 +441,7 @@ impl IcedState {
             && anim_done(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_CLOSE_MS as f32)
         {
             self.quick_connect_anim.phase = ModalAnimPhase::Closed;
+            self.quick_connect_open = false;
         }
         if self.settings_anim.phase == ModalAnimPhase::Opening
             && anim_done(self.settings_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_MS as f32)
@@ -449,6 +452,7 @@ impl IcedState {
             && anim_done(self.settings_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_CLOSE_MS as f32)
         {
             self.settings_anim.phase = ModalAnimPhase::Closed;
+            self.settings_modal_open = false;
         }
     }
 }
@@ -746,6 +750,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             quick_connect_flow: QuickConnectFlow::Idle,
             connection_stage: ConnectionStage::None,
             quick_connect_error_kind: None,
+            inline_password_input: secrecy::SecretString::from(String::new()),
             quick_connect_interactive: None,
             host_key_prompt: None,
             runtime_known_hosts: Vec::new(),

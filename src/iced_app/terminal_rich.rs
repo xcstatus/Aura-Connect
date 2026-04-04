@@ -390,7 +390,7 @@ fn terminal_scrollbar_overlay<'a>(scroll: ScrollState, track_alpha: f32) -> Elem
     let thumb_ratio = (viewport as f32 / total as f32).clamp(0.02, 1.0);
     let offset_ratio = (off as f32 / max_off as f32).clamp(0.0, 1.0);
 
-    let thumb_alpha = 0.25_f32;
+    let _thumb_alpha = 0.25_f32;
 
     // Use fixed pixel sizes; this is purely a visual affordance.
     let track_h = 220.0_f32;

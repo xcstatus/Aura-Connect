@@ -377,8 +377,9 @@ pub(crate) fn handle_vault_unlock_complete(
     }
 
     if let Some(prof) = pending.pending_connect {
-        // 关闭弹窗，直接在终端显示连接信息
-        state.quick_connect_open = false;
+        // Note: we do NOT set quick_connect_open = false here — the modal close
+        // animation (if any) is already running from handle_profile_connect.
+        // Suppress the overlay instead so it doesn't interfere with the terminal.
 
         // 清除终端并显示解锁消息
         let a = state.model.i18n.tr("iced.term.vault_unlocked");

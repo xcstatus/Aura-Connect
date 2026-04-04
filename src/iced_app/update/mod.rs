@@ -282,6 +282,20 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.preconnect_info_line_count = 0;
             Task::none()
         }
+        Message::QuickConnectSwitchAuth => {
+            state.quick_connect_panel = QuickConnectPanel::NewConnection;
+            state.quick_connect_flow = super::state::QuickConnectFlow::Idle;
+            state.quick_connect_error_kind = None;
+            state.quick_connect_interactive = None;
+            state.host_key_prompt = None;
+            state.connection_stage = super::state::ConnectionStage::None;
+            // Reset password error count so user gets fresh attempts.
+            state.model.draft.password_error_count = 0;
+            // 默认切换到 Password 认证（用户可自行再改为 Key/Agent/Interactive）
+            state.model.draft.auth = crate::session::AuthMethod::Password;
+            state.model.draft.password = secrecy::SecretString::from(String::new());
+            Task::none()
+        }
         Message::QuickConnectSaveSession => {
             session::handle_quick_connect_save_session(state)
         }
@@ -550,6 +564,13 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::QuickConnectInteractiveSubmit => connection::handle_interactive_submit(state),
+        Message::QuickConnectInlinePasswordSubmit(password) => {
+            connection::handle_inline_password_submit(state, password)
+        }
+        Message::QuickConnectInlinePasswordChanged(raw) => {
+            state.inline_password_input = secrecy::SecretString::from(raw);
+            Task::none()
+        }
         Message::AutoProbeConsentOpen => {
             state.auto_probe_consent_modal = Some(super::state::AutoProbeConsentModalState {});
             Task::none()

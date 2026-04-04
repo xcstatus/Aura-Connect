@@ -381,6 +381,12 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
 
     let under_top_bar: Element<'_, Message> = {
         let mut layers: Vec<Element<'_, Message>> = vec![below_top_fill.into()];
+
+        // Terminal-inline overlay: connection progress bar (shown while modal is closed).
+        layers.push(inline_connecting_overlay(state));
+        // Terminal-inline overlay: password/passphrase input (modal closed, need credential).
+        layers.push(inline_password_overlay(state));
+
         // Render quick connect modal when anim phase is opening/open/closing
         // (not yet fully closed). This allows the close animation to play.
         if state.quick_connect_anim.phase != super::state::ModalAnimPhase::Closed {
@@ -1183,6 +1189,7 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
 
     let auth_options: Vec<crate::session::AuthMethod> = vec![
         crate::session::AuthMethod::Password,
+        crate::session::AuthMethod::Agent,
         crate::session::AuthMethod::Interactive,
         crate::session::AuthMethod::Key {
             private_key_path: String::new(),
@@ -1214,9 +1221,13 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
             .into(),
         ),
         super::state::QuickConnectFlow::NeedAuthPassword => {
+            let remaining = 3usize.saturating_sub(state.model.draft.password_error_count as usize);
             let msg = if err_kind == Some(crate::app_model::ConnectErrorKind::AuthFailed) {
-                let n = state.model.draft.password_error_count;
-                format!("SSH  密码错误（{}/3）：请重新输入密码。", n)
+                if remaining > 0 {
+                    format!("SSH  密码错误，还剩 {} 次机会。", remaining)
+                } else {
+                    "SSH  密码错误次数已达上限。".to_string()
+                }
             } else {
                 "SSH  需要密码认证。".to_string()
             };
@@ -1464,11 +1475,148 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
     if let Some(ir) = interactive_row {
         form_cols = form_cols.push(ir);
     }
-    let body = form_cols.push(actions).spacing(14);
+    let switch_auth_btn: Option<Element<'_, Message>> = if matches!(
+        flow,
+        super::state::QuickConnectFlow::Failed | super::state::QuickConnectFlow::AuthLocked
+    ) {
+        Some(
+            button(text(i18n.tr("iced.btn.switch_auth")).size(13))
+                .on_press(Message::QuickConnectSwitchAuth)
+                .style(style_chrome_secondary(13.0))
+                .into(),
+        )
+    } else {
+        None
+    };
+
+    let body = if let Some(btn) = switch_auth_btn {
+        form_cols.push(row![btn].spacing(8).align_y(Alignment::Center)).push(actions).spacing(14)
+    } else {
+        form_cols.push(actions).spacing(14)
+    };
 
     container(body)
         .width(iced::Length::Fill)
         .padding(16)
         .style(top_bar_material_style)
+        .into()
+}
+
+/// Terminal-inline overlay: shows animated connection progress when the quick-connect
+/// modal is closed and a connection is in progress.
+fn inline_connecting_overlay(state: &IcedState) -> Element<'_, Message> {
+    let is_connecting = !state.quick_connect_open
+        && matches!(
+            state.quick_connect_flow,
+            super::state::QuickConnectFlow::Connecting
+        );
+
+    if !is_connecting {
+        return Space::new().into();
+    }
+
+    let stage = state.connection_stage;
+    let tick = state.tick_count;
+    let dots = match tick % 3 {
+        0 => "",
+        1 => ".",
+        _ => "..",
+    };
+    let stage_label = match stage {
+        super::state::ConnectionStage::VaultLoading => {
+            state.model.i18n.tr("iced.stage.vault_loading")
+        }
+        super::state::ConnectionStage::SshConnecting => {
+            state.model.i18n.tr("iced.stage.ssh_connecting")
+        }
+        super::state::ConnectionStage::Authenticating => {
+            state.model.i18n.tr("iced.stage.authenticating")
+        }
+        super::state::ConnectionStage::SessionSetup => {
+            state.model.i18n.tr("iced.stage.session_setup")
+        }
+        _ => state.model.i18n.tr("iced.term.connecting"),
+    };
+
+    let content = container(
+        row![
+            text("⟳").size(14),
+            text(format!("{stage_label}{dots}")).size(12),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center),
+    )
+    .padding(8)
+    .style(top_bar_material_style);
+
+    Stack::with_children([Space::new().into(), content.into()])
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .into()
+}
+
+/// Terminal-inline overlay: shows a compact password/passphrase input form when the
+/// quick-connect modal is closed but the connection needs a credential from the user.
+fn inline_password_overlay(state: &IcedState) -> Element<'_, Message> {
+    let needs_inline_input = !state.quick_connect_open
+        && matches!(
+            state.quick_connect_flow,
+            super::state::QuickConnectFlow::NeedAuthPassword
+        );
+
+    if !needs_inline_input {
+        return Space::new().into();
+    }
+
+    let is_key = matches!(
+        state.model.draft.auth,
+        crate::session::AuthMethod::Key { .. }
+    );
+    let label = if is_key {
+        state.model.i18n.tr("iced.term.passphrase_placeholder")
+    } else {
+        state.model.i18n.tr("iced.term.password_placeholder")
+    };
+
+    let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
+        .style(modal_scrim_style);
+
+    let input_form = container(
+        column![
+            row![
+                text(if is_key {
+                    state.model.i18n.tr("iced.quick_connect.need_passphrase")
+                } else {
+                    state.model.i18n.tr("iced.quick_connect.need_password")
+                })
+                .size(13),
+                Space::new().width(iced::Length::Fill),
+            ]
+            .align_y(Alignment::Center),
+            text_input(label, state.inline_password_input.expose_secret())
+                .on_input(Message::QuickConnectInlinePasswordChanged)
+                .on_submit(Message::QuickConnectInlinePasswordSubmit(
+                    state.inline_password_input.expose_secret().to_string()
+                ))
+                .secure(true)
+                .width(iced::Length::Fixed(280.0)),
+            row![
+                button(text(state.model.i18n.tr("iced.btn.connect")).size(13))
+                    .on_press(Message::QuickConnectInlinePasswordSubmit(
+                        state.inline_password_input.expose_secret().to_string()
+                    ))
+                    .style(style_chrome_primary(13.0)),
+            ]
+            .align_y(Alignment::Center),
+        ]
+        .spacing(10)
+        .width(iced::Length::Fixed(320.0)),
+    )
+    .padding(16)
+    .style(top_bar_material_style);
+
+    Stack::with_children([scrim.into(), input_form.into()])
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
         .into()
 }
