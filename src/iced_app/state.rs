@@ -7,6 +7,7 @@ use crate::iced_app::terminal_rich::RowWidgetCache;
 use crate::settings::TerminalSettings;
 use crate::storage::StorageManager;
 use crate::terminal_core::TerminalController;
+use crate::theme::layout;
 use secrecy::SecretString;
 
 use super::message::{Message, SettingsCategory};
@@ -150,6 +151,51 @@ pub(crate) struct IcedTab {
     pub profile_id: Option<String>,
 }
 
+/// Per-tab animation state for tab width expand/collapse.
+#[derive(Debug, Clone)]
+pub(crate) struct TabAnimEntry {
+    /// Target width in pixels (126.0 when fully open, 0.0 when closed).
+    pub target_w: f32,
+    pub enter_tick: u64,
+    pub done: bool,
+}
+
+impl TabAnimEntry {
+    pub(crate) fn new(target_w: f32, enter_tick: u64) -> Self {
+        Self { target_w, enter_tick, done: false }
+    }
+}
+
+/// Modal overlay animation state.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum ModalAnimPhase {
+    Closed,
+    Opening,
+    Open,
+    Closing,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ModalAnimState {
+    pub phase: ModalAnimPhase,
+    pub enter_tick: u64,
+}
+
+impl ModalAnimState {
+    pub(crate) fn opening(tick_count: u64) -> Self {
+        Self { phase: ModalAnimPhase::Opening, enter_tick: tick_count }
+    }
+    pub(crate) fn closing(tick_count: u64) -> Self {
+        Self { phase: ModalAnimPhase::Closing, enter_tick: tick_count }
+    }
+}
+
+impl Default for ModalAnimState {
+    fn default() -> Self {
+        Self { phase: ModalAnimPhase::Closed, enter_tick: 0 }
+    }
+}
+
 /// Per-tab terminal controller and runtime state (**1:1** with one [`IcedTab`]).
 ///
 /// SSH sessions are managed by [`SessionManager`] in [`IcedState`], shared across all tabs.
@@ -236,10 +282,24 @@ pub(crate) struct IcedState {
     pub session_editor: Option<SessionEditorState>,
     /// 连接前 vault 解锁弹窗（用于读取/写入凭据）。
     pub vault_unlock: Option<VaultUnlockState>,
+    /// Pending vault unlock context stored during async KDF operations.
+    /// Cleared after unlock completes or on error.
+    pub pending_vault_unlock: Option<PendingVaultUnlock>,
     /// 首次自动探测授权提醒（一次性）。
     pub auto_probe_consent_modal: Option<AutoProbeConsentModalState>,
     /// 连接信息行数，用于连接成功后清理终端中的连接提示。
     pub preconnect_info_line_count: usize,
+
+    /// Tab 宽度动画状态（index-aligned with tabs）。
+    pub tab_anims: Vec<TabAnimEntry>,
+    /// Quick connect 弹窗动画状态。
+    pub quick_connect_anim: ModalAnimState,
+    /// Settings 弹窗动画状态。
+    pub settings_anim: ModalAnimState,
+    /// 滚动条 hover 状态（用于透明度动画）。
+    pub scrollbar_hovered: bool,
+    /// 滚动条 hover 开始时的 tick（用于 alpha 插值动画）。
+    pub scrollbar_hover_enter_tick: Option<u64>,
 }
 
 impl IcedState {
@@ -263,6 +323,133 @@ impl IcedState {
         self.session_manager
             .get_session(self.active_tab)
             .is_some_and(|s| s.is_connected())
+    }
+
+    /// Estimated tick interval in ms for use in animation interpolation.
+    /// Must be kept in sync with `compute_tick_ms` in `update/tick.rs`.
+    pub(crate) fn tick_ms(&self) -> f32 {
+        let now = crate::settings::unix_time_ms();
+        let idle_ms = now.saturating_sub(self.last_activity_ms).max(0) as u64;
+        let target_fps = self.model.settings.terminal.target_fps.clamp(10, 240);
+        if !self.window_focused {
+            250.0
+        } else if idle_ms <= 1_000 {
+            (1000.0 / target_fps as f32).max(16.0)
+        } else if idle_ms <= 5_000 {
+            (1000.0 / target_fps.min(30) as f32).max(33.0)
+        } else {
+            (1000.0 / target_fps.min(10) as f32).max(100.0)
+        }
+    }
+
+    /// Scrollbar track alpha for hover animation.
+    pub(crate) fn scrollbar_alpha(&self, tick_ms: f32) -> f32 {
+        use crate::theme::animation::{anim_t, ease_out};
+        use crate::theme::layout;
+        let target = if self.scrollbar_hovered { 0.25 } else { 0.08 };
+        let enter_tick = self.scrollbar_hover_enter_tick.unwrap_or(self.tick_count);
+        let t = anim_t(enter_tick, self.tick_count, tick_ms, layout::DURATION_HOVER_MS as f32);
+        let eased = if self.scrollbar_hovered { ease_out(t) } else { 1.0 - ease_out(t) };
+        layout::SCROLLBAR_HIDE_ALPHA + (target - layout::SCROLLBAR_HIDE_ALPHA) * eased
+    }
+
+    /// Returns the current animated width for tab at index `i`.
+    /// Uses `tab_anims[i]` if animating, otherwise `target_w`.
+    pub(crate) fn tab_animated_width(&self, i: usize, tick_ms: f32) -> f32 {
+        if i >= self.tab_anims.len() {
+            return 126.0;
+        }
+        let anim = &self.tab_anims[i];
+        if anim.done {
+            return anim.target_w;
+        }
+        use crate::theme::animation::{anim_t, ease_out};
+        let t = anim_t(anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_TAB_NEW_MS as f32);
+        let t = ease_out(t);
+        if anim.target_w > 0.0 {
+            anim.target_w * t
+        } else {
+            126.0 * (1.0 - t)
+        }
+    }
+
+    /// Advance tab animation states, marking done ones as complete.
+    pub(crate) fn tick_tab_anims(&mut self, tick_ms: f32) {
+        for anim in &mut self.tab_anims {
+            if anim.done {
+                continue;
+            }
+            use crate::theme::animation::anim_done;
+            let duration = if anim.target_w > 0.0 {
+                layout::DURATION_TAB_NEW_MS as f32
+            } else {
+                layout::DURATION_TAB_CLOSE_MS as f32
+            };
+            if anim_done(anim.enter_tick, self.tick_count, tick_ms, duration) {
+                anim.done = true;
+                anim.target_w = anim.target_w.max(0.0);
+            }
+        }
+    }
+
+    /// Quick connect modal alpha: 0.0 (fully transparent) to 1.0 (fully opaque).
+    pub(crate) fn quick_connect_anim_alpha(&self, tick_ms: f32) -> f32 {
+        use crate::theme::animation::{anim_t, ease_out, ease_in};
+        match self.quick_connect_anim.phase {
+            ModalAnimPhase::Closed => 0.0,
+            ModalAnimPhase::Opening => {
+                let t = anim_t(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_MS as f32);
+                ease_out(t)
+            }
+            ModalAnimPhase::Open => 1.0,
+            ModalAnimPhase::Closing => {
+                let t = anim_t(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_CLOSE_MS as f32);
+                ease_in(t)
+            }
+        }
+    }
+
+    /// Quick connect modal Y offset: 0.0 (normal) to -8.0 (up).
+    pub(crate) fn quick_connect_anim_offset(&self, tick_ms: f32) -> f32 {
+        use crate::theme::animation::{anim_t, ease_out, ease_in};
+        match self.quick_connect_anim.phase {
+            ModalAnimPhase::Closed => -8.0,
+            ModalAnimPhase::Opening => {
+                let t = anim_t(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_MS as f32);
+                -8.0 * (1.0 - ease_out(t))
+            }
+            ModalAnimPhase::Open => 0.0,
+            ModalAnimPhase::Closing => {
+                let t = anim_t(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_CLOSE_MS as f32);
+                -8.0 * ease_in(t)
+            }
+        }
+    }
+
+    /// Advance modal animation state, advancing Opening→Open and Closing→Closed.
+    pub(crate) fn tick_modal_anims(&mut self, tick_ms: f32) {
+        use crate::theme::animation::anim_done;
+
+        if self.quick_connect_anim.phase == ModalAnimPhase::Opening
+            && anim_done(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_MS as f32)
+        {
+            self.quick_connect_anim.phase = ModalAnimPhase::Open;
+        }
+        if self.quick_connect_anim.phase == ModalAnimPhase::Closing
+            && anim_done(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_CLOSE_MS as f32)
+        {
+            self.quick_connect_anim.phase = ModalAnimPhase::Closed;
+        }
+        if self.settings_anim.phase == ModalAnimPhase::Opening
+            && anim_done(self.settings_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_MS as f32)
+        {
+            self.settings_anim.phase = ModalAnimPhase::Open;
+        }
+        if self.settings_anim.phase == ModalAnimPhase::Closing
+            && anim_done(self.settings_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_CLOSE_MS as f32)
+        {
+            self.settings_anim.phase = ModalAnimPhase::Closed;
+        }
     }
 }
 
@@ -514,6 +701,17 @@ pub(crate) struct AutoProbeConsentModalState {
     // Reserved for future: allow other pending actions.
 }
 
+/// Context stored during async vault unlock operations.
+/// This is kept in IcedState while the background KDF task is running.
+#[derive(Debug, Clone)]
+pub(crate) struct PendingVaultUnlock {
+    pub verifier_hash: String,
+    pub pending_connect: Option<crate::session::SessionProfile>,
+    pub pending_delete_profile_id: Option<String>,
+    pub pending_save_session: bool,
+    pub pending_save_credentials_profile_id: Option<String>,
+}
+
 pub(crate) fn boot() -> (IcedState, Task<Message>) {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -570,8 +768,14 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             vault_flow: None,
             session_editor: None,
             vault_unlock: None,
+            pending_vault_unlock: None,
             auto_probe_consent_modal: None,
             preconnect_info_line_count: 0,
+            tab_anims: vec![TabAnimEntry { target_w: 126.0, enter_tick: 0, done: true }],
+            quick_connect_anim: ModalAnimState::default(),
+            settings_anim: ModalAnimState::default(),
+            scrollbar_hovered: false,
+            scrollbar_hover_enter_tick: None,
         },
         Task::none(),
     )
