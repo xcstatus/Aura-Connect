@@ -60,8 +60,8 @@ pub fn derive_encryption_key(password: &SecretString, meta: &VaultMeta) -> anyho
 ### 2.2 CredentialVault（core.rs）
 
 ```rust
-/// 用主密码初始化新保险箱（生成 salt + 加密空 payload）
-pub fn initialize(master_password: &SecretString) -> Result<Self, VaultError>
+/// 用主密码和指定的加密 salt 初始化新保险箱
+pub fn initialize(master_password: &SecretString, salt: [u8; 16]) -> Result<Self, VaultError>
 
 /// 用主密码解锁已有保险箱（派生密钥并尝试验证明文）
 pub fn unlock(&mut self, master_password: &SecretString) -> Result<(), VaultError>
@@ -69,16 +69,16 @@ pub fn unlock(&mut self, master_password: &SecretString) -> Result<(), VaultErro
 /// 锁定保险箱，清除内存中的密钥
 pub fn lock(&mut self)
 
-/// 用新密码重新加密（rekey）：解密 → 重新派生 → 重新加密
-pub fn rekey(&mut self, new_password: &SecretString) -> Result<(), VaultError>
+/// 用新密码重新加密（rekey）：解密 → 用新 salt 重新派生 → 重新加密
+pub fn rekey_with_salt(&mut self, new_password: &SecretString, new_salt: [u8; 16]) -> Result<(), VaultError>
 
 /// 读取一条凭据
 pub fn get_credential(&self, key: &str) -> Result<Option<Vec<u8>>, VaultError>
 
-/// 写入一条凭据（整体 payload 解密 → 修改 → 重新加密）
+/// 写入一条凭据（整体 payload 解密 → 修改 → 重新加密，中间 buffer 使用 Zeroizing 保护）
 pub fn set_credential(&mut self, key: &str, value: &[u8]) -> Result<(), VaultError>
 
-/// 删除一条凭据
+/// 删除一条凭据（中间 buffer 使用 Zeroizing 保护）
 pub fn delete_credential(&mut self, key: &str) -> Result<(), VaultError>
 
 /// 持久化到磁盘（pretty JSON 格式）
@@ -91,44 +91,40 @@ pub fn load_from_file(path: &Path) -> Result<Self, VaultError>
 ### 2.3 Session Credentials（session_credentials.rs）
 
 ```rust
-/// 保存凭据（使用 settings 中的 verifier_hash 作为密钥）
+/// 加载并解锁 vault（内部使用）。
+/// 若 vault 文件不存在但 settings 中存在 vault 元数据，则自动初始化一个新的空 vault。
+fn load_unlocked_vault(master_password: &str) -> Result<CredentialVault>
+
+/// 保存 SSH 会话凭据（密码和私钥口令）。
+/// - 当 password / passphrase 至少有一个非空时，加密写入 vault 并返回 Some(credential_id)。
+/// - 当两者都为空时，删除已存在的凭据并返回 None。
+/// 需要 vault 处于解锁态。
 pub fn save_ssh_credentials(
-    settings: &Settings, session_id: &str,
-    password: Option<&SecretString>, passphrase: Option<&SecretString>,
+    master_password: &str, session_id: &str,
+    password: Option<&str>, passphrase: Option<&str>,
 ) -> Result<Option<String>>
 
-/// 同步凭据（有值则写入，为空则删除）
+/// 同步 SSH 会话凭据（与 save_ssh_credentials 行为一致）。
 pub fn sync_ssh_credentials(
-    settings: &Settings, session_id: &str,
-    password: Option<&SecretString>, passphrase: Option<&SecretString>,
+    master_password: &str, session_id: &str,
+    password: Option<&str>, passphrase: Option<&str>,
 ) -> Result<Option<String>>
 
-/// 加载凭据
-pub fn load_ssh_credentials(
-    settings: &Settings, credential_id: &str,
-) -> Result<Option<SshCredentialPayload>>
+/// 加载 SSH 会话凭据。
+pub fn load_ssh_credentials(master_password: &str, credential_id: &str) -> Result<Option<SshCredentialPayload>>
 
-/// 加载凭据（使用显式 master_password）
-pub fn load_ssh_credentials_with_master(
-    settings: &Settings, master_password: &SecretString, credential_id: &str,
-) -> Result<Option<SshCredentialPayload>>
+/// 删除指定凭据。
+pub fn delete_credential(master_password: &str, credential_id: &str) -> Result<()>
 
-/// 保存凭据（使用显式 master_password）
-pub fn save_ssh_credentials_with_master(
-    settings: &Settings, master_password: &SecretString, session_id: &str,
-    password: Option<&SecretString>, passphrase: Option<&SecretString>,
-) -> Result<Option<String>>
-
-/// 同步凭据（使用显式 master_password）
-pub fn sync_ssh_credentials_with_master(
-    settings: &Settings, master_password: &SecretString, session_id: &str,
-    password: Option<&SecretString>, passphrase: Option<&SecretString>,
-) -> Result<Option<String>>
-
-/// 删除凭据（使用显式 master_password）
-pub fn delete_credential_with_master(
-    settings: &Settings, master_password: &SecretString, credential_id: &str,
-) -> Result<()>
+// 以下为已废弃的兼容别名（deprecated），指向新的统一 API
+#[deprecated(since = "1.0", note = "使用 save_ssh_credentials 替代")]
+pub fn save_ssh_credentials_with_master(...) -> Result<Option<String>>
+#[deprecated(since = "1.0", note = "使用 sync_ssh_credentials 替代")]
+pub fn sync_ssh_credentials_with_master(...) -> Result<Option<String>>
+#[deprecated(since = "1.0", note = "使用 load_ssh_credentials 替代")]
+pub fn load_ssh_credentials_with_master(...) -> Result<Option<SshCredentialPayload>>
+#[deprecated(since = "1.0", note = "使用 delete_credential 替代")]
+pub fn delete_credential_with_master(...) -> Result<()>
 ```
 
 ### 2.4 类型与枚举
@@ -159,13 +155,21 @@ pub fn delete_credential_with_master(
 `VaultMeta` 包含两个独立的盐值：
 
 - **`salt`**：用于派生出 `verifier_hash`（PHC 格式的 Argon2id 哈希），仅用于密码验证
-- **`encryption_salt`**：用于派生出独立的加密密钥，理论上可与认证密钥分离
+- **`encryption_salt`**：用于派生出独立的加密密钥，与认证密钥分离
 
-当前实现中，vault 文件的加密和解密都使用 `verifier_hash` 作为密码输入，实际派生时只用 `salt`（即 `CredentialVault` 自身的 salt）。`encryption_salt` 字段存在但未被 `core.rs` 使用，仅在 `session_credentials.rs` 的 `derive_credential_key` 注释中保留为设计说明。
+当前实现中，vault 文件的加密和解密**已使用 `encryption_salt`** 派生的独立密钥：
 
-> 理想状态应该是：`verifier_hash` 仅用于验证；验证通过后用 `encryption_salt` 派生的独立密钥来加密 vault 数据。这样即使用户密码被暴力破解得到 `verifier_hash`，也无法直接用于解密凭据。
+- `setup_vault` 生成独立的 `encryption_salt`
+- `initialize` / `unlock` 时，从 `VaultMeta.encryption_salt` 派生 16-byte salt 数组，传入 `CredentialVault::initialize(password, salt)` 或 `crypto::derive_key(password, &salt)`
+- `rekey_with_salt` 改密时同样从新密码 + 新 `encryption_salt` 派生新密钥
 
-### 3.3 VaultMeta 嵌入 Settings 的理由
+> 验证密钥（`verifier_hash`）仅用于验证用户输入的密码是否正确，不参与加密操作。两者分离确保即使 `verifier_hash` 被泄露，也无法直接用于解密凭据。
+
+### 3.3 VaultUnlockState / PendingVaultUnlock 扩展
+
+`VaultUnlockState` 新增 `pending_save_credentials_profile_id: Option<String>` 字段，支持连接成功后自动保存密码到保险箱的场景（post-connect UX）。对应地，`PendingVaultUnlock` 也包含同名字段用于异步解锁完成后路由。
+
+### 3.4 VaultMeta 嵌入 Settings 的理由
 
 将 `VaultMeta`（salt + hash）嵌入 `settings.json` 而非单独文件，优势在于：
 
@@ -173,11 +177,12 @@ pub fn delete_credential_with_master(
 2. **简化管理**：无需额外跟踪 vault 相关文件的存在性
 3. **风险**：settings 文件损坏可能导致所有凭据不可用；建议配合备份策略
 
-### 3.4 解锁链路中的 verifier_hash 作为密钥
+### 3.5 解锁链路中的 verifier_hash 作为密钥
 
-`sync_ssh_credentials` 系列函数（不带 `_with_master` 后缀）从 `settings.security.vault.verifier_hash` 获取密码。这是因为在运行时，验证通过后内存中持有的是 `verifier_hash`（由 `vault_master_password` 持有）。这是一种**运行时传递机制**，而非直接暴露用户密码。
+`sync_ssh_credentials` 系列函数从 `settings.security.vault.verifier_hash` 获取密码。
+`vault_master_password` 字段在运行时持有用户的实际密码字符串（明文 master password），用于后续所有凭据操作。
 
-### 3.5 UI 异步化策略
+### 3.6 UI 异步化策略
 
 KDF 操作（Argon2id）的计算量较大（约 100-500ms），为避免 UI 冻结：
 
@@ -194,31 +199,42 @@ KDF 操作（Argon2id）的计算量较大（约 100-500ms），为避免 UI 冻
 ```
 用户输入主密码
     ↓
-VaultManager::verify_password()
-    ├─ 从 VaultMeta.salt 构造 SaltString
-    ├─ Argon2::default().hash_password() → PHC string (verifier_hash)
-    └─ Argon2::default().verify_password() → bool
+VaultManager::setup_vault(password)
+    ├─ SaltString::generate(OsRng) → salt
+    ├─ kdf_argon2id().hash_password(password, salt) → verifier_hash (PHC string)
+    ├─ SaltString::generate(OsRng) → encryption_salt
+    └─ VaultMeta { salt, verifier_hash, encryption_salt }
 
-CredentialVault::unlock()
-    ├─ 使用 CredentialVault 自身的 salt（≠ VaultMeta.salt）
-    ├─ crypto::derive_key(password, self.salt) → Zeroizing<[u8; 32]>
-    │   └─ Params::new(65536, 3, 1) + Argon2id + V0x13
-    └─ 尝试验证解密 encrypted_data
+VaultManager::verify_password(password, meta)
+    ├─ PasswordHash::new(meta.verifier_hash)
+    └─ kdf_argon2id().verify_password() → bool
+
+CredentialVault::initialize(password, salt)
+    └─ crypto::derive_key(password, &salt) → Zeroizing<[u8; 32]>
+        └─ Params::new(65536, 3, 1) + Argon2id + V0x13
+
+CredentialVault::unlock(password)
+    ├─ 从 VaultMeta.encryption_salt 解析出 16-byte salt
+    └─ crypto::derive_key(password, &salt) → Zeroizing<[u8; 32]>
 ```
+
+> **注意**：`CredentialVault` 自身的 `salt` 字段来自 `VaultMeta.encryption_salt`，而非 `VaultMeta.salt`。两者职责已分离。
 
 ### 4.2 凭据存取流程
 
 **保存流程**：
 
 ```
-save_ssh_credentials_with_master()
+save_ssh_credentials(master_password, session_id, password, passphrase)
     ↓
-load_or_init_unlocked_vault_with_master()
-    ├─ CredentialVault::load_from_file(vault_path)
+load_unlocked_vault(master_password)
+    ├─ CredentialVault::load_from_file(vault_path) 或
+    │   CredentialVault::initialize(password, enc_salt) （vault 文件不存在时）
     └─ vault.unlock(master_password)
     ↓
 vault.set_credential("ssh:{session_id}", payload_bytes)
     ├─ crypto::decrypt(current_key, encrypted_data)
+    │   └─ decrypted buffer wrapped in Zeroizing
     ├─ serde_json::from_slice::<VaultPayload>(decrypted)
     ├─ payload.credentials.insert(key, value)
     ├─ serde_json::to_vec(&payload)
@@ -230,9 +246,9 @@ vault.save_to_file(vault_path)  ← 全量覆盖写入
 **加载流程**：
 
 ```
-load_ssh_credentials_with_master()
+load_ssh_credentials(master_password, credential_id)
     ↓
-load_or_init_unlocked_vault_with_master()
+load_unlocked_vault(master_password)
     ↓
 vault.get_credential("ssh:{session_id}")
     ├─ crypto::decrypt(key, encrypted_data)
@@ -243,13 +259,14 @@ vault.get_credential("ssh:{session_id}")
 ### 4.3 rekey 流程（改密）
 
 ```
-CredentialVault::rekey(new_password)
+CredentialVault::rekey_with_salt(new_password, new_salt)
     ↓
-crypto::decrypt(current_key, self.encrypted_data)  ← 用旧密钥解密
+let current_key = self.unlocked_key.as_ref()  ← vault 须已解锁
     ↓
-crypto::generate_salt()  ← 生成新 salt
+crypto::decrypt(current_key, self.encrypted_data)
+    └─ decrypted wrapped in Zeroizing
     ↓
-crypto::derive_key(new_password, new_salt)  ← 用新密码+新 salt 派生新密钥
+crypto::derive_key(new_password, &new_salt)  ← 用新密码+新 salt 派生新密钥
     ↓
 crypto::encrypt(new_key, decrypted)  ← 用新密钥加密旧数据
     ↓
@@ -258,23 +275,32 @@ self.encrypted_data = new_encrypted
 self.unlocked_key = Some(new_key)
 ```
 
+> `rekey_with_salt` 的 `new_salt` 来自新 `VaultMeta.encryption_salt`（在 `handle_vault_submit` 中调用时传入）。
+
 ### 4.4 异步解锁消息流
 
 ```
 Message::VaultUnlockSubmit
     ↓  [handle_vault_unlock_submit]
+将 pending context 存入 state.pending_vault_unlock
 立即关闭弹窗 → Task::perform(background_task, Message::VaultUnlockComplete)
     ↓  [spawn_blocking 线程]
-VaultManager::verify_password()  ← KDF 验证
+VaultManager::verify_password(password, VaultMeta)  ← KDF 验证
     ↓
-load_or_init_unlocked_vault_with_master()  ← 加载并解锁 vault
+parse VaultMeta.encryption_salt → [u8; 16]
+    ↓
+CredentialVault::load_from_file / ::initialize → vault
+    ↓
+vault.unlock(password)  ← 用 encryption_salt 派生的密钥
     ↓  [handle_vault_unlock_complete]
 设置 vault_master_password → 路由到 pending 操作
-    ├─ pending_connect → ConnectPressed
-    ├─ pending_delete → DeleteSessionProfile
-    ├─ pending_save → SessionEditorSave
-    └─ pending_save_credentials → sync_ssh_credentials_with_master
+    ├─ pending_save_session → SessionEditorSave
+    ├─ pending_delete_profile_id → DeleteSessionProfile
+    ├─ pending_save_credentials_profile_id → sync_ssh_credentials → 更新 profile
+    └─ pending_connect → fill_draft_from_profile → ConnectPressed
 ```
+
+> 解锁完成后，`vault_master_password` 持有的是用户输入的**明文密码字符串**（而非 `verifier_hash`），用于后续凭据操作。
 
 ### 4.5 线程安全约束
 
@@ -307,18 +333,19 @@ load_or_init_unlocked_vault_with_master()  ← 加载并解锁 vault
 | 字段 | 类型 | 清理策略 |
 | :--- | :--- | :--- |
 | `unlocked_key` | `Option<Zeroizing<[u8; 32]>>` | `Zeroizing` 自动清零 |
-| `encrypted_data` | `Vec<u8>` | 普通 Rust drop，无主动清零 |
-| `decrypted` / `serialized` 中间 buffer | `Vec<u8>` | 普通 Rust drop |
+| `decrypted` 中间 buffer | `Zeroizing<Vec<u8>>` | `Zeroizing` 包裹解密 payload，在 `set_credential` / `delete_credential` / `rekey_with_salt` 中使用 |
+| `encrypted_data` | `Vec<u8>` | 普通 Rust drop |
+| `serialized` 中间 buffer | `Vec<u8>` | 普通 Rust drop |
 | `SshCredentialPayload.password` | `String` | 普通 drop |
 
-`Zeroizing` 仅覆盖了密钥字段，payload 中的明文数据（`decrypted`、`serialized`、`SshCredentialPayload`）以普通 `Vec<u8>` 或 `String` 存在。虽然 Rust 的 drop 会在作用域结束时释放内存，但不会主动覆写。建议对高安全要求场景引入 `zeroize::Zeroizing` wrapper 包裹所有明文凭据。
+所有涉及解密后明文凭据的中间 buffer 均已使用 `Zeroizing` 包裹，确保在 drop 时被清零。`payload.credentials` 中的凭据值仍以 `Vec<u8>` 存储。
 
 ### 5.3 已知安全局限
 
-1. **无完整性校验**：vault 文件只校验 salt 长度，缺少整体 checksum 或 HMAC
-2. **认证/加密密钥未真正分离**：`encryption_salt` 字段存在但未使用
-3. **verifier_hash 作为运行时密钥**：虽然不是用户密码本身，但仍是一个高熵 secret，存储在内存中
-4. **改密时的数据丢失**（见优化项）
+1. **无完整性校验**：vault 文件缺少整体 checksum 或 HMAC（salt 长度校验除外）
+2. **payload.credentials 中的凭据值**仍以普通 `Vec<u8>` 存储，未使用 Zeroizing
+3. **运行时内存扫描**：虽然 `vault_master_password` 以 `SecretString` 存在，但 Rust 运行时内存保护有限
+4. **侧信道攻击**：Argon2id 实现的恒定时间特性需依赖底层库保证
 
 ---
 
@@ -348,7 +375,7 @@ load_or_init_unlocked_vault_with_master()  ← 加载并解锁 vault
 | :--- | :--- | :--- |
 | `verify_password` | O(Argon2) ~100-500ms | KDF 计算，参数：m=65536, t=3, p=1 |
 | `unlock`（不含验证） | O(Argon2) ~100-500ms | 同上，派生解密密钥 |
-| `rekey` | O(2×Argon2 + AES) | 一次解密 + 一次派生 + 一次加密 |
+| `rekey_with_salt` | O(2×Argon2 + AES) | 一次解密（Zeroizing） + 一次派生 + 一次加密 |
 | `set_credential` | O(AES + serde) | 全量解密 + 修改 + 全量加密 |
 | `get_credential` | O(AES + serde) | 全量解密 + 查询 |
 | `save_to_file` | O(n) | n = encrypted_data 字节数 |
