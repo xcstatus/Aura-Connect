@@ -205,15 +205,27 @@ pub(crate) fn handle_vault_unlock_password(state: &mut IcedState, v: String) -> 
 /// Handle VaultUnlockSubmit message.
 /// This now runs vault KDF operations asynchronously to avoid blocking the UI thread.
 pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message> {
-    let Some(u) = state.vault_unlock.as_ref() else {
+    let Some(u) = state.vault_unlock.take() else {
         return Task::none();
     };
 
-    let Some(meta) = state.model.settings.security.vault.as_ref() else {
+    let Some(meta) = state.model.settings.security.vault.clone() else {
         return Task::none();
     };
 
-    // Store pending context in state (will be used after async completion)
+    // Close the vault unlock modal immediately for responsive UI
+    state.vault_unlock = None;
+
+    // Extract pending credential_id synchronously (SessionProfile cannot cross into spawn_blocking easily)
+    let pending_credential_id: Option<String> = u.pending_connect.as_ref().and_then(|prof| {
+        if let crate::session::TransportConfig::Ssh(ssh) = &prof.transport {
+            ssh.credential_id.clone()
+        } else {
+            None
+        }
+    });
+
+    // Store pending context for use after async completion (pending_save_session/delete/save_creds need it)
     state.pending_vault_unlock = Some(super::super::state::PendingVaultUnlock {
         verifier_hash: meta.verifier_hash.clone(),
         pending_connect: u.pending_connect.clone(),
@@ -222,24 +234,27 @@ pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message>
         pending_save_credentials_profile_id: u.pending_save_credentials_profile_id.clone(),
     });
 
-    // Capture password and meta for async task
-    let password = u.password.clone();
-    let verifier_hash = meta.verifier_hash.clone();
-    let meta_salt = meta.salt.clone();
-    let enc_salt_str = meta.encryption_salt.clone(); // Option<String>
-
-    // Immediately close the vault unlock modal for responsive UI
+    // Close the vault unlock modal immediately for responsive UI
     state.vault_unlock = None;
 
-    // Run KDF operations in background thread to avoid blocking UI
+    // Capture password and meta for async task
+    let password = u.password.expose_secret().to_string();
+    let verifier_hash = meta.verifier_hash.clone();
+    let meta_salt = meta.salt.clone();
+    let enc_salt_str = meta.encryption_salt.clone();
+
+    // Run KDF + vault load + credential preload in background to avoid blocking UI
     let task = async move {
         let result = tokio::task::spawn_blocking(move || {
-            // Verify password using the stored salt and verifier hash
-            if !crate::vault::VaultManager::verify_password(&password, &crate::vault::VaultMeta {
-                salt: meta_salt,
-                verifier_hash: verifier_hash.clone(),
-                encryption_salt: enc_salt_str.clone(),
-            }) {
+            // Verify password using stored salt and verifier hash
+            if !crate::vault::VaultManager::verify_password(
+                &SecretString::from(password.clone()),
+                &crate::vault::VaultMeta {
+                    salt: meta_salt,
+                    verifier_hash: verifier_hash.clone(),
+                    encryption_salt: enc_salt_str.clone(),
+                },
+            ) {
                 return Err(crate::vault::VaultUnlockError::WrongPassword);
             }
 
@@ -250,61 +265,84 @@ pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message>
             let salt_len = enc_salt_bytes.len().min(16);
             enc_salt_arr[..salt_len].copy_from_slice(&enc_salt_bytes[..salt_len]);
 
-            // Load vault and unlock it (uses user's password + encryption salt)
+            // Load and unlock vault
             let path = crate::storage::StorageManager::get_vault_path()
                 .ok_or_else(|| crate::vault::VaultUnlockError::VaultError("无法定位 vault 路径".into()))?;
-            let _vault = if path.exists() {
+            let vault = if path.exists() {
                 let mut vault = crate::vault::core::CredentialVault::load_from_file(&path)
                     .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
-                vault.unlock(&password)
+                vault.unlock(&SecretString::from(password.clone()))
                     .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
                 vault
             } else {
-                let vault = crate::vault::core::CredentialVault::initialize(&password, enc_salt_arr)
+                let vault = crate::vault::core::CredentialVault::initialize(&SecretString::from(password.clone()), enc_salt_arr)
                     .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
                 vault.save_to_file(&path)
                     .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
                 vault
             };
 
-            // Return user's password as the vault master password
-            Ok(password.expose_secret().to_string())
-        }).await;
+            // Preload SSH credentials for the pending session during the same KDF pass
+            let preloaded = if let Some(ref cid) = pending_credential_id {
+                let credential_id = format!("ssh:{}", cid);
+                if let Ok(Some(raw)) = vault.get_credential(&credential_id) {
+                    if let Ok(payload) =
+                        serde_json::from_slice::<crate::vault::session_credentials::SshCredentialPayload>(&raw)
+                    {
+                        Some((payload.password, payload.passphrase))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            // Return master password and preloaded credentials (flatten Option<Option<T>> to Option<T>)
+            let preloaded = preloaded.map(|(pw, pp)| (pw.unwrap_or_default(), pp));
+            Ok((password, preloaded))
+        })
+        .await;
 
         match result {
-            Ok(Ok(pwd)) => Message::VaultUnlockComplete(Ok(pwd)),
+            Ok(Ok((pwd, preloaded))) => Message::VaultUnlockComplete(Ok((pwd, preloaded))),
             Ok(Err(e)) => Message::VaultUnlockComplete(Err(e)),
-            Err(_) => Message::VaultUnlockComplete(Err(crate::vault::VaultUnlockError::VaultError("Task cancelled".to_string()))),
+            Err(_) => {
+                Message::VaultUnlockComplete(Err(crate::vault::VaultUnlockError::VaultError(
+                    "Task cancelled".to_string(),
+                )))
+            }
         }
     };
 
     Task::perform(task, |msg| msg)
 }
 
-/// Handle async vault unlock completion (after background KDF operations).
+/// Handle async vault unlock completion (after background KDF + credential preload).
 pub(crate) fn handle_vault_unlock_complete(
     state: &mut IcedState,
-    result: Result<String, crate::vault::VaultUnlockError>,
+    result: Result<(String, Option<(String, Option<String>)>), crate::vault::VaultUnlockError>,
 ) -> Task<Message> {
     // Take pending context from state
-    let pending = match (result, state.pending_vault_unlock.take()) {
-        (Ok(verifier_hash), Some(mut ctx)) => {
-            // Success: set verifier hash and update context
-            ctx.verifier_hash = verifier_hash;
-            ctx
+    let pending = match result {
+        Ok((master_password, preloaded)) => {
+            // Construct PendingVaultUnlock from preloaded data
+            let pending = state.pending_vault_unlock.take().expect("pending context missing");
+            (pending, master_password, preloaded)
         }
-        (Err(e), _) => {
+        Err(e) => {
             // Error: reopen vault unlock modal with error (translate to current language)
-            let i18n = &state.model.i18n;
             let error_msg = match &e {
                 crate::vault::VaultUnlockError::WrongPassword => {
-                    i18n.tr("iced.vault_unlock.error.wrong_password").to_string()
+                    state.model.i18n.tr("iced.vault_unlock.error.wrong_password").to_string()
                 }
                 crate::vault::VaultUnlockError::VaultNotInitialized => {
-                    i18n.tr("iced.vault_unlock.error.vault_not_initialized").to_string()
+                    state.model.i18n.tr("iced.vault_unlock.error.vault_not_initialized").to_string()
                 }
                 crate::vault::VaultUnlockError::VaultError(_) => {
-                    i18n.tr("iced.vault_unlock.error.unknown").to_string()
+                    state.model.i18n.tr("iced.vault_unlock.error.unknown").to_string()
                 }
             };
             state.vault_unlock = Some(super::super::state::VaultUnlockState {
@@ -317,19 +355,13 @@ pub(crate) fn handle_vault_unlock_complete(
             });
             return Task::none();
         }
-        (Ok(_), None) => {
-            // Unexpected: no pending context
-            log::warn!("Vault unlock complete but no pending context");
-            return Task::none();
-        }
     };
 
+    let (pending, master_password, preloaded) = pending;
+
     // Set vault master password
-    state.model.vault_master_password = Some(SecretString::from(pending.verifier_hash));
-    state.vault_status = VaultStatus::compute(
-        &state.model.settings,
-        true,
-    );
+    state.model.vault_master_password = Some(SecretString::from(master_password));
+    state.vault_status = VaultStatus::compute(&state.model.settings, true);
 
     // Route to pending operations
     if pending.pending_save_session {
@@ -377,24 +409,31 @@ pub(crate) fn handle_vault_unlock_complete(
     }
 
     if let Some(prof) = pending.pending_connect {
-        // Note: we do NOT set quick_connect_open = false here — the modal close
-        // animation (if any) is already running from handle_profile_connect.
-        // Suppress the overlay instead so it doesn't interfere with the terminal.
-
-        // 清除终端并显示解锁消息
-        let a = state.model.i18n.tr("iced.term.vault_unlocked");
-        let b = state.model.i18n.tr("iced.term.connecting");
-        {
-            let pane = state.active_pane_mut();
-            pane.terminal.clear_local_preconnect_ui();
-            pane.terminal.inject_local_lines(&[a, b]);
+        // Apply preloaded credentials to draft (avoids second KDF round-trip)
+        if let Some((pw, pp)) = preloaded {
+            state.model.draft.password = SecretString::from(pw);
+            state.model.draft.passphrase = SecretString::from(pp.unwrap_or_default());
         }
 
-        // 填充 draft 并直接触发连接（不打开弹窗）
+        // Extract values before any mutable borrow.
+        let vault_unlocked_msg = state.model.i18n.tr("iced.term.vault_unlocked");
+
+        // Fill draft with profile host/user/auth.
         let master = state.model.vault_master_password.clone();
-        if state.model.fill_draft_from_profile(&prof, master.as_ref()).is_ok() {
-            return super::super::update::update(state, Message::ConnectPressed);
+        if state.model.fill_draft_from_profile(&prof, master.as_ref()).is_err() {
+            return Task::none();
         }
+
+        // Clear the entire terminal viewport before showing vault_unlocked.
+        // SSH info (target + fingerprint + auth method + "连接中…") will be injected
+        // by start_ssh_connect once ConnectPressed is dispatched.
+        state.active_pane_mut().terminal.clear_local_preconnect_ui();
+        state.active_pane_mut()
+            .terminal
+            .inject_local_lines(&[&vault_unlocked_msg]);
+        state.vault_hint_line_count = 0;
+
+        return super::super::update::update(state, Message::ConnectPressed);
     }
 
     Task::none()

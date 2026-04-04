@@ -13,7 +13,7 @@ pub struct SshCredentialPayload {
 
 /// 加载并解锁 vault（使用显式 master_password）。
 /// 若 vault 文件不存在但 settings 中存在 vault 元数据，则自动初始化一个新的空 vault。
-fn load_unlocked_vault(master_password: &str) -> Result<CredentialVault> {
+pub(crate) fn load_unlocked_vault(master_password: &str) -> Result<CredentialVault> {
     use secrecy::SecretString;
     let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
 

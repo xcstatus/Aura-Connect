@@ -155,7 +155,11 @@ pub(crate) enum Message {
     VaultUnlockPasswordChanged(String),
     VaultUnlockSubmit,
     /// Async vault unlock result (callback from background KDF task).
-    VaultUnlockComplete(Result<String, crate::vault::VaultUnlockError>),
+    /// `(master_password, preloaded_credentials)` where preloaded_credentials is
+    /// `(password, passphrase)` for the pending session, loaded during the same KDF pass.
+    VaultUnlockComplete(
+        Result<(String, Option<(String, Option<String>)>), crate::vault::VaultUnlockError>,
+    ),
     /// Clipboard contents for terminal paste (bracketed when DEC 2004 is on).
     ClipboardPaste(Option<String>),
     /// Ack for clipboard write task (copy).

@@ -77,66 +77,21 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
     // Extract needed fields early so the borrow of `state.model.draft` is released
     // before any mutable borrows of `state`.
     let host = state.model.draft.host.trim().to_string();
-    let port = state.model.draft.port.trim().to_string();
-    let user = state.model.draft.user.trim().to_string();
-    let host_str = host.clone();
-    let user_str = user.clone();
-    let port_str = port.clone();
+    let port_str = state.model.draft.port.trim().to_string();
+    let user_str = state.model.draft.user.trim().to_string();
 
-    // Retry: clear previous error/info lines before injecting new ones.
-    if matches!(
-        state.quick_connect_flow,
-        QuickConnectFlow::Failed | QuickConnectFlow::AuthLocked
-    ) {
-        let lines_to_clear = state.preconnect_info_line_count;
-        if lines_to_clear > 0 {
-            state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
-        }
-        state.preconnect_info_line_count = 0;
-    }
-
-    // 收集连接信息行
-    let mut lines: Vec<String> = Vec::new();
-    // Prefer session name, fall back to user@host:port
-    let target_str = state
-        .model
-        .selected_session_id
-        .as_ref()
-        .and_then(|pid| state.model.profiles().iter().find(|p| &p.id == pid))
-        .map(|p| {
-            let addr = format!("{}@{}:{}", user_str, host_str, port_str);
-            format!("\"{}\" ({})", p.name, addr)
-        })
-        .unwrap_or_else(|| format!("{}@{}:{}", user, host, port));
-    let connecting_msg = state.model.i18n.tr("iced.term.ssh.connecting")
-        .replace("{target}", &target_str);
-    lines.push(connecting_msg);
-
-    if let Some(rec) = state.model.settings.security.known_hosts.iter().find(|r| r.host == host_str) {
-        let fp_msg = state.model.i18n.tr("iced.term.ssh.host_fingerprint")
-            .replace("{algo}", &rec.algo)
-            .replace("{fp}", &rec.fingerprint);
-        lines.push(fp_msg);
-    }
-
-    let auth_name = state.model.i18n.tr("iced.auth.keyboard_interactive");
-    let auth_msg = state.model.i18n.tr("iced.term.ssh.auth_method")
-        .replace("{method}", auth_name);
-    lines.push(auth_msg);
-
-    let line_refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
-    state.active_pane_mut().terminal.inject_local_lines(&line_refs);
-    state.preconnect_info_line_count = lines.len();
+    // Inject SSH connecting info (target + fingerprint + auth method, then "连接中…").
+    inject_ssh_connecting_info(state);
 
     state.quick_connect_flow = QuickConnectFlow::Connecting;
     state.quick_connect_error_kind = None;
     state.connection_stage = ConnectionStage::SshConnecting;
 
-    let port: u16 = port.parse().unwrap_or(22);
+    let port: u16 = port_str.parse().unwrap_or(22);
     let known_hosts = state.model.settings.security.known_hosts.clone();
 
     let sess = match state.rt.block_on(
-        crate::backend::ssh_session::InteractiveAuthSession::connect(&host, port, &user, &known_hosts)
+        crate::backend::ssh_session::InteractiveAuthSession::connect(&host, port, &user_str, &known_hosts)
     ) {
         Ok(s) => s,
         Err(_e) => {
@@ -201,99 +156,29 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
 
 /// Standard SSH connection - returns async Task for non-blocking UI.
 fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
-    let draft = state.model.draft.clone();
-    let host = draft.host.trim().to_string();
-    let settings = state.model.settings.clone();
-    let i18n = state.model.i18n.clone();
+    // Inject SSH connecting info: target + fingerprint + auth method (counted),
+    // then static "连接中…" (not counted — stays visible until MOTD).
+    inject_ssh_connecting_info(state);
 
-    // Retry: clear previous error/info lines before injecting new ones.
-    if matches!(
-        state.quick_connect_flow,
-        QuickConnectFlow::Failed | QuickConnectFlow::AuthLocked
-    ) {
-        let lines_to_clear = state.preconnect_info_line_count;
-        if lines_to_clear > 0 {
-            state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
-        }
-        state.preconnect_info_line_count = 0;
-    }
-
-    // Merge persisted known hosts and runtime overrides ("accept once").
-    let mut merged_known_hosts = settings.security.known_hosts.clone();
-    for r in &state.runtime_known_hosts {
-        if !merged_known_hosts
-            .iter()
-            .any(|x| x.host == r.host && x.port == r.port)
-        {
-            merged_known_hosts.push(r.clone());
-        }
-    }
-
-    // Collect connection info lines for display
-    let mut lines: Vec<String> = Vec::new();
-
-    // 1. Connection target: prefer session name, fall back to user@host:port
-    let target_str = state
-        .model
-        .selected_session_id
-        .as_ref()
-        .and_then(|pid| state.model.profiles().iter().find(|p| &p.id == pid))
-        .map(|p| {
-            let addr = format!("{}@{}:{}", draft.user, host, draft.port);
-            format!("\"{}\" ({})", p.name, addr)
-        })
-        .unwrap_or_else(|| format!("{}@{}:{}", draft.user, host, draft.port));
-
-    let connecting_msg = i18n
-        .tr("iced.term.ssh.connecting")
-        .replace("{target}", &target_str);
-    lines.push(connecting_msg);
-
-    // 2. Host fingerprint (if known)
-    if let Some(rec) = merged_known_hosts.iter().find(|r| r.host == host) {
-        let fp_msg = i18n
-            .tr("iced.term.ssh.host_fingerprint")
-            .replace("{algo}", &rec.algo)
-            .replace("{fp}", &rec.fingerprint);
-        lines.push(fp_msg);
-    }
-
-    // 3. Auth method
-    let auth_name = match &draft.auth {
-        crate::session::AuthMethod::Password => i18n.tr("iced.auth.password"),
-        crate::session::AuthMethod::Key { .. } => i18n.tr("iced.auth.public_key"),
-        crate::session::AuthMethod::Interactive => i18n.tr("iced.auth.keyboard_interactive"),
-        crate::session::AuthMethod::Agent => i18n.tr("iced.auth.agent"),
-    };
-    let auth_msg = i18n
-        .tr("iced.term.ssh.auth_method")
-        .replace("{method}", auth_name);
-    lines.push(auth_msg);
-
-    // Record line count for cleanup
-    let line_count = lines.len();
-    let line_refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
-
-    // Display connection info in terminal
-    state.active_pane_mut().terminal.inject_local_lines(&line_refs);
-    state.preconnect_info_line_count = line_count;
     state.quick_connect_flow = QuickConnectFlow::Connecting;
     state.quick_connect_error_kind = None;
 
-    // Set initial connection stage
     state.connection_stage = if state.model.vault_master_password.is_some() {
         ConnectionStage::VaultLoading
     } else {
         ConnectionStage::SshConnecting
     };
 
+    // Collect values needed for async task before taking ownership of draft/settings.
+    let draft = state.model.draft.clone();
+    let settings = state.model.settings.clone();
+    let merged_known_hosts = merge_known_hosts(&settings, &state.runtime_known_hosts);
+
     // Build async task - this will run without blocking the UI thread
     let task = async move {
-        // Create a temporary AppModel for the async connection
         let mut temp_model = crate::app_model::AppModel::new_for_connect(draft, settings);
         temp_model.settings.security.known_hosts = merged_known_hosts;
 
-        // Perform the connection
         let result = temp_model.connect_from_draft().await;
 
         match result {
@@ -451,16 +336,16 @@ pub(crate) fn handle_connect_success(state: &mut IcedState, session: Box<dyn Asy
     state.quick_connect_error_kind = None;
     state.connection_stage = ConnectionStage::None;
 
-    // 显示连接成功信息
-    let msg = state.model.i18n.tr("iced.term.connected");
-    state.active_pane_mut().terminal.inject_local_lines(&[msg]);
-
-    // 清理预连接信息行
+    // 清理预连接信息行（SSH target/fingerprint/auth_method，不清理"连接中…"行）
     let lines_to_clear = state.preconnect_info_line_count;
     if lines_to_clear > 0 {
         state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
     }
     state.preconnect_info_line_count = 0;
+
+    // 显示连接成功信息
+    let msg = state.model.i18n.tr("iced.term.connected");
+    state.active_pane_mut().terminal.inject_local_lines(&[msg]);
 
     // 立即 pump 一次，读取 MOTD
     let active_tab = state.active_tab;
@@ -589,9 +474,11 @@ pub(crate) fn handle_profile_connect(
                 super::super::state::ModalAnimState::closing(state.tick_count);
         }
         state.quick_connect_panel = super::super::state::QuickConnectPanel::Picker;
+        // Track vault hint line count so we can clear them after unlock.
         let a = state.model.i18n.tr("iced.term.vault_needed");
         let b = state.model.i18n.tr("iced.term.vault_unlock_to_continue");
         state.active_pane_mut().terminal.inject_local_lines(&[a, b]);
+        state.vault_hint_line_count = 2;
         return super::super::update::update(state, Message::VaultUnlockOpenConnect(profile));
     }
 
@@ -686,14 +573,16 @@ pub(crate) fn handle_interactive_submit(state: &mut IcedState) -> Task<Message> 
                     state.quick_connect_error_kind = None;
                     state.connection_stage = ConnectionStage::None;
 
-                    // 显示连接成功并清理预连接信息
-                    let msg = state.model.i18n.tr("iced.term.connected");
-                    state.active_pane_mut().terminal.inject_local_lines(&[msg]);
+                    // 清理预连接信息行，再显示"已连接"
                     let lines_to_clear = state.preconnect_info_line_count;
                     if lines_to_clear > 0 {
                         state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
                     }
                     state.preconnect_info_line_count = 0;
+
+                    // 显示连接成功
+                    let msg = state.model.i18n.tr("iced.term.connected");
+                    state.active_pane_mut().terminal.inject_local_lines(&[msg]);
 
                     let active_tab = state.active_tab;
                     let pane = &mut state.tab_panes[active_tab];
@@ -729,4 +618,99 @@ pub(crate) fn handle_interactive_submit(state: &mut IcedState) -> Task<Message> 
         }
     }
     Task::none()
+}
+
+/// Merge persistent known_hosts with runtime overrides ("accept once").
+pub(crate) fn merge_known_hosts(
+    settings: &crate::settings::Settings,
+    runtime_overrides: &[crate::settings::KnownHostRecord],
+) -> Vec<crate::settings::KnownHostRecord> {
+    let mut merged = settings.security.known_hosts.clone();
+    for r in runtime_overrides {
+        if !merged.iter().any(|x| x.host == r.host && x.port == r.port) {
+            merged.push(r.clone());
+        }
+    }
+    merged
+}
+
+/// Inject SSH connecting info into the terminal.
+///
+/// - Lines 1-3: target, fingerprint, auth method (counted in `preconnect_info_line_count`,
+///   cleared on success/error/retry).
+/// - Line 4: static "连接中…" message (NOT counted, stays visible during connection).
+///
+/// If `skip_counting` is true, SSH info lines are injected but `preconnect_info_line_count`
+/// is NOT updated. Use this when re-injecting SSH info (e.g. after vault unlock).
+pub(crate) fn inject_ssh_connecting_info(state: &mut IcedState) {
+    inject_ssh_connecting_info_full(state, false)
+}
+
+pub(crate) fn inject_ssh_connecting_info_full(state: &mut IcedState, skip_counting: bool) {
+    // Retry: clear previous error/info lines before injecting new ones.
+    if matches!(
+        state.quick_connect_flow,
+        QuickConnectFlow::Failed | QuickConnectFlow::AuthLocked
+    ) {
+        let lines_to_clear = state.preconnect_info_line_count;
+        if lines_to_clear > 0 {
+            state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
+        }
+        state.preconnect_info_line_count = 0;
+    }
+
+    let draft = state.model.draft.clone();
+    let host = draft.host.trim().to_string();
+
+    // Extract all i18n strings before any mutable borrow of state.
+    let i18n_connecting = state.model.i18n.tr("iced.term.ssh.connecting");
+    let i18n_host_fp = state.model.i18n.tr("iced.term.ssh.host_fingerprint");
+    let i18n_auth_method = state.model.i18n.tr("iced.term.ssh.auth_method");
+    let i18n_connecting_stage = state.model.i18n.tr("iced.term.connecting");
+    let auth_name = match &draft.auth {
+        crate::session::AuthMethod::Password => state.model.i18n.tr("iced.auth.password"),
+        crate::session::AuthMethod::Key { .. } => state.model.i18n.tr("iced.auth.public_key"),
+        crate::session::AuthMethod::Interactive => state.model.i18n.tr("iced.auth.keyboard_interactive"),
+        crate::session::AuthMethod::Agent => state.model.i18n.tr("iced.auth.agent"),
+    };
+    let merged_known_hosts = merge_known_hosts(&state.model.settings, &state.runtime_known_hosts);
+
+    // Build SSH info lines (counted, cleared on retry/success)
+    let mut lines: Vec<String> = Vec::new();
+
+    // 1. Connection target
+    let target_str = state
+        .model
+        .selected_session_id
+        .as_ref()
+        .and_then(|pid| state.model.profiles().iter().find(|p| &p.id == pid))
+        .map(|p| {
+            let addr = format!("{}@{}:{}", draft.user, host, draft.port);
+            format!("\"{}\" ({})", p.name, addr)
+        })
+        .unwrap_or_else(|| format!("{}@{}:{}", draft.user, host, draft.port));
+
+    lines.push(i18n_connecting.replace("{target}", &target_str));
+
+    // 2. Host fingerprint (from known_hosts + runtime overrides)
+    if let Some(rec) = merged_known_hosts.iter().find(|r| r.host == host) {
+        lines.push(
+            i18n_host_fp.replace("{algo}", &rec.algo).replace("{fp}", &rec.fingerprint),
+        );
+    }
+
+    // 3. Auth method
+    lines.push(i18n_auth_method.replace("{method}", &auth_name));
+
+    // Record SSH info line count for cleanup (skip when re-injecting after vault unlock)
+    if !skip_counting {
+        state.preconnect_info_line_count = lines.len();
+    }
+    let line_refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+    state.active_pane_mut().terminal.inject_local_lines(&line_refs);
+
+    // 4. "连接中…" message (NOT counted — always visible during connection)
+    state.active_pane_mut()
+        .terminal
+        .inject_local_lines(&[&i18n_connecting_stage]);
 }

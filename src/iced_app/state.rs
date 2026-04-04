@@ -291,6 +291,8 @@ pub(crate) struct IcedState {
     pub auto_probe_consent_modal: Option<AutoProbeConsentModalState>,
     /// 连接信息行数，用于连接成功后清理终端中的连接提示。
     pub preconnect_info_line_count: usize,
+    /// Vault 提示行数，用于 vault 解锁后清理提示并显示 SSH info。
+    pub vault_hint_line_count: usize,
 
     /// Tab 宽度动画状态（index-aligned with tabs）。
     pub tab_anims: Vec<TabAnimEntry>,
@@ -708,6 +710,7 @@ pub(crate) struct AutoProbeConsentModalState {
 /// Context stored during async vault unlock operations.
 /// This is kept in IcedState while the background KDF task is running.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub(crate) struct PendingVaultUnlock {
     pub verifier_hash: String,
     pub pending_connect: Option<crate::session::SessionProfile>,
@@ -776,6 +779,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             pending_vault_unlock: None,
             auto_probe_consent_modal: None,
             preconnect_info_line_count: 0,
+            vault_hint_line_count: 0,
             tab_anims: vec![TabAnimEntry { target_w: 126.0, enter_tick: 0, done: true }],
             quick_connect_anim: ModalAnimState::default(),
             settings_anim: ModalAnimState::default(),
