@@ -29,9 +29,11 @@ pub struct CredentialVault {
 }
 
 impl CredentialVault {
-    /// Initialize a new Vault with a master password
-    pub fn initialize(master_password: &SecretString) -> Result<Self, VaultError> {
-        let salt = crypto::generate_salt();
+    /// Initialize a new Vault with a master password and the given encryption salt.
+    ///
+    /// The `salt` is used to derive the encryption key via Argon2id. For VaultManager-managed
+    /// vaults, pass `VaultMeta.encryption_salt` so the same salt is available at unlock time.
+    pub fn initialize(master_password: &SecretString, salt: [u8; 16]) -> Result<Self, VaultError> {
         let key = crypto::derive_key(master_password, &salt)?;
 
         // Initial empty payload
@@ -47,7 +49,7 @@ impl CredentialVault {
         })
     }
 
-    /// Unlock an existing vault with the master password
+    /// Unlock an existing vault with the master password.
     pub fn unlock(&mut self, master_password: &SecretString) -> Result<(), VaultError> {
         let key = crypto::derive_key(master_password, &self.salt)?;
 
@@ -66,13 +68,14 @@ impl CredentialVault {
         self.unlocked = false;
     }
 
-    /// Re-encrypt the current vault payload with a new password.
+    /// Re-encrypt the current vault payload with a new password and a new salt.
     /// The vault must be unlocked before calling this method.
-    pub fn rekey(&mut self, new_password: &SecretString) -> Result<(), VaultError> {
+    pub fn rekey_with_salt(&mut self, new_password: &SecretString, new_salt: [u8; 16]) -> Result<(), VaultError> {
         let current_key = self.unlocked_key.as_ref().ok_or(VaultError::Locked)?;
         let decrypted = crypto::decrypt(current_key, &self.encrypted_data)?;
+        // Wrap in Zeroizing so the plaintext is zeroized when dropped.
+        let decrypted = Zeroizing::new(decrypted);
 
-        let new_salt = crypto::generate_salt();
         let new_key = crypto::derive_key(new_password, &new_salt)?;
         let new_encrypted = crypto::encrypt(&new_key, &decrypted)?;
 
@@ -83,7 +86,7 @@ impl CredentialVault {
         Ok(())
     }
 
-    /// Get a stored credential, returning `None` if the credential doesn't exist
+    /// Get a stored credential, returning `None` if the credential doesn't exist.
     pub fn get_credential(&self, key: &str) -> Result<Option<Vec<u8>>, VaultError> {
         let secret_key = self.unlocked_key.as_ref().ok_or(VaultError::Locked)?;
 
@@ -93,11 +96,13 @@ impl CredentialVault {
         Ok(payload.credentials.get(key).cloned())
     }
 
-    /// Set or update a credential
+    /// Set or update a credential.
     pub fn set_credential(&mut self, key: &str, value: &[u8]) -> Result<(), VaultError> {
         let secret_key = self.unlocked_key.as_ref().ok_or(VaultError::Locked)?;
 
         let decrypted = crypto::decrypt(secret_key, &self.encrypted_data)?;
+        // Wrap in Zeroizing so the plaintext vault payload is zeroized when dropped.
+        let decrypted = Zeroizing::new(decrypted);
         let mut payload: VaultPayload = serde_json::from_slice(&decrypted)?;
 
         payload.credentials.insert(key.to_string(), value.to_vec());
@@ -108,11 +113,13 @@ impl CredentialVault {
         Ok(())
     }
 
-    /// Delete a credential from the vault
+    /// Delete a credential from the vault.
     pub fn delete_credential(&mut self, key: &str) -> Result<(), VaultError> {
         let secret_key = self.unlocked_key.as_ref().ok_or(VaultError::Locked)?;
 
         let decrypted = crypto::decrypt(secret_key, &self.encrypted_data)?;
+        // Wrap in Zeroizing so the plaintext vault payload is zeroized when dropped.
+        let decrypted = Zeroizing::new(decrypted);
         let mut payload: VaultPayload = serde_json::from_slice(&decrypted)?;
 
         if payload.credentials.remove(key).is_some() {
@@ -123,13 +130,13 @@ impl CredentialVault {
         Ok(())
     }
 
-    /// Save the encrypted Vault to a specified file path
+    /// Save the encrypted Vault to a specified file path.
     pub fn save_to_file(&self, path: &Path) -> Result<(), VaultError> {
         let storage = VaultDiskFormat {
             salt: self.salt.to_vec(),
             encrypted_data: self.encrypted_data.clone(),
         };
-        let data = serde_json::to_string_pretty(&storage)?;
+        let data = serde_json::to_vec(&storage)?;
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
@@ -137,11 +144,11 @@ impl CredentialVault {
         Ok(())
     }
 
-    /// Load the encrypted Vault from a file
+    /// Load the encrypted Vault from a file.
     pub fn load_from_file(path: &Path) -> Result<Self, VaultError> {
         let data =
-            fs::read_to_string(path).map_err(|e| VaultError::DecryptionFailed(e.to_string()))?;
-        let storage: VaultDiskFormat = serde_json::from_str(&data)?;
+            fs::read(path).map_err(|e| VaultError::DecryptionFailed(e.to_string()))?;
+        let storage: VaultDiskFormat = serde_json::from_slice(&data)?;
 
         let mut salt = [0u8; 16];
         if storage.salt.len() == 16 {
@@ -167,8 +174,9 @@ mod tests {
     #[test]
     fn test_vault_lifecycle() {
         let password = SecretString::from("SuperSecret!23".to_string());
+        let salt = crypto::generate_salt();
         // Initialization
-        let mut vault = CredentialVault::initialize(&password).unwrap();
+        let mut vault = CredentialVault::initialize(&password, salt).unwrap();
         assert!(vault.unlocked);
 
         // Write credential
@@ -214,7 +222,8 @@ mod tests {
         file_path.push(format!("vault_test_{}.json", timestamp));
 
         let password = SecretString::from("Pass123".to_string());
-        let mut vault = CredentialVault::initialize(&password).unwrap();
+        let salt = crypto::generate_salt();
+        let mut vault = CredentialVault::initialize(&password, salt).unwrap();
         vault.set_credential("api_token", b"abcdef123456").unwrap();
 
         // Save to disk
@@ -225,7 +234,7 @@ mod tests {
         assert!(!loaded_vault.unlocked);
         assert!(loaded_vault.get_credential("api_token").is_err());
 
-        // Unlock new instance
+        // Unlock new instance (uses the salt stored in the file)
         loaded_vault.unlock(&password).unwrap();
 
         // Verify credential
@@ -240,10 +249,12 @@ mod tests {
     fn test_vault_rekey() {
         let old_pwd = SecretString::from("old-pass".to_string());
         let new_pwd = SecretString::from("new-pass".to_string());
-        let mut vault = CredentialVault::initialize(&old_pwd).unwrap();
+        let old_salt = crypto::generate_salt();
+        let new_salt = crypto::generate_salt();
+        let mut vault = CredentialVault::initialize(&old_pwd, old_salt).unwrap();
         vault.set_credential("k", b"v").unwrap();
 
-        vault.rekey(&new_pwd).unwrap();
+        vault.rekey_with_salt(&new_pwd, new_salt).unwrap();
         vault.lock();
         assert!(vault.unlock(&old_pwd).is_err());
         vault.unlock(&new_pwd).unwrap();

@@ -1,11 +1,30 @@
 use argon2::{
     Argon2,
     password_hash::{PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
+    Params,
 };
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use zeroize::Zeroizing;
+
+/// Vault KDF 参数：Argon2id, m=64MiB, t=3, p=1
+/// 统一在此处管理，所有密钥派生都应使用此参数集。
+pub const KDF_ARGON2_MEMORY_KIB: u32 = 65536;
+pub const KDF_ARGON2_T_cost: u32 = 3;
+pub const KDF_ARGON2_P_cost: u32 = 1;
+
+/// 从 KDF 参数构建 Argon2id 实例。
+pub fn kdf_argon2id() -> Argon2<'static> {
+    let params = Params::new(
+        KDF_ARGON2_MEMORY_KIB,
+        KDF_ARGON2_T_cost,
+        KDF_ARGON2_P_cost,
+        Some(32),
+    )
+    .expect("KDF params are hardcoded and should always be valid");
+    Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params)
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct VaultMeta {
@@ -24,7 +43,7 @@ impl VaultManager {
     /// 生成随机 Salt 并为初始密码计算哈希
     pub fn setup_vault(password: &SecretString) -> anyhow::Result<VaultMeta> {
         let salt = SaltString::generate(&mut OsRng);
-        let argon2 = Argon2::default();
+        let argon2 = kdf_argon2id();
 
         let password_hash = argon2
             .hash_password(password.expose_secret().as_bytes(), &salt)
@@ -48,7 +67,7 @@ impl VaultManager {
             return false;
         };
 
-        Argon2::default()
+        kdf_argon2id()
             .verify_password(password.expose_secret().as_bytes(), &parsed_hash)
             .is_ok()
     }
@@ -57,8 +76,7 @@ impl VaultManager {
     /// 返回 Zeroizing 以确保密钥在内存中可被安全清理
     pub fn derive_master_key(password: &SecretString, salt: &str) -> anyhow::Result<Zeroizing<[u8; 32]>> {
         let salt_bytes = salt.as_bytes();
-
-        let argon2 = Argon2::default();
+        let argon2 = kdf_argon2id();
         let mut output_key = [0u8; 32];
         argon2
             .hash_password_into(
@@ -78,6 +96,7 @@ impl VaultManager {
             .ok_or_else(|| anyhow::anyhow!("No encryption salt in vault metadata"))?;
         Self::derive_master_key(password, enc_salt)
     }
+
 }
 
 impl fmt::Debug for VaultMeta {

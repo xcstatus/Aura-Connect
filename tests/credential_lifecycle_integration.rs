@@ -78,10 +78,11 @@ fn save_write_restart_prefill() {
         // 2) Save a profile with password in vault (credential_id stored in profile).
         let sid = "sess-1";
         let pw = SecretString::new("ssh-pass".into());
+        let runtime_master = SecretString::from(meta.verifier_hash.clone());
         let credential_id = rust_ssh::vault::session_credentials::save_ssh_credentials(
-            &settings,
+            runtime_master.expose_secret(),
             sid,
-            Some(&pw),
+            Some(pw.expose_secret()),
             None,
         )
         .unwrap();
@@ -138,14 +139,15 @@ fn update_clear_credentials_deletes_vault_entry() {
         let user_pwd = SecretString::new("master-pass".into());
         let meta = VaultManager::setup_vault(&user_pwd).unwrap();
         let mut settings = Settings::default();
-        settings.security.vault = Some(meta);
+        settings.security.vault = Some(meta.clone());
 
         let sid = "sess-2";
         let pw = SecretString::new("ssh-pass".into());
+        let runtime_master = SecretString::from(meta.verifier_hash.clone());
         let cid = rust_ssh::vault::session_credentials::sync_ssh_credentials(
-            &settings,
+            runtime_master.expose_secret(),
             sid,
-            Some(&pw),
+            Some(pw.expose_secret()),
             None,
         )
         .unwrap()
@@ -154,12 +156,12 @@ fn update_clear_credentials_deletes_vault_entry() {
 
         // Clear: sync with no secrets should delete.
         let cleared =
-            rust_ssh::vault::session_credentials::sync_ssh_credentials(&settings, sid, None, None)
+            rust_ssh::vault::session_credentials::sync_ssh_credentials(runtime_master.expose_secret(), sid, None, None)
                 .unwrap();
         assert!(cleared.is_none());
 
         let loaded =
-            rust_ssh::vault::session_credentials::load_ssh_credentials(&settings, "ssh:sess-2")
+            rust_ssh::vault::session_credentials::load_ssh_credentials(runtime_master.expose_secret(), "ssh:sess-2")
                 .unwrap();
         assert!(loaded.is_none());
     });
@@ -184,23 +186,24 @@ fn delete_profile_should_leave_no_orphan_credentials() {
         let user_pwd = SecretString::new("master-pass".into());
         let meta = VaultManager::setup_vault(&user_pwd).unwrap();
         let mut settings = Settings::default();
-        settings.security.vault = Some(meta);
+        settings.security.vault = Some(meta.clone());
 
         let sid = "sess-3";
         let pw = SecretString::new("ssh-pass".into());
+        let runtime_master = SecretString::from(meta.verifier_hash.clone());
         let cid = rust_ssh::vault::session_credentials::sync_ssh_credentials(
-            &settings,
+            runtime_master.expose_secret(),
             sid,
-            Some(&pw),
+            Some(pw.expose_secret()),
             None,
         )
         .unwrap()
         .unwrap();
 
         // Simulate "delete profile": delete the credential id, ensure it's gone.
-        rust_ssh::vault::session_credentials::delete_credential(&settings, &cid).unwrap();
+        rust_ssh::vault::session_credentials::delete_credential(runtime_master.expose_secret(), &cid).unwrap();
         let loaded =
-            rust_ssh::vault::session_credentials::load_ssh_credentials(&settings, &cid).unwrap();
+            rust_ssh::vault::session_credentials::load_ssh_credentials(runtime_master.expose_secret(), &cid).unwrap();
         assert!(loaded.is_none());
     });
 }
@@ -226,19 +229,19 @@ fn with_master_wrong_password_cannot_unlock_or_read_credentials() {
         let mut settings = Settings::default();
         settings.security.vault = Some(meta.clone());
 
-        // Save one credential using settings-derived secret path.
+        // Save one credential using the new simplified API.
         let sid = "sess-master-check";
         let pw = SecretString::new("ssh-pass".into());
+        let correct_master = SecretString::from(meta.verifier_hash.clone());
         let cid = rust_ssh::vault::session_credentials::save_ssh_credentials(
-            &settings,
+            correct_master.expose_secret(),
             sid,
-            Some(&pw),
+            Some(pw.expose_secret()),
             None,
         )
         .unwrap()
         .unwrap();
 
-        let correct_master = SecretString::from(meta.verifier_hash.clone());
         let wrong_master = SecretString::new("wrong-derived-secret".into());
 
         // Wrong runtime master must fail.
@@ -286,41 +289,36 @@ fn delete_credential_with_master_requires_correct_master() {
         let correct_master = SecretString::from(meta.verifier_hash.clone());
         let wrong_master = SecretString::new("wrong-derived-secret".into());
         let pw = SecretString::new("ssh-pass".into());
-        let cid = rust_ssh::vault::session_credentials::sync_ssh_credentials_with_master(
-            &settings,
-            &correct_master,
+        let cid = rust_ssh::vault::session_credentials::sync_ssh_credentials(
+            correct_master.expose_secret(),
             sid,
-            Some(&pw),
+            Some(pw.expose_secret()),
             None,
         )
         .unwrap()
         .unwrap();
 
         // Wrong master should fail and keep credential intact.
-        let wrong_del = rust_ssh::vault::session_credentials::delete_credential_with_master(
-            &settings,
-            &wrong_master,
+        let wrong_del = rust_ssh::vault::session_credentials::delete_credential(
+            wrong_master.expose_secret(),
             &cid,
         );
         assert!(wrong_del.is_err());
-        let still_there = rust_ssh::vault::session_credentials::load_ssh_credentials_with_master(
-            &settings,
-            &correct_master,
+        let still_there = rust_ssh::vault::session_credentials::load_ssh_credentials(
+            correct_master.expose_secret(),
             &cid,
         )
         .unwrap();
         assert!(still_there.is_some());
 
         // Correct master can delete.
-        rust_ssh::vault::session_credentials::delete_credential_with_master(
-            &settings,
-            &correct_master,
+        rust_ssh::vault::session_credentials::delete_credential(
+            correct_master.expose_secret(),
             &cid,
         )
         .unwrap();
-        let gone = rust_ssh::vault::session_credentials::load_ssh_credentials_with_master(
-            &settings,
-            &correct_master,
+        let gone = rust_ssh::vault::session_credentials::load_ssh_credentials(
+            correct_master.expose_secret(),
             &cid,
         )
         .unwrap();
@@ -354,12 +352,11 @@ fn key_profile_passphrase_roundtrip_and_prefill() {
         let key_path = "/tmp/test_id_ed25519";
         let passphrase = SecretString::new("key-passphrase".into());
         let runtime_master = SecretString::from(meta.verifier_hash.clone());
-        let credential_id = rust_ssh::vault::session_credentials::sync_ssh_credentials_with_master(
-            &settings,
-            &runtime_master,
+        let credential_id = rust_ssh::vault::session_credentials::sync_ssh_credentials(
+            runtime_master.expose_secret(),
             profile_id,
             None,
-            Some(&passphrase),
+            Some(passphrase.expose_secret()),
         )
         .unwrap();
 

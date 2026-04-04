@@ -506,7 +506,7 @@ fn vault_unlock_modal_stack(state: &IcedState) -> Element<'_, Message> {
                 .style(style_top_icon(14.0)),
         ]
         .align_y(Alignment::Center),
-        text_input("主密码", unlock.password.expose_secret())
+        text_input(state.model.i18n.tr("iced.vault_unlock.password_placeholder"), unlock.password.expose_secret())
             .secure(true)
             .on_input(Message::VaultUnlockPasswordChanged),
     ]
@@ -529,12 +529,13 @@ fn vault_unlock_modal_stack(state: &IcedState) -> Element<'_, Message> {
         body = body.push(text(err).size(12));
     }
 
+    let i18n = &state.model.i18n;
     body = body.push(
         row![
-            button(text("确认").size(13))
+            button(text(i18n.tr("iced.vault_unlock.btn.confirm")).size(13))
                 .on_press(Message::VaultUnlockSubmit)
                 .style(style_chrome_primary(13.0)),
-            button(text("取消").size(13))
+            button(text(i18n.tr("iced.vault_unlock.btn.cancel")).size(13))
                 .on_press(Message::VaultUnlockClose)
                 .style(style_chrome_secondary(13.0)),
         ]
@@ -773,9 +774,10 @@ fn vault_modal_stack(state: &IcedState) -> Element<'_, Message> {
     .on_press(Message::VaultClose);
 
     let title = match flow.mode {
-        VaultFlowMode::Initialize => "初始化保险箱",
-        VaultFlowMode::ChangePassword => "修改主密码",
+        VaultFlowMode::Initialize => state.model.i18n.tr("iced.vault.title.initialize"),
+        VaultFlowMode::ChangePassword => state.model.i18n.tr("iced.vault.title.change_password"),
     };
+    let i18n = &state.model.i18n;
 
     let mut body = column![
         row![
@@ -794,19 +796,19 @@ fn vault_modal_stack(state: &IcedState) -> Element<'_, Message> {
 
     if matches!(flow.mode, VaultFlowMode::ChangePassword) {
         body = body.push(
-            text_input("旧密码", flow.old_password.expose_secret())
+            text_input(i18n.tr("iced.vault.label.old_password"), flow.old_password.expose_secret())
                 .secure(true)
                 .on_input(Message::VaultOldPasswordChanged),
         );
     }
     body = body
         .push(
-            text_input("新密码", flow.new_password.expose_secret())
+            text_input(i18n.tr("iced.vault.label.new_password"), flow.new_password.expose_secret())
                 .secure(true)
                 .on_input(Message::VaultNewPasswordChanged),
         )
         .push(
-            text_input("确认新密码", flow.confirm_password.expose_secret())
+            text_input(i18n.tr("iced.vault.label.confirm_password"), flow.confirm_password.expose_secret())
                 .secure(true)
                 .on_input(Message::VaultConfirmPasswordChanged),
         );
@@ -817,10 +819,10 @@ fn vault_modal_stack(state: &IcedState) -> Element<'_, Message> {
 
     body = body.push(
         row![
-            button(text("确认").size(13))
+            button(text(i18n.tr("iced.btn.confirm")).size(13))
                 .on_press(Message::VaultSubmit)
                 .style(style_chrome_primary(13.0)),
-            button(text("取消").size(13))
+            button(text(i18n.tr("iced.btn.cancel")).size(13))
                 .on_press(Message::VaultClose)
                 .style(style_chrome_secondary(13.0)),
         ]
@@ -1392,6 +1394,9 @@ fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
             .style(style_chrome_primary(13.0)),
         button(text(i18n.tr("iced.btn.disconnect")).size(13))
             .on_press_maybe(is_connected.then_some(Message::DisconnectPressed))
+            .style(style_chrome_secondary(13.0)),
+        button(text(i18n.tr("iced.btn.save_session")).size(13))
+            .on_press(Message::QuickConnectSaveSession)
             .style(style_chrome_secondary(13.0)),
         button(text(i18n.tr("iced.btn.save_settings")).size(13))
             .on_press(Message::SaveSettings)

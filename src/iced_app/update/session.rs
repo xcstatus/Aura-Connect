@@ -221,20 +221,24 @@ pub(crate) fn handle_session_editor_save(state: &mut IcedState) -> Task<Message>
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let port: u16 = ed.port.trim().parse().unwrap_or(22);
     let auth = ed.auth.clone();
+    let mut credential_id = ed.existing_credential_id.clone();
 
     // Credential lifecycle policy:
     // - If user did NOT touch password and did NOT explicitly clear -> keep existing credential_id unchanged.
     // - If user explicitly clears -> delete credential (requires runtime unlock).
     // - If user edited password and provided non-empty -> write/overwrite credential (requires runtime unlock).
-    let mut credential_id = ed.existing_credential_id.clone();
     let needs_vault_op = ed.clear_saved_password
         || (ed.password_dirty
             && matches!(auth, crate::session::AuthMethod::Password)
             && !ed.password.expose_secret().trim().is_empty());
 
     if needs_vault_op {
-        if state.model.settings.security.vault.is_some()
-            && state.model.vault_master_password.is_none()
+        if state.model.settings.security.vault.is_none() {
+            ed.error = Some("请先在设置中初始化 Vault，再保存密码凭据".to_string());
+            return Task::none();
+        }
+        if state.model.vault_master_password.is_none()
+            && state.model.settings.security.vault.is_some()
         {
             return super::super::update::update(state, Message::VaultUnlockOpenSaveSession);
         }
@@ -244,9 +248,8 @@ pub(crate) fn handle_session_editor_save(state: &mut IcedState) -> Task<Message>
         };
         if ed.clear_saved_password {
             if let Some(cid) = ed.existing_credential_id.as_deref() {
-                if let Err(e) = crate::vault::session_credentials::delete_credential_with_master(
-                    &state.model.settings,
-                    master,
+                if let Err(e) = crate::vault::session_credentials::delete_credential(
+                    master.expose_secret(),
                     cid,
                 ) {
                     ed.error = Some(format!("清理凭据失败：{e}"));
@@ -256,12 +259,10 @@ pub(crate) fn handle_session_editor_save(state: &mut IcedState) -> Task<Message>
             credential_id = None;
         } else {
             let pw = ed.password.expose_secret().trim();
-            let password_ref = (!pw.is_empty()).then_some(&ed.password);
-            match crate::vault::session_credentials::sync_ssh_credentials_with_master(
-                &state.model.settings,
-                master,
+            match crate::vault::session_credentials::sync_ssh_credentials(
+                master.expose_secret(),
                 &id,
-                password_ref,
+                Some(pw),
                 None,
             ) {
                 Ok(cid) => credential_id = cid,
@@ -309,6 +310,99 @@ pub(crate) fn handle_session_editor_save(state: &mut IcedState) -> Task<Message>
     Task::none()
 }
 
+/// Handle QuickConnectSaveSession message.
+/// Saves the Quick Connect draft as a new session.
+pub(crate) fn handle_quick_connect_save_session(state: &mut IcedState) -> Task<Message> {
+    let host = state.model.draft.host.trim().to_string();
+    let user = state.model.draft.user.trim().to_string();
+    let port_ok = state
+        .model
+        .draft
+        .port
+        .trim()
+        .parse::<u32>()
+        .ok()
+        .is_some_and(|p| p >= 1 && p <= 65535);
+
+    if host.is_empty() || user.is_empty() {
+        state.model.status = "Host 和 User 为必填项".to_string();
+        return Task::none();
+    }
+    if !port_ok {
+        state.model.status = "端口范围 1–65535".to_string();
+        return Task::none();
+    }
+
+    let port: u16 = state.model.draft.port.trim().parse().unwrap_or(22);
+    let auth = state.model.draft.auth.clone();
+    let password = state.model.draft.password.expose_secret().to_string();
+    let profile_id = uuid::Uuid::new_v4().to_string();
+
+    // Check if password needs to be saved to vault
+    let password_non_empty = !password.trim().is_empty();
+    let needs_vault = matches!(auth, crate::session::AuthMethod::Password) && password_non_empty;
+
+    if needs_vault {
+        if state.model.settings.security.vault.is_none() {
+            state.model.status = "请先在设置中初始化 Vault，再保存密码凭据".to_string();
+            return Task::none();
+        }
+        if state.model.vault_master_password.is_none() {
+            // Store pending operation and open vault unlock dialog
+            state.vault_unlock = Some(super::super::state::VaultUnlockState {
+                pending_connect: None,
+                pending_delete_profile_id: None,
+                pending_save_session: false,
+                pending_save_credentials_profile_id: Some(profile_id.clone()),
+                password: secrecy::SecretString::from(String::new()),
+                error: None,
+            });
+            state.model.status = "需要解锁 Vault 以保存密码".to_string();
+            return Task::none();
+        }
+        // Save password to vault
+        let master = state.model.vault_master_password.as_ref().unwrap();
+        match crate::vault::session_credentials::sync_ssh_credentials(
+            master.expose_secret(),
+            &profile_id,
+            Some(&*password),
+            None,
+        ) {
+            Ok(_) => {
+                state.vault_status = VaultStatus::compute(
+                    &state.model.settings,
+                    true,
+                );
+            }
+            Err(e) => {
+                state.model.status = format!("保存密码失败：{e}");
+                return Task::none();
+            }
+        }
+    }
+
+    let profile = crate::session::SessionProfile {
+        id: profile_id.clone(),
+        name: format!("{}@{}", user, host),
+        folder: None,
+        color_tag: None,
+        transport: crate::session::TransportConfig::Ssh(crate::session::SshConfig {
+            host,
+            port,
+            user,
+            auth,
+            credential_id: if needs_vault { Some(profile_id) } else { None },
+        }),
+    };
+
+    let res = state.rt.block_on(state.model.session_manager.upsert_session(profile));
+    state.model.status = match res {
+        Ok(()) => "Session saved".to_string(),
+        Err(e) => format!("Save failed: {e}"),
+    };
+    Task::none()
+}
+
 /// Handle DeleteSessionProfile message.
 pub(crate) fn handle_delete_session(state: &mut IcedState, id: String) -> Task<Message> {
     // Cleanup for SSH credential stored in vault (requires runtime unlock when vault is initialized).
@@ -321,10 +415,9 @@ pub(crate) fn handle_delete_session(state: &mut IcedState, id: String) -> Task<M
                 {
                     return super::super::update::update(state, Message::VaultUnlockOpenDelete(id));
                 }
-                if let Some(master) = state.model.vault_master_password.as_ref() {
-                    if let Err(e) = crate::vault::session_credentials::delete_credential_with_master(
-                        &state.model.settings,
-                        master,
+                if let Some(ref master) = state.model.vault_master_password {
+                    if let Err(e) = crate::vault::session_credentials::delete_credential(
+                        master.expose_secret(),
                         cid,
                     ) {
                         vault_cleanup_err = Some(format!("Vault 凭据清理失败（{e}）"));

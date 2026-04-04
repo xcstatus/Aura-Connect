@@ -1,9 +1,9 @@
 use super::error::VaultError;
+use super::manager::kdf_argon2id;
 use aes_gcm::{
     Aes256Gcm, Nonce,
     aead::{Aead, KeyInit},
 };
-use argon2::{Argon2, Params};
 use rand::RngCore;
 use secrecy::{ExposeSecret, SecretString};
 use zeroize::Zeroizing;
@@ -17,11 +17,10 @@ pub fn generate_salt() -> [u8; SALT_SIZE] {
     salt
 }
 
-/// 使用 PBKDF2/Argon2 派生密钥，并使用 Zeroizing 包裹以防内存残留
+/// 使用 Argon2id 派生密钥，并使用 Zeroizing 包裹以防内存残留。
+/// KDF 参数统一在 `manager::kdf_argon2id()` 中管理。
 pub fn derive_key(password: &SecretString, salt: &[u8]) -> Result<Zeroizing<[u8; 32]>, VaultError> {
-    let params = Params::new(65536, 3, 1, Some(32)).map_err(|_| VaultError::DerivationFailed)?;
-    let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
-
+    let argon2 = kdf_argon2id();
     let mut key = [0u8; 32];
     argon2
         .hash_password_into(password.expose_secret().as_bytes(), salt, &mut key)

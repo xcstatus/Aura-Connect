@@ -1,5 +1,6 @@
 use proptest::prelude::*;
 use rust_ssh::vault::core::CredentialVault;
+use rust_ssh::vault::crypto;
 use secrecy::SecretString;
 
 // 1) 基于属性的随机口令测试（Property-based Testing）
@@ -25,7 +26,7 @@ proptest! {
         if s.is_empty() { return Ok(()); }
 
         let secret = SecretString::new(s.clone().into());
-        let mut vault = CredentialVault::initialize(&secret).unwrap();
+        let mut vault = CredentialVault::initialize(&secret, crypto::generate_salt()).unwrap();
         assert!(vault.unlocked);
 
         let key = "test_key";
@@ -54,7 +55,7 @@ proptest! {
 #[test]
 fn test_vault_memory_lock_wipe() {
     let secret = SecretString::new("master_pass".into());
-    let mut vault = CredentialVault::initialize(&secret).unwrap();
+    let mut vault = CredentialVault::initialize(&secret, crypto::generate_salt()).unwrap();
     vault.set_credential("k", b"v").unwrap();
 
     assert!(vault.unlocked);
@@ -82,7 +83,7 @@ fn test_corrupted_data_recovery() {
     let path = temp_dir.join("corrupted_vault.json");
 
     let secret = SecretString::new("pass".into());
-    let vault = CredentialVault::initialize(&secret).unwrap();
+    let vault = CredentialVault::initialize(&secret, crypto::generate_salt()).unwrap();
     vault.save_to_file(&path).unwrap();
 
     // 人为破坏文件内容
@@ -110,7 +111,7 @@ fn test_unlock_with_wrong_password_does_not_unlock_or_corrupt_state() {
     let correct = SecretString::new("correct-pass".into());
     let wrong = SecretString::new("wrong-pass".into());
 
-    let mut vault = CredentialVault::initialize(&correct).unwrap();
+    let mut vault = CredentialVault::initialize(&correct, crypto::generate_salt()).unwrap();
     vault.set_credential("token", b"abc123").unwrap();
     vault.lock();
 
@@ -141,12 +142,12 @@ fn test_rekey_invalidates_old_password_and_preserves_data() {
     let old_pwd = SecretString::new("old-master".into());
     let new_pwd = SecretString::new("new-master".into());
 
-    let mut vault = CredentialVault::initialize(&old_pwd).unwrap();
+    let mut vault = CredentialVault::initialize(&old_pwd, crypto::generate_salt()).unwrap();
     vault
         .set_credential("ssh_key", b"PRIVATE_KEY_BYTES")
         .unwrap();
 
-    vault.rekey(&new_pwd).unwrap();
+    vault.rekey_with_salt(&new_pwd, crypto::generate_salt()).unwrap();
     vault.lock();
 
     assert!(vault.unlock(&old_pwd).is_err(), "rekey 后旧密码必须失效");

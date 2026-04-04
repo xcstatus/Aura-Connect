@@ -418,17 +418,13 @@ impl AppModel {
         match &ssh.auth {
             AuthMethod::Password => {
                 let mut loaded_from_vault = false;
-                if let Some(cid) = ssh.credential_id.as_deref() {
-                    let loaded = if let Some(master) = vault_master_password {
-                        crate::vault::session_credentials::load_ssh_credentials_with_master(
-                            &self.settings,
-                            master,
-                            cid,
-                        )
-                    } else {
-                        crate::vault::session_credentials::load_ssh_credentials(&self.settings, cid)
-                    };
-                    match loaded {
+                if let (Some(cid), Some(master)) =
+                    (ssh.credential_id.as_deref(), vault_master_password)
+                {
+                    match crate::vault::session_credentials::load_ssh_credentials(
+                        master.expose_secret(),
+                        cid,
+                    ) {
                         Ok(Some(payload)) => {
                             if let Some(pw) = payload.password.filter(|s| !s.is_empty()) {
                                 self.draft.password = SecretString::from(pw);
@@ -470,17 +466,15 @@ impl AppModel {
             }
             AuthMethod::Key { .. } => {
                 // Passphrase may be stored in vault.
-                if let Some(cid) = ssh.credential_id.as_deref() {
-                    let loaded = if let Some(master) = vault_master_password {
-                        crate::vault::session_credentials::load_ssh_credentials_with_master(
-                            &self.settings,
-                            master,
+                if let (Some(cid), Some(master)) =
+                    (ssh.credential_id.as_deref(), vault_master_password)
+                {
+                    if let Ok(Some(payload)) =
+                        crate::vault::session_credentials::load_ssh_credentials(
+                            master.expose_secret(),
                             cid,
                         )
-                    } else {
-                        crate::vault::session_credentials::load_ssh_credentials(&self.settings, cid)
-                    };
-                    if let Ok(Some(payload)) = loaded {
+                    {
                         if let Some(pph) = payload.passphrase.filter(|s| !s.is_empty()) {
                             self.draft.passphrase = SecretString::from(pph);
                         }

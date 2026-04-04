@@ -274,7 +274,7 @@ impl Settings {
     }
 
     fn get_path() -> PathBuf {
-        if let Some(proj_dirs) = directories::ProjectDirs::from("com", "rustssh", "rust-ssh") {
+        if let Some(proj_dirs) = directories::ProjectDirs::from("com", "rustssh", "RustSsh") {
             let mut path = proj_dirs.config_dir().to_path_buf();
             path.push("settings.json");
             path

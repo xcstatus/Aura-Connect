@@ -242,12 +242,14 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
         let result = temp_model.connect_from_draft().await;
 
         match result {
-            Ok(session) => Ok(std::sync::Arc::new(session)),
-            Err(kind) => Err(kind),
+            Ok(session) => Message::ConnectResult(Ok(std::sync::Arc::new(session))),
+            Err(kind) => {
+                Message::ConnectResult(Err((kind, temp_model.draft.host_key_error)))
+            }
         }
     };
 
-    Task::perform(task, Message::ConnectResult)
+    Task::perform(task, |msg| msg)
 }
 
 /// Internal error handler (returns Task::none).
@@ -424,12 +426,12 @@ fn save_credentials_after_connect(state: &mut IcedState, profile_id: &Option<Str
         let pw_non_empty = !state.model.draft.password.expose_secret().trim().is_empty();
         if pw_non_empty && state.model.settings.security.vault.is_some() {
             if let Some(master) = state.model.vault_master_password.as_ref() {
+                let pw = state.model.draft.password.expose_secret();
                 if let Ok(Some(cid)) =
-                    crate::vault::session_credentials::sync_ssh_credentials_with_master(
-                        &state.model.settings,
-                        master,
+                    crate::vault::session_credentials::sync_ssh_credentials(
+                        master.expose_secret(),
                         &pid,
-                        Some(&state.model.draft.password),
+                        Some(pw),
                         None,
                     )
                 {
