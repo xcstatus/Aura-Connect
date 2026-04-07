@@ -1,5 +1,6 @@
 use super::error::VaultError;
-use super::manager::kdf_argon2id;
+use super::manager::kdf_argon2id_for_level;
+use crate::settings::KdfMemoryLevel;
 use aes_gcm::{
     Aes256Gcm, Nonce,
     aead::{Aead, KeyInit},
@@ -18,9 +19,15 @@ pub fn generate_salt() -> [u8; SALT_SIZE] {
 }
 
 /// 使用 Argon2id 派生密钥，并使用 Zeroizing 包裹以防内存残留。
-/// KDF 参数统一在 `manager::kdf_argon2id()` 中管理。
+/// KDF 参数统一在 `manager::kdf_argon2id_for_level()` 中管理。
+/// 使用默认内存级别。
 pub fn derive_key(password: &SecretString, salt: &[u8]) -> Result<Zeroizing<[u8; 32]>, VaultError> {
-    let argon2 = kdf_argon2id();
+    derive_key_with_level(password, salt, KdfMemoryLevel::default())
+}
+
+/// 使用 Argon2id 派生密钥（指定内存级别）
+pub fn derive_key_with_level(password: &SecretString, salt: &[u8], level: KdfMemoryLevel) -> Result<Zeroizing<[u8; 32]>, VaultError> {
+    let argon2 = kdf_argon2id_for_level(level);
     let mut key = [0u8; 32];
     argon2
         .hash_password_into(password.expose_secret().as_bytes(), salt, &mut key)

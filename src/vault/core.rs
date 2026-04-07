@@ -1,5 +1,6 @@
 use super::crypto;
 use super::error::VaultError;
+use crate::settings::KdfMemoryLevel;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -33,8 +34,14 @@ impl CredentialVault {
     ///
     /// The `salt` is used to derive the encryption key via Argon2id. For VaultManager-managed
     /// vaults, pass `VaultMeta.encryption_salt` so the same salt is available at unlock time.
+    /// Uses default KDF memory level.
     pub fn initialize(master_password: &SecretString, salt: [u8; 16]) -> Result<Self, VaultError> {
-        let key = crypto::derive_key(master_password, &salt)?;
+        Self::initialize_with_level(master_password, salt, KdfMemoryLevel::default())
+    }
+
+    /// Initialize a new Vault with a master password and specified KDF memory level.
+    pub fn initialize_with_level(master_password: &SecretString, salt: [u8; 16], level: KdfMemoryLevel) -> Result<Self, VaultError> {
+        let key = crypto::derive_key_with_level(master_password, &salt, level)?;
 
         // Initial empty payload
         let payload = VaultPayload::default();
@@ -50,8 +57,14 @@ impl CredentialVault {
     }
 
     /// Unlock an existing vault with the master password.
+    /// Uses default KDF memory level.
     pub fn unlock(&mut self, master_password: &SecretString) -> Result<(), VaultError> {
-        let key = crypto::derive_key(master_password, &self.salt)?;
+        self.unlock_with_level(master_password, KdfMemoryLevel::default())
+    }
+
+    /// Unlock an existing vault with the master password and specified KDF memory level.
+    pub fn unlock_with_level(&mut self, master_password: &SecretString, level: KdfMemoryLevel) -> Result<(), VaultError> {
+        let key = crypto::derive_key_with_level(master_password, &self.salt, level)?;
 
         // Verify we can decrypt the payload with this key
         let _ =
@@ -71,12 +84,17 @@ impl CredentialVault {
     /// Re-encrypt the current vault payload with a new password and a new salt.
     /// The vault must be unlocked before calling this method.
     pub fn rekey_with_salt(&mut self, new_password: &SecretString, new_salt: [u8; 16]) -> Result<(), VaultError> {
+        self.rekey_with_salt_and_level(new_password, new_salt, KdfMemoryLevel::default())
+    }
+
+    /// Re-encrypt the current vault payload with a new password, salt, and KDF memory level.
+    pub fn rekey_with_salt_and_level(&mut self, new_password: &SecretString, new_salt: [u8; 16], level: KdfMemoryLevel) -> Result<(), VaultError> {
         let current_key = self.unlocked_key.as_ref().ok_or(VaultError::Locked)?;
         let decrypted = crypto::decrypt(current_key, &self.encrypted_data)?;
         // Wrap in Zeroizing so the plaintext is zeroized when dropped.
         let decrypted = Zeroizing::new(decrypted);
 
-        let new_key = crypto::derive_key(new_password, &new_salt)?;
+        let new_key = crypto::derive_key_with_level(new_password, &new_salt, level)?;
         let new_encrypted = crypto::encrypt(&new_key, &decrypted)?;
 
         self.salt = new_salt;

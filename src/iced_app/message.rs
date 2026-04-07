@@ -37,6 +37,8 @@ pub(crate) enum SettingsField {
     PathCompletion(bool),
     IdleTimeoutMins(u32),
     LockOnSleep(bool),
+    /// Vault KDF 内存级别
+    KdfMemoryLevel(crate::settings::KdfMemoryLevel),
     HostKeyPolicy(crate::settings::HostKeyPolicy),
     ConnectionSearch(String),
     /// When true: only one tab may hold SSH; switching tabs disconnects the previous session.

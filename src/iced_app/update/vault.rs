@@ -243,78 +243,104 @@ pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message>
     let meta_salt = meta.salt.clone();
     let enc_salt_str = meta.encryption_salt.clone();
 
+    // Get KDF memory level from settings
+    let kdf_level = state.model.settings.security.kdf_memory_level;
+
     // Run KDF + vault load + credential preload in background to avoid blocking UI
+    // We use spawn_blocking to run CPU-intensive KDF operations, and process results in the async block
     let task = async move {
-        let result = tokio::task::spawn_blocking(move || {
-            // Verify password using stored salt and verifier hash
-            if !crate::vault::VaultManager::verify_password(
-                &SecretString::from(password.clone()),
+        // Step 1: Verify password using spawn_blocking (CPU-intensive KDF)
+        let password_for_verify = password.clone();
+        let meta_salt_for_verify = meta_salt.clone();
+        let verifier_hash_for_verify = verifier_hash.clone();
+        let enc_salt_str_for_verify = enc_salt_str.clone();
+        let pending_cred_id = pending_credential_id.clone();
+
+        let verified = tokio::task::spawn_blocking(move || {
+            crate::vault::VaultManager::verify_password_with_level(
+                &SecretString::from(password_for_verify),
                 &crate::vault::VaultMeta {
-                    salt: meta_salt,
-                    verifier_hash: verifier_hash.clone(),
-                    encryption_salt: enc_salt_str.clone(),
+                    salt: meta_salt_for_verify,
+                    verifier_hash: verifier_hash_for_verify,
+                    encryption_salt: enc_salt_str_for_verify,
                 },
-            ) {
-                return Err(crate::vault::VaultUnlockError::WrongPassword);
-            }
+                kdf_level,
+            )
+        }).await;
 
-            // Parse encryption salt for vault key derivation
-            let enc_salt_str = enc_salt_str.unwrap_or_default();
-            let enc_salt_bytes = enc_salt_str.as_bytes();
-            let mut enc_salt_arr = [0u8; 16];
-            let salt_len = enc_salt_bytes.len().min(16);
-            enc_salt_arr[..salt_len].copy_from_slice(&enc_salt_bytes[..salt_len]);
+        let verified = match verified {
+            Ok(v) => v,
+            Err(_) => return Message::VaultUnlockComplete(Err(crate::vault::VaultUnlockError::VaultError("Task cancelled".into()))),
+        };
 
-            // Load and unlock vault
-            let path = crate::storage::StorageManager::get_vault_path()
-                .ok_or_else(|| crate::vault::VaultUnlockError::VaultError("无法定位 vault 路径".into()))?;
-            let vault = if path.exists() {
-                let mut vault = crate::vault::core::CredentialVault::load_from_file(&path)
+        if !verified {
+            return Message::VaultUnlockComplete(Err(crate::vault::VaultUnlockError::WrongPassword));
+        }
+
+        // Step 2: Load vault file (fast, no KDF)
+        let vault_path = match crate::storage::StorageManager::get_vault_path() {
+            Some(p) => p,
+            None => return Message::VaultUnlockComplete(Err(crate::vault::VaultUnlockError::VaultError("无法定位 vault 路径".into()))),
+        };
+        let vault_exists = vault_path.exists();
+
+        // Step 3: Unlock vault using spawn_blocking (CPU-intensive KDF)
+        let enc_salt_str = enc_salt_str.clone().unwrap_or_default();
+        let enc_salt_bytes = enc_salt_str.as_bytes();
+        let mut enc_salt_arr = [0u8; 16];
+        let salt_len = enc_salt_bytes.len().min(16);
+        enc_salt_arr[..salt_len].copy_from_slice(&enc_salt_bytes[..salt_len]);
+
+        // Prepare password for vault unlock (clone before spawn_blocking consumes it)
+        let password_for_vault = password.clone();
+
+        let vault_result = tokio::task::spawn_blocking(move || {
+            if vault_exists {
+                let mut vault = crate::vault::core::CredentialVault::load_from_file(&vault_path)
                     .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
-                vault.unlock(&SecretString::from(password.clone()))
+                vault.unlock_with_level(&SecretString::from(password_for_vault), kdf_level)
                     .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
-                vault
+                Ok(vault)
             } else {
-                let vault = crate::vault::core::CredentialVault::initialize(&SecretString::from(password.clone()), enc_salt_arr)
+                let vault = crate::vault::core::CredentialVault::initialize_with_level(
+                    &SecretString::from(password_for_vault),
+                    enc_salt_arr,
+                    kdf_level,
+                )
+                .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
+                vault.save_to_file(&vault_path)
                     .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
-                vault.save_to_file(&path)
-                    .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
-                vault
-            };
+                Ok(vault)
+            }
+        }).await;
 
-            // Preload SSH credentials for the pending session during the same KDF pass
-            let preloaded = if let Some(ref cid) = pending_credential_id {
-                let credential_id = format!("ssh:{}", cid);
-                if let Ok(Some(raw)) = vault.get_credential(&credential_id) {
-                    if let Ok(payload) =
-                        serde_json::from_slice::<crate::vault::session_credentials::SshCredentialPayload>(&raw)
-                    {
-                        Some((payload.password, payload.passphrase))
-                    } else {
-                        None
-                    }
+        let vault = match vault_result {
+            Ok(Ok(v)) => v,
+            Ok(Err(e)) => return Message::VaultUnlockComplete(Err(e)),
+            Err(_) => return Message::VaultUnlockComplete(Err(crate::vault::VaultUnlockError::VaultError("Task cancelled".into()))),
+        };
+
+        // Step 4: Preload SSH credentials for the pending session
+        let preloaded = if let Some(ref cid) = pending_cred_id {
+            let credential_id = format!("ssh:{}", cid);
+            if let Ok(Some(raw)) = vault.get_credential(&credential_id) {
+                if let Ok(payload) =
+                    serde_json::from_slice::<crate::vault::session_credentials::SshCredentialPayload>(&raw)
+                {
+                    Some((payload.password, payload.passphrase))
                 } else {
                     None
                 }
             } else {
                 None
-            };
-
-            // Return master password and preloaded credentials (flatten Option<Option<T>> to Option<T>)
-            let preloaded = preloaded.map(|(pw, pp)| (pw.unwrap_or_default(), pp));
-            Ok((password, preloaded))
-        })
-        .await;
-
-        match result {
-            Ok(Ok((pwd, preloaded))) => Message::VaultUnlockComplete(Ok((pwd, preloaded))),
-            Ok(Err(e)) => Message::VaultUnlockComplete(Err(e)),
-            Err(_) => {
-                Message::VaultUnlockComplete(Err(crate::vault::VaultUnlockError::VaultError(
-                    "Task cancelled".to_string(),
-                )))
             }
-        }
+        } else {
+            None
+        };
+
+        // Return master password and preloaded credentials
+        let preloaded = preloaded.map(|(pw, pp)| (pw.unwrap_or_default(), pp));
+        Message::VaultUnlockComplete(Ok((password, preloaded)))
     };
 
     Task::perform(task, |msg| msg)

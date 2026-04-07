@@ -104,6 +104,22 @@ pub struct TerminalSettings {
     pub apply_terminal_metrics: bool,
 }
 
+/// Vault KDF 内存级别（影响解锁速度和安全性）
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum KdfMemoryLevel {
+    /// 平衡模式：16MiB 内存，快速解锁（约 1-2 秒）
+    Balanced,
+    /// 安全模式：64MiB 内存，更强防护（约 4-6 秒）
+    Security,
+}
+
+impl Default for KdfMemoryLevel {
+    fn default() -> Self {
+        Self::Balanced
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SecuritySettings {
@@ -117,6 +133,8 @@ pub struct SecuritySettings {
     /// Consent policy for automatic auth probing (SSH Agent / local key).
     pub auto_probe_consent: AutoProbeConsent,
     pub vault: Option<crate::vault::VaultMeta>,
+    /// Vault KDF 内存级别
+    pub kdf_memory_level: KdfMemoryLevel,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -200,6 +218,7 @@ impl Default for SecuritySettings {
             known_hosts: Vec::new(),
             auto_probe_consent: AutoProbeConsent::default(),
             vault: None,
+            kdf_memory_level: KdfMemoryLevel::default(),
         }
     }
 }

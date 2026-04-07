@@ -191,6 +191,12 @@ pub fn tr(key: &'static str) -> &'static str {
         "settings.security.lock_on_sleep.help" => {
             "Lock vault immediately when minimized or moved to background."
         }
+        "settings.security.kdf.title" => "Encryption Strength",
+        "settings.security.kdf.help" => {
+            "Trade-off between unlock speed and security. Takes effect on next unlock."
+        }
+        "settings.security.kdf.balanced" => "Balanced (Fast unlock, ~1-2 seconds)",
+        "settings.security.kdf.security" => "Secure (Stronger protection, ~4-6 seconds)",
         "settings.security.master_password.change_title" => "Change master password",
         "settings.security.master_password.init_title" => "Initialize vault",
         "settings.security.master_password.change_help" => {

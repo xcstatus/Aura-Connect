@@ -147,6 +147,7 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
         }
         SettingsField::IdleTimeoutMins(v) => s.security.idle_timeout_mins = v,
         SettingsField::LockOnSleep(v) => s.security.lock_on_sleep = v,
+        SettingsField::KdfMemoryLevel(v) => s.security.kdf_memory_level = v,
         SettingsField::HostKeyPolicy(p) => s.security.host_key_policy = p,
         SettingsField::ConnectionSearch(q) => {
             state.settings_connection_search = q;

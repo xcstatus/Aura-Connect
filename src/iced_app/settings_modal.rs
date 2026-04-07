@@ -712,6 +712,22 @@ fn security_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                     .label(i18n.tr("settings.security.lock_on_sleep.label"))
                     .on_toggle(|v| Message::SettingsFieldChanged(SettingsField::LockOnSleep(v))),
                 text(i18n.tr("settings.security.lock_on_sleep.help")).size(11),
+                Space::new().height(iced::Length::Fixed(8.0)),
+                section_title(i18n.tr("settings.security.kdf.title")),
+                text(i18n.tr("settings.security.kdf.help")).size(11),
+                radio(
+                    i18n.tr("settings.security.kdf.balanced"),
+                    crate::settings::KdfMemoryLevel::Balanced,
+                    Some(sec.kdf_memory_level),
+                    |v| Message::SettingsFieldChanged(SettingsField::KdfMemoryLevel(v)),
+                ),
+                radio(
+                    i18n.tr("settings.security.kdf.security"),
+                    crate::settings::KdfMemoryLevel::Security,
+                    Some(sec.kdf_memory_level),
+                    |v| Message::SettingsFieldChanged(SettingsField::KdfMemoryLevel(v)),
+                ),
+                Space::new().height(iced::Length::Fixed(8.0)),
                 button(text(if sec.vault.is_some() {
                     i18n.tr("settings.security.master_password.change_action")
                 } else {
