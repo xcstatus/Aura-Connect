@@ -59,6 +59,7 @@ pub fn rustssh_iced_theme(id: RustSshThemeId) -> Theme {
         RustSshThemeId::Dark => "RustSsh Dark",
         RustSshThemeId::Light => "RustSsh Light",
         RustSshThemeId::Warm => "RustSsh Warm",
+        RustSshThemeId::GitHub => "RustSsh GitHub",
     };
     Theme::custom_with_fn(name, palette, move |p| {
         let _ = p;

@@ -9,6 +9,8 @@ pub enum RustSshThemeId {
     Dark,
     Light,
     Warm,
+    /// GitHub 风格主题
+    GitHub,
 }
 
 /// 与文档对齐的可编程色票（sRGB + 不透明；半透明边框单独字段）。
@@ -50,6 +52,7 @@ impl DesignTokens {
             RustSshThemeId::Dark => Self::dark(),
             RustSshThemeId::Light => Self::light(),
             RustSshThemeId::Warm => Self::warm(),
+            RustSshThemeId::GitHub => Self::github(),
         }
     }
 
@@ -149,6 +152,48 @@ impl DesignTokens {
             scrollbar_active: Color::from_rgba(0.831, 0.745, 0.671, 0.28),
             line_highlight: Color::from_rgba(0.831, 0.745, 0.671, 0.06),
             selection_bg: Color::from_rgba(0.878, 0.6, 0.37, 0.28),
+        }
+    }
+
+    /// 🐙 GitHub 风格主题
+    ///
+    /// 基于 GitHub Dark 主题色彩体系，为开发者提供熟悉的界面。
+    /// 参考: https://github.com/primer/github-syntax-dark
+    pub const fn github() -> Self {
+        Self {
+            // 背景色 - GitHub Dark
+            bg_primary: Color::from_rgb8(0x16, 0x1B, 0x22),     // #161B22
+            bg_secondary: Color::from_rgb8(0x0D, 0x11, 0x17),    // #0D1117
+            bg_header: Color::from_rgb8(0x21, 0x26, 0x2D),       // #21262D
+            bg_popup: Color::from_rgb8(0x21, 0x26, 0x2D),       // #21262D
+            surface_1: Color::from_rgb8(0x21, 0x26, 0x2D),      // #21262D
+            surface_2: Color::from_rgb8(0x30, 0x36, 0x3D),       // #30363D
+            surface_3: Color::from_rgb8(0x48, 0x4F, 0x58),       // #484F58
+            tab_active_bg: Color::from_rgb8(0x0D, 0x11, 0x17),   // #0D1117
+            // 文本色
+            text_primary: Color::from_rgb8(0xE6, 0xED, 0xF3),   // #E6EDF3
+            text_secondary: Color::from_rgb8(0x8B, 0x94, 0x9E), // #8B949E
+            text_disabled: Color::from_rgb8(0x6E, 0x76, 0x81),  // #6E7681
+            // 边框色 - 基于 #484F58 的透明度
+            border_default: Color::from_rgba(0.545, 0.580, 0.620, 0.13),
+            border_subtle: Color::from_rgba(0.545, 0.580, 0.620, 0.08),
+            // Accent 色 - GitHub 绿
+            accent_base: Color::from_rgb8(0x23, 0x86, 0x36),     // #238636
+            accent_hover: Color::from_rgb8(0x2E, 0xA0, 0x43),   // #2EA043
+            accent_active: Color::from_rgb8(0x19, 0x6C, 0x2E),  // #196C2E
+            on_accent_label: Color::WHITE,
+            // 状态色 - GitHub 风格
+            success: Color::from_rgb8(0x3F, 0xB9, 0x50),         // #3FB950
+            warning: Color::from_rgb8(0xD2, 0x99, 0x22),         // #D29922
+            error: Color::from_rgb8(0xF8, 0x51, 0x49),           // #F85149
+            info: Color::from_rgb8(0x58, 0xA6, 0xFF),            // #58A6FF
+            // 终端色 - GitHub 深色
+            terminal_bg: Color::from_rgb8(0x0D, 0x11, 0x17),    // #0D1117
+            terminal_fg: Color::from_rgb8(0xE6, 0xED, 0xF3),    // #E6EDF3
+            scrollbar_hover: Color::from_rgba(0.545, 0.580, 0.620, 0.15),
+            scrollbar_active: Color::from_rgba(0.545, 0.580, 0.620, 0.25),
+            line_highlight: Color::from_rgba(0.545, 0.580, 0.620, 0.08),
+            selection_bg: Color::from_rgba(0.220, 0.545, 0.992, 0.25), // #58A6FF @ 25%
         }
     }
 }
