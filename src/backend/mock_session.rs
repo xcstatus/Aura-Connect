@@ -45,4 +45,8 @@ impl AsyncSession for MockSession {
     fn is_connected(&self) -> bool {
         self.is_connected
     }
+
+    fn exit_status(&self) -> Option<u32> {
+        None
+    }
 }

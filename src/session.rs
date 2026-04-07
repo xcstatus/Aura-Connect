@@ -46,7 +46,7 @@ pub enum TransportConfig {
 }
 
 /// 身份认证方式（主要针对 SSH）
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub enum AuthMethod {
     Password,
     Key { private_key_path: String },
