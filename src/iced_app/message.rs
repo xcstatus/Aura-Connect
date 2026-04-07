@@ -43,6 +43,16 @@ pub(crate) enum SettingsField {
     ConnectionSearch(String),
     /// When true: only one tab may hold SSH; switching tabs disconnects the previous session.
     SingleSharedSession(bool),
+    /// 连接断开时自动重连
+    AutoReconnect(bool),
+    /// 最大重连次数
+    ReconnectMaxAttempts(u8),
+    /// 重连基础延迟秒数
+    ReconnectBaseDelay(u32),
+    /// 是否使用指数退避
+    ReconnectExponential(bool),
+    /// 启动时恢复上次会话
+    RestoreLastSession(bool),
 }
 
 /// Type alias for connect result error info (error kind + optional host key error details).
@@ -169,6 +179,24 @@ pub(crate) enum Message {
     SaveSettings,
     /// Toggle the debug overlay visibility (Ctrl+Shift+D).
     ToggleDebugOverlay,
+    /// 自动重连倒计时更新（每秒触发一次）
+    ReconnectTick,
+    /// 自动重连结果（异步任务回调）
+    ReconnectResult(Result<std::sync::Arc<Box<dyn crate::backend::ssh_session::AsyncSession>>, (crate::app_model::ConnectErrorKind, Option<crate::app_model::HostKeyErrorInfo>)>),
+    /// 用户手动取消重连
+    ReconnectCancel,
+    /// 重启后恢复会话弹窗：确认恢复
+    RestoreSessionConfirm,
+    /// 重启后恢复会话弹窗：忽略
+    RestoreSessionDismiss,
+    /// 会话项悬停：开始预热计时
+    SessionHoverStart(String),
+    /// 会话项悬停结束：取消预热
+    SessionHoverEnd,
+    /// 预热 tick（每 500ms 检查）
+    PrewarmTick,
+    /// 预热结果回调
+    PrewarmResult(Result<std::sync::Arc<Box<dyn crate::backend::ssh_session::AsyncSession>>, (crate::app_model::ConnectErrorKind, Option<crate::app_model::HostKeyErrorInfo>)>),
 }
 
 impl std::fmt::Debug for Message {
@@ -254,6 +282,15 @@ impl std::fmt::Debug for Message {
             Message::ClipboardWriteDone => write!(f, "Message::ClipboardWriteDone"),
             Message::SaveSettings => write!(f, "Message::SaveSettings"),
             Message::ToggleDebugOverlay => write!(f, "Message::ToggleDebugOverlay"),
+            Message::ReconnectTick => write!(f, "Message::ReconnectTick"),
+            Message::ReconnectResult(_) => write!(f, "Message::ReconnectResult(...)"),
+            Message::ReconnectCancel => write!(f, "Message::ReconnectCancel"),
+            Message::RestoreSessionConfirm => write!(f, "Message::RestoreSessionConfirm"),
+            Message::RestoreSessionDismiss => write!(f, "Message::RestoreSessionDismiss"),
+            Message::SessionHoverStart(id) => write!(f, "Message::SessionHoverStart({})", id),
+            Message::SessionHoverEnd => write!(f, "Message::SessionHoverEnd"),
+            Message::PrewarmTick => write!(f, "Message::PrewarmTick"),
+            Message::PrewarmResult(_) => write!(f, "Message::PrewarmResult(...)"),
         }
     }
 }

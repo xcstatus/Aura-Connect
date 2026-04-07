@@ -4,7 +4,7 @@ use secrecy::ExposeSecret;
 use crate::backend::ssh_session::AsyncSession;
 
 use super::super::message::Message;
-use super::super::state::{ConnectionStage, IcedState, QuickConnectFlow};
+use super::super::state::{ConnectionStage, IcedState, PrewarmStatus, QuickConnectFlow, SessionPrewarmState};
 
 /// Handle ConnectPressed message - core connection logic.
 pub(crate) fn handle_connect(state: &mut IcedState) -> Task<Message> {
@@ -115,7 +115,7 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
 
     match step {
         crate::backend::ssh_session::KeyboardInteractiveStep::Success => {
-            match state.rt.block_on(sess.finish_into_session()) {
+            match state.rt.block_on(sess.finish_into_session(80, 24)) {
                 Ok(ssh_sess) => {
                     let session: Box<dyn AsyncSession> = Box::new(ssh_sess);
                     handle_connect_success(state, session);
@@ -331,7 +331,14 @@ pub(crate) fn handle_connect_success(state: &mut IcedState, session: Box<dyn Asy
         .model
         .recent_record_for_draft_with_profile(label.clone(), profile_id.clone());
 
-    super::super::update::complete_new_ssh_session(state, session, recent, label, profile_id);
+    // 构建连接键用于多路复用
+    let connection_key = crate::backend::shared_ssh_session::ConnectionKey::from_host_port_user(
+        &state.model.draft.host,
+        state.model.draft.port.trim().parse().unwrap_or(22),
+        &state.model.draft.user,
+    );
+
+    super::super::update::complete_new_ssh_session(state, session, recent, label, profile_id, Some(connection_key));
     state.quick_connect_flow = QuickConnectFlow::Connected;
     state.quick_connect_error_kind = None;
     state.connection_stage = ConnectionStage::None;
@@ -556,19 +563,21 @@ pub(crate) fn handle_interactive_submit(state: &mut IcedState) -> Task<Message> 
 
     match step {
         crate::backend::ssh_session::KeyboardInteractiveStep::Success => {
-            match state.rt.block_on(sess.finish_into_session()) {
+            match state.rt.block_on(sess.finish_into_session(80, 24)) {
                 Ok(ssh_sess) => {
                     let session: Box<dyn AsyncSession> = Box::new(ssh_sess);
                     let host = state.model.draft.host.trim().to_string();
                     let user = state.model.draft.user.trim().to_string();
+                    let port = state.model.draft.port.trim().parse().unwrap_or(22);
                     let label = format!("{user}@{host}");
                     let profile_id = state.model.selected_session_id.clone();
                     let recent = state
                         .model
                         .recent_record_for_draft_with_profile(label.clone(), profile_id.clone());
+                    let connection_key = crate::backend::shared_ssh_session::ConnectionKey::from_host_port_user(&host, port, &user);
                     state.connection_stage = ConnectionStage::SessionSetup;
                     super::super::update::complete_new_ssh_session(
-                        state, session, recent, label, profile_id,
+                        state, session, recent, label, profile_id, Some(connection_key),
                     );
                     state.quick_connect_flow = QuickConnectFlow::Connected;
                     state.quick_connect_error_kind = None;
@@ -714,4 +723,400 @@ pub(crate) fn inject_ssh_connecting_info_full(state: &mut IcedState, skip_counti
     state.active_pane_mut()
         .terminal
         .inject_local_lines(&[&i18n_connecting_stage]);
+}
+
+/// Handle auto-reconnect tick (called every second while in Reconnecting state).
+/// Returns a Task for async operations.
+pub(crate) fn handle_reconnect_tick(state: &mut IcedState) -> Task<Message> {
+    let ConnectionStage::Reconnecting {
+        attempt,
+        max,
+        delay_secs,
+    } = state.connection_stage
+    else {
+        // Not in reconnecting state
+        return Task::none();
+    };
+
+    // 计算已等待的时间（秒）
+    let elapsed = state
+        .reconnect_context
+        .as_ref()
+        .map(|ctx| ctx.start_time.elapsed().as_secs() as u32)
+        .unwrap_or(0);
+
+    if elapsed < delay_secs {
+        // 还在等待中，更新倒计时显示
+        let remaining = delay_secs - elapsed;
+        let msg = state.model.i18n.tr("iced.term.reconnect_countdown");
+        let msg = msg.replace("{secs}", &remaining.to_string());
+        state.active_pane_mut().terminal.inject_local_lines(&[&msg]);
+        return Task::none();
+    }
+
+    // 延迟已到，执行重连
+    log::info!(
+        "[Reconnect] Attempt {}/{}",
+        attempt,
+        max
+    );
+
+    // 显示重连尝试消息
+    let msg = state.model.i18n.tr("iced.term.reconnect_attempt")
+        .replace("{n}", &attempt.to_string())
+        .replace("{max}", &max.to_string());
+    state.active_pane_mut().terminal.inject_local_lines(&[&msg]);
+
+    // 重置 start_time 以便计算下次延迟
+    if let Some(ctx) = &mut state.reconnect_context {
+        ctx.start_time = std::time::Instant::now();
+    }
+
+    // 启动异步重连（复用现有连接流程）
+    start_reconnect_async(state)
+}
+
+/// Start an async reconnect task using the same pattern as start_ssh_connect.
+fn start_reconnect_async(state: &mut IcedState) -> Task<Message> {
+    // 确保 draft 是从 reconnect_context 恢复的
+    let Some(ctx) = state.reconnect_context.as_ref() else {
+        state.quick_connect_flow = QuickConnectFlow::Failed;
+        state.connection_stage = ConnectionStage::None;
+        return Task::none();
+    };
+
+    // 先克隆 draft，因为 inject_ssh_connecting_info 需要可变借用 state
+    let draft = ctx.draft.clone();
+    let settings = state.model.settings.clone();
+    let merged_known_hosts = merge_known_hosts(&settings, &state.runtime_known_hosts);
+
+    // 注入 SSH 连接信息（使用 ctx 中的 draft）
+    state.model.draft = ctx.draft.clone();
+    inject_ssh_connecting_info(state);
+
+    // 使用 Task::perform 来异步执行连接
+    let task = async move {
+        let mut temp_model = crate::app_model::AppModel::new_for_connect(draft, settings);
+        temp_model.settings.security.known_hosts = merged_known_hosts;
+
+        let result = temp_model.connect_from_draft().await;
+
+        match result {
+            Ok(session) => Message::ReconnectResult(Ok(std::sync::Arc::new(session))),
+            Err(kind) => {
+                // 只传递 error kind，host_key_error 从 draft 中获取
+                Message::ReconnectResult(Err((kind, temp_model.draft.host_key_error.clone())))
+            }
+        }
+    };
+
+    Task::perform(task, |msg| msg)
+}
+
+/// Handle the result of a reconnect attempt.
+pub(crate) fn handle_reconnect_result(
+    state: &mut IcedState,
+    result: Result<std::sync::Arc<Box<dyn crate::backend::ssh_session::AsyncSession>>, (crate::app_model::ConnectErrorKind, Option<crate::app_model::HostKeyErrorInfo>)>,
+) -> Task<Message> {
+    match result {
+        Ok(session_arc) => {
+            // 重连成功！
+            let msg = state.model.i18n.tr("iced.term.reconnect_success");
+            state.active_pane_mut().terminal.inject_local_lines(&[&msg]);
+
+            state.quick_connect_flow = QuickConnectFlow::Connected;
+            state.connection_stage = ConnectionStage::None;
+            state.reconnect_context = None;
+
+            // 清理重连提示行
+            let lines = state.preconnect_info_line_count;
+            if lines > 0 {
+                state.active_pane_mut().terminal.clear_preconnect_lines(lines);
+            }
+            state.preconnect_info_line_count = 0;
+
+            // 完成会话建立
+            let label = format!(
+                "{}@{}",
+                state.model.draft.user,
+                state.model.draft.host
+            );
+            let recent = state.model.recent_record_for_draft_with_profile(
+                label.clone(),
+                state.model.selected_session_id.clone(),
+            );
+            // 从 Arc 提取 Box（如果 Arc 是独占的）
+            let session: Box<dyn crate::backend::ssh_session::AsyncSession> =
+                std::sync::Arc::try_unwrap(session_arc).unwrap_or_else(|_arc| {
+                    panic!("Reconnect session Arc was shared unexpectedly")
+                });
+            // 重连时使用相同的连接键
+            let connection_key = state.reconnect_context.as_ref().map(|_ctx| {
+                crate::backend::shared_ssh_session::ConnectionKey::from_host_port_user(
+                    &state.model.draft.host,
+                    state.model.draft.port.trim().parse().unwrap_or(22),
+                    &state.model.draft.user,
+                )
+            });
+            super::complete_new_ssh_session(
+                state,
+                session,
+                recent,
+                label,
+                state.model.selected_session_id.clone(),
+                connection_key,
+            );
+
+            return Task::none();
+        }
+        Err((kind, host_key_error)) => {
+            // 记录 host key error 到 draft（用于后续 Ask 流程）
+            state.model.draft.host_key_error = host_key_error;
+            let error_kind = kind;
+
+            // 计算下次重连参数
+            let max = state.model.settings.quick_connect.reconnect_max_attempts;
+            if let ConnectionStage::Reconnecting { attempt, .. } = state.connection_stage {
+                let next_attempt = attempt + 1;
+                if next_attempt > max {
+                    // 达到最大重试次数，放弃
+                    state.quick_connect_flow = QuickConnectFlow::Failed;
+                    state.quick_connect_error_kind = Some(error_kind);
+                    state.connection_stage = ConnectionStage::None;
+                    state.reconnect_context = None;
+
+                    let msg = state.model.i18n.tr("iced.term.reconnect_failed")
+                        .replace("{reason}", error_kind.user_message());
+                    state.active_pane_mut().terminal.inject_local_lines(&[&msg]);
+
+                    return Task::none();
+                }
+
+                // 继续重试
+                let delay = state.model.settings.reconnect_delay_for_attempt(next_attempt);
+                state.connection_stage = ConnectionStage::Reconnecting {
+                    attempt: next_attempt,
+                    max,
+                    delay_secs: delay,
+                };
+
+                let msg = state.model.i18n.tr("iced.term.reconnect_attempt")
+                    .replace("{n}", &next_attempt.to_string())
+                    .replace("{max}", &max.to_string());
+                state.active_pane_mut().terminal.inject_local_lines(&[&msg]);
+            }
+        }
+    }
+
+    Task::none()
+}
+
+/// Handle restore session confirm from startup.
+pub(crate) fn handle_restore_session_confirm(state: &mut IcedState) -> Task<Message> {
+    let record = match state.restore_session_modal.take() {
+        Some(s) => s.record,
+        None => return Task::none(),
+    };
+
+    // 尝试从 record 构建 draft 并连接
+    state.model.draft.host = record.host.clone();
+    state.model.draft.port = record.port.to_string();
+    state.model.draft.user = record.user.clone();
+    state.model.draft.source = crate::app_model::DraftSource::Recent;
+    state.model.draft.profile_id = record.profile_id.clone();
+    state.model.draft.edited = false;
+    state.model.draft.last_error = None;
+    state.model.draft.password_error_count = 0;
+    state.model.selected_session_id = record.profile_id.clone();
+
+    // 如果有保存的会话，从会话加载认证信息
+    let mut credential_id = None;
+    let mut auth_to_set = None;
+    let mut key_path_to_set = None;
+    if let Some(profile_id) = &record.profile_id {
+        if let Some(profile) = state.model.profiles().iter().find(|p| &p.id == profile_id) {
+            if let crate::session::TransportConfig::Ssh(ssh) = &profile.transport {
+                auth_to_set = Some(ssh.auth.clone());
+                key_path_to_set = Some(match &ssh.auth {
+                    crate::session::AuthMethod::Key { private_key_path } => private_key_path.clone(),
+                    _ => String::new(),
+                });
+                credential_id = ssh.credential_id.clone();
+            }
+        }
+    }
+
+    // 在获取所有借用后再修改 draft
+    if let Some(auth) = auth_to_set {
+        state.model.draft.auth = auth;
+    }
+    if let Some(key_path) = key_path_to_set {
+        state.model.draft.private_key_path = key_path;
+    }
+
+    // 检查是否需要 Vault 解锁
+    let needs_vault = credential_id.is_some();
+    if needs_vault
+        && state.model.settings.security.vault.is_some()
+        && state.model.vault_master_password.is_none()
+    {
+        // 需要解锁 Vault
+        return super::update(state, Message::VaultUnlockOpenConnect(
+            crate::session::SessionProfile {
+                id: record.profile_id.unwrap_or_default(),
+                name: record.label.clone(),
+                folder: None,
+                color_tag: None,
+                transport: crate::session::TransportConfig::Ssh(crate::session::SshConfig {
+                    host: record.host,
+                    port: record.port,
+                    user: record.user,
+                    auth: state.model.draft.auth.clone(),
+                    credential_id,
+                }),
+            },
+        ));
+    }
+
+    // 直接发起连接
+    super::update(state, Message::ConnectPressed)
+}
+
+/// 开始预热：用户悬停在会话项上时调用。
+pub(crate) fn handle_session_hover_start(state: &mut IcedState, key: String) {
+    // 如果悬停的是同一个会话，不需要重新开始
+    if let Some(prewarm) = &state.prewarm_state {
+        if prewarm.profile_id.as_ref() == Some(&key) {
+            return;
+        }
+    }
+
+    // 取消之前的预热（如果有）
+    state.prewarm_state = None;
+
+    // recent: 前缀表示最近会话，暂时不支持预热
+    if key.starts_with("recent:") {
+        return;
+    }
+
+    // 开始新的预热
+    state.prewarm_state = Some(SessionPrewarmState {
+        profile_id: Some(key),
+        status: PrewarmStatus::WaitingHover,
+        start_time: Some(std::time::Instant::now()),
+        timeout_secs: 30, // 30 秒后自动清理
+    });
+}
+
+/// 结束预热：用户鼠标离开时调用。
+pub(crate) fn handle_session_hover_end(state: &mut IcedState) {
+    state.prewarm_state = None;
+}
+
+/// 启动预热连接。
+pub(crate) fn start_prewarm_connect(
+    state: &mut IcedState,
+    profile_id: Option<String>,
+) -> Task<Message> {
+    // 找到对应的会话配置
+    let Some(profile_id) = profile_id else {
+        state.prewarm_state = None;
+        return Task::none();
+    };
+
+    let Some(profile) = state
+        .model
+        .profiles()
+        .iter()
+        .find(|p| p.id == profile_id)
+        .cloned()
+    else {
+        state.prewarm_state = None;
+        return Task::none();
+    };
+
+    // 如果已经有活跃连接，不需要预热
+    if state.active_session_is_connected() {
+        // 仍然设置预热状态，但不建立新连接
+        if let Some(prewarm) = &mut state.prewarm_state {
+            prewarm.status = PrewarmStatus::Ready;
+        }
+        return Task::none();
+    }
+
+    // 先提取 vault_master_password，避免借用冲突
+    let vault_master = state.model.vault_master_password.clone();
+
+    // 构建 draft 并开始连接
+    if let Err(msg) = state.model.fill_draft_from_profile(&profile, vault_master.as_ref()) {
+        log::warn!("[Prewarm] Failed to fill draft: {}", msg);
+        state.prewarm_state = None;
+        return Task::none();
+    }
+
+    // 克隆必要数据用于异步连接
+    let draft = state.model.draft.clone();
+    let settings = state.model.settings.clone();
+    let merged_known_hosts = merge_known_hosts(&settings, &state.runtime_known_hosts);
+    let vault_master = state.model.vault_master_password.clone();
+
+    let task = async move {
+        let mut temp_model = crate::app_model::AppModel::new_for_connect(draft, settings);
+        temp_model.settings.security.known_hosts = merged_known_hosts;
+        // 预热时需要使用 Vault 主密码来解密凭据
+        temp_model.vault_master_password = vault_master;
+
+        let result = temp_model.connect_from_draft().await;
+
+        match result {
+            Ok(session) => Message::PrewarmResult(Ok(std::sync::Arc::new(session))),
+            Err(kind) => Message::PrewarmResult(Err((kind, temp_model.draft.host_key_error))),
+        }
+    };
+
+    Task::perform(task, |msg| msg)
+}
+
+/// 处理预热结果。
+pub(crate) fn handle_prewarm_result(
+    state: &mut IcedState,
+    result: Result<std::sync::Arc<Box<dyn crate::backend::ssh_session::AsyncSession>>, (crate::app_model::ConnectErrorKind, Option<crate::app_model::HostKeyErrorInfo>)>,
+) -> Task<Message> {
+    match result {
+        Ok(_session) => {
+            if let Some(prewarm) = &mut state.prewarm_state {
+                prewarm.status = PrewarmStatus::Ready;
+            }
+            log::info!("[Prewarm] Prewarm succeeded");
+        }
+        Err((kind, _)) => {
+            log::warn!("[Prewarm] Prewarm failed: {:?}", kind);
+            if let Some(prewarm) = &mut state.prewarm_state {
+                prewarm.status = PrewarmStatus::Failed;
+            }
+        }
+    }
+    Task::none()
+}
+
+/// 使用预热会话：用户点击会话时调用。
+/// 如果有预热成功的会话，直接使用；否则走正常连接流程。
+pub(crate) fn use_prewarmed_session(state: &mut IcedState, profile_id: &str) -> Task<Message> {
+    // 检查是否有针对此会话的预热
+    if let Some(prewarm) = &state.prewarm_state {
+        if prewarm.profile_id.as_deref() == Some(profile_id)
+            && matches!(prewarm.status, PrewarmStatus::Ready)
+        {
+            // 预热成功，应该有一个已建立的连接
+            // 目前预热会话暂存在 prewarm_state 中，需要在点击时建立新连接
+            // 这里简化处理：直接使用预热的 draft 进行连接
+            log::info!("[Prewarm] Using prewarmed session for {}", profile_id);
+            // 清理预热状态
+            state.prewarm_state = None;
+            // 继续正常的连接流程
+        }
+    }
+
+    // 如果没有预热或预热失败，使用正常流程
+    Task::none()
 }

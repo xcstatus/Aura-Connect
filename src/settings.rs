@@ -22,6 +22,9 @@ pub struct RecentConnectionRecord {
     pub user: String,
     #[serde(default)]
     pub last_connected_ms: i64,
+    /// 标记是否为最后会话（用于重启后恢复）
+    #[serde(default)]
+    pub is_last_session: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +38,29 @@ pub struct QuickConnectSettings {
     /// When false: each tab may keep its own session and terminal buffer (independent tabs).
     #[serde(default = "default_true")]
     pub single_shared_session: bool,
+    /// 连接断开时自动重连
+    #[serde(default)]
+    pub auto_reconnect: bool,
+    /// 最大重连次数
+    #[serde(default = "default_reconnect_max_attempts")]
+    pub reconnect_max_attempts: u8,
+    /// 重连基础延迟秒数（指数退避会以此为基数）
+    #[serde(default = "default_reconnect_base_delay")]
+    pub reconnect_base_delay_secs: u32,
+    /// 是否使用指数退避重连
+    #[serde(default = "default_true")]
+    pub reconnect_exponential: bool,
+    /// 启动时恢复上次会话
+    #[serde(default)]
+    pub restore_last_session: bool,
+}
+
+fn default_reconnect_max_attempts() -> u8 {
+    5
+}
+
+fn default_reconnect_base_delay() -> u32 {
+    2
 }
 
 fn default_true() -> bool {
@@ -47,6 +73,11 @@ impl Default for QuickConnectSettings {
             recent_max: 6,
             recent: Vec::new(),
             single_shared_session: true,
+            auto_reconnect: false,
+            reconnect_max_attempts: 5,
+            reconnect_base_delay_secs: 2,
+            reconnect_exponential: true,
+            restore_last_session: false,
         }
     }
 }
@@ -235,6 +266,19 @@ impl Default for Settings {
 }
 
 impl Settings {
+    /// 计算第 attempt 次重连的延迟秒数（1-indexed）。
+    /// 如果 reconnect_exponential 为 true，使用指数退避：base * 2^(attempt-1)
+    /// 最大延迟封顶为 30 秒。
+    pub fn reconnect_delay_for_attempt(&self, attempt: u8) -> u32 {
+        let base = self.quick_connect.reconnect_base_delay_secs;
+        let delay = if self.quick_connect.reconnect_exponential {
+            base * (2_u32.pow(attempt.saturating_sub(1) as u32))
+        } else {
+            base
+        };
+        delay.min(30)
+    }
+
     pub fn load() -> Self {
         let path = Self::get_path();
         if path.exists() {

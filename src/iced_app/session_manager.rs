@@ -1,8 +1,7 @@
 //! Session lifecycle management.
 //!
 //! Manages one active SSH session per tab, independent of tab switching.
-//! Unlike the previous `single_shared_session` policy, each tab retains its
-//! session even when not active, and all sessions are pumped concurrently.
+//! Supports SSH connection multiplexing via SharedSessionManager.
 
 use crate::backend::ssh_session::AsyncSession;
 use std::fmt::Debug;
@@ -11,11 +10,14 @@ use std::fmt::Debug;
 pub struct TabSession {
     pub session: Box<dyn AsyncSession>,
     pub tab_id: usize,
+    /// 连接键：用于多路复用追踪
+    pub connection_key: Option<crate::backend::shared_ssh_session::ConnectionKey>,
 }
 impl Debug for TabSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TabSession")
             .field("tab_id", &self.tab_id)
+            .field("connection_key", &self.connection_key)
             .finish()
     }
 }
@@ -26,6 +28,8 @@ impl Debug for TabSession {
 /// Individual tabs access their session via `get_session` / `session_mut`.
 pub struct SessionManager {
     sessions: Vec<Option<TabSession>>,
+    /// 共享会话管理器：支持多路复用
+    pub shared_manager: std::sync::Arc<tokio::sync::RwLock<crate::backend::shared_ssh_session::SharedSessionManager>>,
     /// Index of the currently focused tab.
     active_tab: usize,
 }
@@ -34,6 +38,9 @@ impl SessionManager {
     pub fn new(initial_tabs: usize) -> Self {
         Self {
             sessions: (0..initial_tabs).map(|_| None).collect(),
+            shared_manager: std::sync::Arc::new(tokio::sync::RwLock::new(
+                crate::backend::shared_ssh_session::SharedSessionManager::new(20), // 最多 20 个活跃连接
+            )),
             active_tab: 0,
         }
     }
@@ -44,18 +51,33 @@ impl SessionManager {
     }
 
     /// Attach a session to a tab, replacing any existing session on that tab.
-    pub fn attach_session(&mut self, tab_index: usize, session: Box<dyn AsyncSession>) {
+    pub fn attach_session(&mut self, tab_index: usize, session: Box<dyn AsyncSession>, connection_key: Option<crate::backend::shared_ssh_session::ConnectionKey>) {
         self.ensure_capacity(tab_index);
         self.sessions[tab_index] = Some(TabSession {
             session,
             tab_id: tab_index,
+            connection_key,
         });
     }
 
     /// Detach (disconnect) the session on a specific tab.
+    /// 会自动通知 shared_manager 减少引用计数
     pub fn detach_session(&mut self, tab_index: usize) {
         if tab_index < self.sessions.len() {
+            // 获取连接键以便减少引用计数
+            let connection_key = self.sessions[tab_index]
+                .as_ref()
+                .and_then(|ts| ts.connection_key.clone());
+
             self.sessions[tab_index] = None;
+
+            // 通知 shared_manager 关闭连接（异步）
+            if let Some(key) = connection_key {
+                let manager = self.shared_manager.clone();
+                tokio::spawn(async move {
+                    manager.write().await.close(&key).await;
+                });
+            }
         }
     }
 

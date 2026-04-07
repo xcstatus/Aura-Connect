@@ -3,10 +3,17 @@ use iced::Task;
 use crate::settings;
 
 use super::super::message::Message;
-use super::super::state::IcedState;
+use super::super::state::PrewarmStatus;
+use super::super::state::{IcedState, ConnectionStage};
 
 /// Slow tick threshold: ticks taking longer than this are logged as warnings.
 const SLOW_TICK_NS: u64 = 5_000_000; // 5ms
+
+/// 重连 tick 间隔（毫秒）：每 1 秒触发一次重连倒计时检查
+const RECONNECT_TICK_MS: i64 = 1000;
+
+/// 预热 tick 间隔（毫秒）：每 500ms 检查悬停状态
+const PREWARM_TICK_MS: i64 = 500;
 
 /// Compute dynamic tick interval (ms) — must match the logic in `subscription.rs`.
 fn compute_tick_ms(state: &IcedState) -> u32 {
@@ -44,6 +51,12 @@ pub(crate) fn handle_tick(state: &mut IcedState) -> Task<Message> {
     pump_all_sessions(state, now, bg_pump_every_ms);
     handle_cursor_blink(state, now);
 
+    // 重连计时器：每 1 秒触发一次
+    let reconnect_task = handle_reconnect_timer(state, now);
+
+    // 预热计时器：每 500ms 检查悬停状态
+    let prewarm_task = handle_prewarm_timer(state, now);
+
     let tick_elapsed = tick_start.elapsed().as_nanos() as u64;
     state.perf.tick_ns_total += tick_elapsed;
     state.perf.tick_durations_ns.push(tick_elapsed);
@@ -60,6 +73,68 @@ pub(crate) fn handle_tick(state: &mut IcedState) -> Task<Message> {
     }
 
     handle_perf_log(state);
+
+    // 合并两个 Task
+    reconnect_task.chain(prewarm_task)
+}
+
+/// Handle reconnect timer: checks if it's time to trigger a reconnect tick.
+/// Returns a Task if a reconnect should be attempted.
+fn handle_reconnect_timer(state: &mut IcedState, now: i64) -> Task<Message> {
+    // 只在 Reconnecting 状态检查重连计时
+    if !matches!(state.connection_stage, ConnectionStage::Reconnecting { .. }) {
+        return Task::none();
+    }
+
+    // 检查是否达到 1 秒间隔
+    if now.saturating_sub(state.last_reconnect_tick_ms) < RECONNECT_TICK_MS {
+        return Task::none();
+    }
+
+    state.last_reconnect_tick_ms = now;
+
+    // 触发重连 tick
+    super::connection::handle_reconnect_tick(state)
+}
+
+/// Handle prewarm timer: checks if hover has elapsed enough time to start connecting.
+fn handle_prewarm_timer(state: &mut IcedState, _now: i64) -> Task<Message> {
+    // 检查是否需要处理预热
+    let needs_connect = {
+        let Some(prewarm) = &mut state.prewarm_state else {
+            return Task::none();
+        };
+
+        match prewarm.status {
+            PrewarmStatus::Idle | PrewarmStatus::Connecting | PrewarmStatus::Ready | PrewarmStatus::Failed => {
+                // 这些状态不需要计时
+                false
+            }
+            PrewarmStatus::WaitingHover => {
+                // 检查是否达到 500ms
+                let elapsed = prewarm
+                    .start_time
+                    .map(|t| t.elapsed().as_millis() as i64)
+                    .unwrap_or(0);
+
+                if elapsed < 500 {
+                    false
+                } else {
+                    true
+                }
+            }
+        }
+    };
+
+    if needs_connect {
+        // 重新获取 prewarm_state，设置状态并启动连接
+        if let Some(prewarm) = &mut state.prewarm_state {
+            let profile_id = prewarm.profile_id.clone();
+            prewarm.status = PrewarmStatus::Connecting;
+            return super::connection::start_prewarm_connect(state, profile_id);
+        }
+    }
+
     Task::none()
 }
 

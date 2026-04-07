@@ -26,7 +26,7 @@ use crate::backend::ssh_session::AsyncSession;
 
 use super::chrome::TAB_STRIP_SCROLLABLE_ID;
 use super::message::Message;
-use super::state::{IcedState, QuickConnectPanel, TabPane};
+use super::state::{IcedState, QuickConnectFlow, QuickConnectPanel, TabPane, ConnectionStage};
 use super::terminal_event::TerminalEvent;
 use super::terminal_host::TerminalHost;
 use super::terminal_viewport;
@@ -85,11 +85,12 @@ pub(crate) fn complete_new_ssh_session(
     recent: crate::settings::RecentConnectionRecord,
     tab_title: String,
     profile_id: Option<String>,
+    connection_key: Option<crate::backend::shared_ssh_session::ConnectionKey>,
 ) {
     // Attach session to the active tab (replaces any existing session on that tab).
     state
         .session_manager
-        .attach_session(state.active_tab, session);
+        .attach_session(state.active_tab, session, connection_key);
 
     // Resize PTY to current window size (active tab already has the new session attached).
     sync_terminal_grid_to_session(state);
@@ -610,6 +611,32 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
         Message::VaultUnlockPasswordChanged(v) => vault::handle_vault_unlock_password(state, v),
         Message::VaultUnlockSubmit => vault::handle_vault_unlock_submit(state),
         Message::VaultUnlockComplete(result) => vault::handle_vault_unlock_complete(state, result),
+        Message::ReconnectTick => connection::handle_reconnect_tick(state),
+        Message::ReconnectResult(result) => connection::handle_reconnect_result(state, result),
+        Message::ReconnectCancel => {
+            state.reconnect_context = None;
+            state.connection_stage = ConnectionStage::None;
+            state.quick_connect_flow = QuickConnectFlow::Failed;
+            Task::none()
+        }
+        Message::RestoreSessionConfirm => connection::handle_restore_session_confirm(state),
+        Message::RestoreSessionDismiss => {
+            state.restore_session_modal = None;
+            Task::none()
+        }
+        Message::SessionHoverStart(id) => {
+            connection::handle_session_hover_start(state, id);
+            Task::none()
+        }
+        Message::SessionHoverEnd => {
+            connection::handle_session_hover_end(state);
+            Task::none()
+        }
+        Message::PrewarmTick => {
+            // PrewarmTick 由 tick.rs 中的 handle_prewarm_timer 处理
+            Task::none()
+        }
+        Message::PrewarmResult(result) => connection::handle_prewarm_result(state, result),
         Message::ToggleDebugOverlay => {
             state.perf.debug_overlay_enabled = !state.perf.debug_overlay_enabled;
             log::info!(

@@ -38,6 +38,13 @@ pub enum ConnectErrorKind {
     Unknown,
 }
 
+impl std::fmt::Display for ConnectErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let msg = self.user_message();
+        write!(f, "{}", msg)
+    }
+}
+
 impl ConnectErrorKind {
     pub fn user_message(self) -> &'static str {
         match self {
@@ -68,7 +75,7 @@ impl ConnectErrorKind {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ConnectionDraft {
     pub host: String,
     pub port: String,
@@ -216,25 +223,6 @@ impl AppModel {
                 self.status = format!("Selected profile: {}", profile.name);
             }
         }
-    }
-
-    /// 成功连接后写入「最近」列表（去重、截断、`settings` 落盘）。
-    pub fn record_recent_connection(&mut self, mut rec: RecentConnectionRecord) {
-        rec.last_connected_ms = crate::settings::unix_time_ms();
-        let max = self.settings.quick_connect.recent_max.clamp(1, 64);
-        let recent = &mut self.settings.quick_connect.recent;
-        recent.retain(|r| {
-            if let (Some(a), Some(b)) = (&r.profile_id, &rec.profile_id) {
-                a != b
-            } else if r.profile_id.is_none() && rec.profile_id.is_none() {
-                !(r.host == rec.host && r.port == rec.port && r.user == rec.user)
-            } else {
-                true
-            }
-        });
-        recent.insert(0, rec);
-        recent.truncate(max);
-        self.settings.save_with_log();
     }
 
     pub fn recent_connections(&self) -> &[RecentConnectionRecord] {
@@ -516,6 +504,7 @@ impl AppModel {
             port,
             user: self.draft.user.trim().to_string(),
             last_connected_ms: 0,
+            is_last_session: true,
         }
     }
 
@@ -530,6 +519,32 @@ impl AppModel {
             port: ssh.port,
             user: ssh.user.clone(),
             last_connected_ms: 0,
+            is_last_session: true,
         })
+    }
+
+    /// 成功连接后写入「最近」列表，并更新 `is_last_session` 标记。
+    pub fn record_recent_connection(&mut self, mut rec: RecentConnectionRecord) {
+        rec.last_connected_ms = crate::settings::unix_time_ms();
+        rec.is_last_session = true;
+        let max = self.settings.quick_connect.recent_max.clamp(1, 64);
+        let recent = &mut self.settings.quick_connect.recent;
+        // 清除所有其他的 is_last_session 标记
+        for r in &mut recent.iter_mut() {
+            r.is_last_session = false;
+        }
+        // 去重
+        recent.retain(|r| {
+            if let (Some(a), Some(b)) = (&r.profile_id, &rec.profile_id) {
+                a != b
+            } else if r.profile_id.is_none() && rec.profile_id.is_none() {
+                !(r.host == rec.host && r.port == rec.port && r.user == rec.user)
+            } else {
+                true
+            }
+        });
+        recent.insert(0, rec);
+        recent.truncate(max);
+        self.settings.save_with_log();
     }
 }

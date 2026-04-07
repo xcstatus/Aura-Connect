@@ -98,6 +98,26 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.settings.conn.advanced_hint" => {
             "Proxy, jump host, certificates, and keepalive will arrive in a later release."
         }
+        "iced.settings.row.auto_reconnect" => "Auto-reconnect on disconnect",
+        "iced.settings.row.auto_reconnect.help" => {
+            "Automatically attempt to reconnect when the connection is unexpectedly dropped."
+        }
+        "iced.settings.row.reconnect_max_attempts" => "Max reconnect attempts",
+        "iced.settings.row.reconnect_max_attempts.help" => {
+            "Set to 0 to disable auto-reconnect."
+        }
+        "iced.settings.row.reconnect_delay" => "Base reconnect delay (seconds)",
+        "iced.settings.row.reconnect_delay.help" => {
+            "Initial wait time before first reconnect. With exponential backoff, delay doubles each retry."
+        }
+        "iced.settings.row.reconnect_exponential" => "Use exponential backoff",
+        "iced.settings.row.reconnect_exponential.help" => {
+            "Double the wait time after each failed attempt (capped at 30 seconds)."
+        }
+        "iced.settings.row.restore_last_session" => "Restore last session on startup",
+        "iced.settings.row.restore_last_session.help" => {
+            "Automatically reconnect to the last session when the app starts."
+        },
         "iced.settings.conn.manage_suffix" => "sessions",
         "iced.settings.conn.search_hint" => "Search name or address…",
         "iced.settings.conn.new" => "New",
@@ -169,6 +189,16 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.term.ssh.host_fingerprint" => "SSH  Host key: {algo} {fp}",
         "iced.term.ssh.auth_method" => "SSH  Auth: {method}",
         "iced.term.ssh.authenticating" => "SSH  Authenticating...",
+        "iced.term.reconnecting" => "[rustssh] Reconnecting…",
+        "iced.term.reconnect_attempt" => "[rustssh] Reconnecting ({n}/{max})…",
+        "iced.term.reconnect_countdown" => "[rustssh] Retrying in {secs}s…",
+        "iced.term.reconnect_failed" => "[rustssh] Reconnect failed: {reason}",
+        "iced.term.reconnect_success" => "[rustssh] Reconnected.",
+        "iced.term.connection_closed" => "[rustssh] Connection closed.",
+        "iced.term.connection_timeout" => "[rustssh] Connection timed out.",
+        "iced.term.connection_refused" => "[rustssh] Connection refused.",
+        "iced.term.network_unreachable" => "[rustssh] Network unreachable.",
+        "iced.term.host_unreachable" => "[rustssh] Host unreachable.",
         "iced.auth.password" => "password",
         "iced.auth.public_key" => "public key",
         "iced.auth.keyboard_interactive" => "keyboard-interactive",

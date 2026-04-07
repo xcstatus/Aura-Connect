@@ -446,7 +446,7 @@ mod tests {
             .attach_session(state.active_tab, Box::new(DummySession {
                 writes: Vec::new(),
                 connected: true,
-            }));
+            }), None);
     }
 
     #[test]

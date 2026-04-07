@@ -153,6 +153,11 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
             state.settings_connection_search = q;
             return;
         }
+        SettingsField::AutoReconnect(v) => s.quick_connect.auto_reconnect = v,
+        SettingsField::ReconnectMaxAttempts(v) => s.quick_connect.reconnect_max_attempts = v,
+        SettingsField::ReconnectBaseDelay(v) => s.quick_connect.reconnect_base_delay_secs = v,
+        SettingsField::ReconnectExponential(v) => s.quick_connect.reconnect_exponential = v,
+        SettingsField::RestoreLastSession(v) => s.quick_connect.restore_last_session = v,
     }
 
     state.model.settings.save_with_log();

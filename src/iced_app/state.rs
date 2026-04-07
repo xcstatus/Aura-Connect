@@ -132,6 +132,8 @@ pub(crate) enum ConnectionStage {
     Authenticating,
     /// PTY allocation + session finalization.
     SessionSetup,
+    /// Auto-reconnect in progress.
+    Reconnecting { attempt: u8, max: u8, delay_secs: u32 },
 }
 
 /// 快速连接弹窗内：列表 / 新建连接表单。
@@ -140,6 +142,53 @@ pub(crate) enum QuickConnectPanel {
     #[default]
     Picker,
     NewConnection,
+}
+
+/// 连接预热状态。
+#[derive(Debug, Clone)]
+pub(crate) struct SessionPrewarmState {
+    /// 预热中的会话 profile_id
+    pub profile_id: Option<String>,
+    /// 预热状态
+    pub status: PrewarmStatus,
+    /// 开始预热的时间
+    pub start_time: Option<std::time::Instant>,
+    /// 预热超时时间（秒）
+    pub timeout_secs: u32,
+}
+
+/// 连接预热状态枚举。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PrewarmStatus {
+    /// 未开始预热
+    Idle,
+    /// 预热中（等待鼠标悬停 500ms）
+    WaitingHover,
+    /// 正在建立连接
+    Connecting,
+    /// 预热成功，可直接使用
+    Ready,
+    /// 预热失败
+    Failed,
+}
+
+impl Default for PrewarmStatus {
+    fn default() -> Self {
+        PrewarmStatus::Idle
+    }
+}
+
+/// 重连上下文：保存连接断开后重连所需的全部信息。
+#[derive(Debug, Clone)]
+pub(crate) struct ReconnectContext {
+    /// 连接草案（包含 host, port, user, auth, password 等）。
+    pub draft: crate::app_model::ConnectionDraft,
+    /// Vault 主密码（用于读取凭据）。
+    pub vault_master_password: Option<secrecy::SecretString>,
+    /// 会话配置 ID（若有）。
+    pub profile_id: Option<String>,
+    /// 重连开始时间（用于计算已耗时）。
+    pub start_time: std::time::Instant,
 }
 
 /// Tab chrome: label and optional saved profile id (for draft / breadcrumb).
@@ -243,6 +292,10 @@ pub(crate) struct IcedState {
     pub quick_connect_panel: QuickConnectPanel,
     /// Quick connect: search query / direct input.
     pub quick_connect_query: String,
+    /// 连接预热状态
+    pub prewarm_state: Option<SessionPrewarmState>,
+    /// 上次预热 tick 的时间戳（毫秒），用于每 500ms 检查悬停状态
+    pub last_prewarm_tick_ms: i64,
     /// Quick connect state machine.
     pub quick_connect_flow: QuickConnectFlow,
     /// Connection progress stage shown in the quick-connect form while connecting.
@@ -293,6 +346,12 @@ pub(crate) struct IcedState {
     pub preconnect_info_line_count: usize,
     /// Vault 提示行数，用于 vault 解锁后清理提示并显示 SSH info。
     pub vault_hint_line_count: usize,
+    /// 自动重连上下文（连接断开时保存）。
+    pub reconnect_context: Option<ReconnectContext>,
+    /// 重启后恢复会话弹窗状态。
+    pub restore_session_modal: Option<RestoreSessionModalState>,
+    /// 上次重连 tick 的时间戳（毫秒），用于每 1 秒触发一次重连倒计时检查。
+    pub last_reconnect_tick_ms: i64,
 
     /// Tab 宽度动画状态（index-aligned with tabs）。
     pub tab_anims: Vec<TabAnimEntry>,
@@ -344,6 +403,48 @@ impl IcedState {
         } else {
             (1000.0 / target_fps.min(10) as f32).max(100.0)
         }
+    }
+
+    /// 检查是否需要恢复上次会话。
+    /// 仅当 restore_last_session 设置开启且存在上次会话时返回。
+    pub(crate) fn check_last_session_restore(&self) -> Option<crate::settings::RecentConnectionRecord> {
+        if !self.model.settings.quick_connect.restore_last_session {
+            return None;
+        }
+        self.model
+            .settings
+            .quick_connect
+            .recent
+            .iter()
+            .find(|r| r.is_last_session)
+            .cloned()
+    }
+
+    /// 启动自动重连流程。
+    /// 如果 auto_reconnect 关闭或已达最大次数，返回 None。
+    pub(crate) fn start_auto_reconnect(&mut self) -> bool {
+        let max_attempts = self.model.settings.quick_connect.reconnect_max_attempts;
+        if max_attempts == 0 {
+            return false;
+        }
+        // 构建重连上下文
+        let draft = self.model.draft.clone();
+        let vault_master_password = self.model.vault_master_password.clone();
+        let profile_id = self.model.selected_session_id.clone();
+        self.reconnect_context = Some(ReconnectContext {
+            draft,
+            vault_master_password,
+            profile_id,
+            start_time: std::time::Instant::now(),
+        });
+        true
+    }
+
+    /// 获取下次重连的延迟（秒）。
+    pub(crate) fn next_reconnect_delay(&self, attempt: u8) -> u32 {
+        self.model
+            .settings
+            .reconnect_delay_for_attempt(attempt)
     }
 
     /// Scrollbar track alpha for hover animation.
@@ -707,6 +808,13 @@ pub(crate) struct AutoProbeConsentModalState {
     // Reserved for future: allow other pending actions.
 }
 
+/// 重启后恢复会话弹窗状态。
+#[derive(Debug, Clone)]
+pub(crate) struct RestoreSessionModalState {
+    /// 要恢复的最近连接记录。
+    pub record: crate::settings::RecentConnectionRecord,
+}
+
 /// Context stored during async vault unlock operations.
 /// This is kept in IcedState while the background KDF task is running.
 #[derive(Debug, Clone)]
@@ -750,6 +858,8 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             quick_connect_open: false,
             quick_connect_panel: QuickConnectPanel::default(),
             quick_connect_query: String::new(),
+            prewarm_state: None,
+            last_prewarm_tick_ms: now,
             quick_connect_flow: QuickConnectFlow::Idle,
             connection_stage: ConnectionStage::None,
             quick_connect_error_kind: None,
@@ -780,6 +890,9 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             auto_probe_consent_modal: None,
             preconnect_info_line_count: 0,
             vault_hint_line_count: 0,
+            reconnect_context: None,
+            restore_session_modal: None,
+            last_reconnect_tick_ms: now,
             tab_anims: vec![TabAnimEntry { target_w: 126.0, enter_tick: 0, done: true }],
             quick_connect_anim: ModalAnimState::default(),
             settings_anim: ModalAnimState::default(),
