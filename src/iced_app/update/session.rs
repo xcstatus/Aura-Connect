@@ -253,6 +253,7 @@ pub(crate) fn handle_session_editor_save(state: &mut IcedState) -> Task<Message>
                 if let Err(e) = crate::vault::session_credentials::delete_credential(
                     master.expose_secret(),
                     cid,
+                    state.model.settings.security.kdf_memory_level,
                 ) {
                     ed.error = Some(format!("清理凭据失败：{e}"));
                     return Task::none();
@@ -266,6 +267,7 @@ pub(crate) fn handle_session_editor_save(state: &mut IcedState) -> Task<Message>
                 &id,
                 Some(pw),
                 None,
+                state.model.settings.security.kdf_memory_level,
             ) {
                 Ok(cid) => credential_id = cid,
                 Err(e) => {
@@ -369,6 +371,7 @@ pub(crate) fn handle_quick_connect_save_session(state: &mut IcedState) -> Task<M
             &profile_id,
             Some(&*password),
             None,
+            state.model.settings.security.kdf_memory_level,
         ) {
             Ok(_) => {
                 state.vault_status = VaultStatus::compute(
@@ -421,6 +424,7 @@ pub(crate) fn handle_delete_session(state: &mut IcedState, id: String) -> Task<M
                     if let Err(e) = crate::vault::session_credentials::delete_credential(
                         master.expose_secret(),
                         cid,
+                        state.model.settings.security.kdf_memory_level,
                     ) {
                         vault_cleanup_err = Some(format!("Vault 凭据清理失败（{e}）"));
                     }

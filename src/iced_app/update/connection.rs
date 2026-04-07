@@ -370,6 +370,7 @@ fn save_credentials_after_connect(state: &mut IcedState, profile_id: &Option<Str
                         &pid,
                         Some(pw),
                         None,
+                        state.model.settings.security.kdf_memory_level,
                     )
                 {
                     if let Some(existing) =

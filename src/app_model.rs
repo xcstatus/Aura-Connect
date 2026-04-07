@@ -421,9 +421,11 @@ impl AppModel {
                 if let (Some(cid), Some(master)) =
                     (ssh.credential_id.as_deref(), vault_master_password)
                 {
+                    let kdf_level = self.settings.security.kdf_memory_level;
                     match crate::vault::session_credentials::load_ssh_credentials(
                         master.expose_secret(),
                         cid,
+                        kdf_level,
                     ) {
                         Ok(Some(payload)) => {
                             if let Some(pw) = payload.password.filter(|s| !s.is_empty()) {
@@ -469,10 +471,12 @@ impl AppModel {
                 if let (Some(cid), Some(master)) =
                     (ssh.credential_id.as_deref(), vault_master_password)
                 {
+                    let kdf_level = self.settings.security.kdf_memory_level;
                     if let Ok(Some(payload)) =
                         crate::vault::session_credentials::load_ssh_credentials(
                             master.expose_secret(),
                             cid,
+                            kdf_level,
                         )
                     {
                         if let Some(pph) = payload.passphrase.filter(|s| !s.is_empty()) {

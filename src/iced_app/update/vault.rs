@@ -412,6 +412,7 @@ pub(crate) fn handle_vault_unlock_complete(
                     &pid,
                     Some(pw),
                     None,
+                    state.model.settings.security.kdf_memory_level,
                 )
             {
                 if let Some(existing) = state.model.profiles().iter().find(|p| p.id == pid).cloned()
