@@ -42,7 +42,11 @@ pub struct GhosttyVtTerminal {
     key_event: ffi::GhosttyKeyEvent_ptr,
     cols: u16,
     rows: u16,
-    /// Scratch buffer to avoid per-cell allocations when reading graphemes.
+    /// Stack buffer for small graphemes (≤16 codepoints), avoids heap allocation.
+    grapheme_buf: [u32; 16],
+    /// Valid length in grapheme_buf.
+    grapheme_len: usize,
+    /// Fallback heap buffer for graphemes exceeding the stack buffer size.
     grapheme_scratch: Vec<u32>,
 }
 
@@ -175,6 +179,8 @@ impl GhosttyVtTerminal {
                 key_event: std::ptr::null_mut(),
                 cols,
                 rows,
+                grapheme_buf: [0; 16],
+                grapheme_len: 0,
                 grapheme_scratch: Vec::new(),
             };
             s.init_key_encoder()?;
@@ -802,6 +808,19 @@ impl GhosttyVtTerminal {
             };
             let _ = ffi::ghostty_render_state_colors_get(self.render_state, &mut colors);
 
+            // Optimization 1: Early exit when frame is completely clean.
+            if only_dirty {
+                let mut global_dirty = ffi::GhosttyRenderStateDirty_GHOSTTY_RENDER_STATE_DIRTY_FALSE;
+                let _ = ffi::ghostty_render_state_get(
+                    self.render_state,
+                    ffi::GhosttyRenderStateData_GHOSTTY_RENDER_STATE_DATA_DIRTY,
+                    &mut global_dirty as *mut _ as *mut c_void,
+                );
+                if global_dirty == ffi::GhosttyRenderStateDirty_GHOSTTY_RENDER_STATE_DIRTY_FALSE {
+                    return Ok(());
+                }
+            }
+
             let res = ffi::ghostty_render_state_get(
                 self.render_state,
                 ffi::GhosttyRenderStateData_GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR,
@@ -918,41 +937,62 @@ impl GhosttyVtTerminal {
                         &mut style as *mut _ as *mut c_void,
                     );
 
-                    // Resolved colors (may return INVALID_VALUE if unset).
-                    let mut fg = colors.foreground;
-                    let mut bg = colors.background;
-                    let mut has_bg: bool;
-
-                    let res_fg = ffi::ghostty_render_state_row_cells_get(
-                        self.row_cells,
-                        ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR,
-                        &mut fg as *mut _ as *mut c_void,
-                    );
-                    if res_fg != ffi::GhosttyResult_GHOSTTY_SUCCESS {
-                        fg = colors.foreground;
-                    }
-
-                    let res_bg = ffi::ghostty_render_state_row_cells_get(
-                        self.row_cells,
-                        ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR,
-                        &mut bg as *mut _ as *mut c_void,
-                    );
-                    if res_bg == ffi::GhosttyResult_GHOSTTY_SUCCESS {
-                        has_bg = true;
-                    } else {
-                        bg = colors.background;
-                        has_bg = false;
-                    }
-
-                    if style.inverse {
-                        std::mem::swap(&mut fg, &mut bg);
-                        has_bg = true;
-                    }
-
+                    // Optimization 2: Run-level color caching.
+                    // We fetch colors from FFI only when style changes, then reuse within the same run.
                     let bold = style.bold;
                     let underline = style.underline != 0;
                     let dim = style.faint;
                     let strikethrough = style.strikethrough;
+
+                    // Determine if we need FFI call based on style changes vs previous run.
+                    let needs_style_check = match out_runs.last() {
+                        None => true, // First cell: must FFI
+                        Some(last) => {
+                            last.bold != bold
+                                || last.underline != underline
+                                || last.dim != dim
+                                || last.strikethrough != strikethrough
+                        }
+                    };
+
+                    let mut fg: ffi::GhosttyColorRgb;
+                    let mut bg: ffi::GhosttyColorRgb;
+                    let mut has_bg: bool;
+
+                    if needs_style_check {
+                        // Fetch colors from FFI (expensive).
+                        fg = colors.foreground;
+                        bg = colors.background;
+                        let res_fg = ffi::ghostty_render_state_row_cells_get(
+                            self.row_cells,
+                            ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR,
+                            &mut fg as *mut _ as *mut c_void,
+                        );
+                        if res_fg != ffi::GhosttyResult_GHOSTTY_SUCCESS {
+                            fg = colors.foreground;
+                        }
+                        let res_bg = ffi::ghostty_render_state_row_cells_get(
+                            self.row_cells,
+                            ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR,
+                            &mut bg as *mut _ as *mut c_void,
+                        );
+                        if res_bg == ffi::GhosttyResult_GHOSTTY_SUCCESS {
+                            has_bg = true;
+                        } else {
+                            bg = colors.background;
+                            has_bg = false;
+                        }
+                        if style.inverse {
+                            std::mem::swap(&mut fg, &mut bg);
+                            has_bg = true;
+                        }
+                    } else {
+                        // Style unchanged: reuse the last run's colors without FFI call.
+                        let last_run = out_runs.last().unwrap();
+                        fg = last_run.fg;
+                        bg = last_run.bg;
+                        has_bg = last_run.has_bg;
+                    }
 
                     // Grapheme (may be multiple codepoints; keep full sequence for correctness).
                     //
@@ -965,22 +1005,29 @@ impl GhosttyVtTerminal {
                         ffi::GhosttyCellWide_GHOSTTY_CELL_WIDE_SPACER_TAIL
                             | ffi::GhosttyCellWide_GHOSTTY_CELL_WIDE_SPACER_HEAD
                     );
-                    if res != ffi::GhosttyResult_GHOSTTY_SUCCESS {
-                        cell_text.push(' ');
-                    } else if len_u32 == 0 {
+                    if res != ffi::GhosttyResult_GHOSTTY_SUCCESS || len_u32 == 0 {
                         cell_text.push(' ');
                     } else {
-                        self.grapheme_scratch.clear();
-                        self.grapheme_scratch.resize(len_u32 as usize, 0);
+                        // Optimization 4: Use stack buffer for small graphemes (≤16 codepoints),
+                        // fallback to heap for rare large grapheme clusters.
+                        let use_stack = len_u32 as usize <= 16;
+                        let buf_slice: &mut [u32] = if use_stack {
+                            self.grapheme_len = len_u32 as usize;
+                            &mut self.grapheme_buf[..len_u32 as usize]
+                        } else {
+                            self.grapheme_scratch.clear();
+                            self.grapheme_scratch.resize(len_u32 as usize, 0);
+                            self.grapheme_scratch.as_mut_slice()
+                        };
                         let res2 = ffi::ghostty_render_state_row_cells_get(
                             self.row_cells,
                             ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
-                            self.grapheme_scratch.as_mut_ptr() as *mut c_void,
+                            buf_slice.as_mut_ptr() as *mut c_void,
                         );
-                        if res2 != ffi::GhosttyResult_GHOSTTY_SUCCESS {
-                            cell_text.push(' ');
-                        } else {
-                            for &cp in &self.grapheme_scratch {
+                        if res2 == ffi::GhosttyResult_GHOSTTY_SUCCESS {
+                            // Optimization 3: Pre-allocate String to avoid reallocation.
+                            cell_text = String::with_capacity(len_u32 as usize);
+                            for &cp in buf_slice.iter() {
                                 if let Some(ch) = char::from_u32(cp) {
                                     cell_text.push(ch);
                                 }
@@ -988,6 +1035,8 @@ impl GhosttyVtTerminal {
                             if cell_text.is_empty() {
                                 cell_text.push(' ');
                             }
+                        } else {
+                            cell_text.push(' ');
                         }
                     }
 
