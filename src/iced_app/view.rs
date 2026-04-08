@@ -6,11 +6,10 @@ use iced::widget::{
     Space, Stack, button, checkbox, column, container, mouse_area, pick_list, row, scrollable,
     text, text_input, tooltip,
 };
-use iced::{Color, Element, Theme};
+use iced::{Element, Theme};
 
 use secrecy::ExposeSecret;
 
-use crate::session::{SessionProfile, TransportConfig};
 use crate::theme::layout::BOTTOM_BAR_HEIGHT;
 
 use super::chrome::{
@@ -18,12 +17,15 @@ use super::chrome::{
     main_chrome_style, tab_scroll_needs_fade, tab_scroll_right_fade, top_bar_material_style,
     top_bar_vertical_rule, unified_titlebar_padding,
 };
+use super::components::helpers::modal_scrim_style;
+use super::components::quick_connect;
+use super::components::overlays;
 use super::engine_adapter::EngineAdapter;
 use super::message::Message;
 use super::settings_modal;
 use super::state::IcedState;
 use super::state::{VaultFlowMode, VaultStatus};
-use super::terminal_rich;
+use super::terminal_widget;
 use super::terminal_viewport;
 use super::widgets::chrome_button::{
     style_chrome_primary, style_chrome_secondary, style_tab_strip, style_top_icon,
@@ -284,11 +286,11 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
                 let tick_count = state.tick_count;
                 let term_font_px = term_vp.term_font_px;
                 let term_cell_h = iced::Pixels(term_vp.term_cell_h().max(1.0));
-                let term_font = terminal_rich::iced_terminal_font(&state.model.settings.terminal);
+                let term_font = terminal_widget::iced_terminal_font(&state.model.settings.terminal);
                 // Now safe to take mutable borrows.
                 let terminal = &*state.active_terminal();
                 let cache = &state.tab_panes[state.active_tab].styled_row_cache;
-                terminal_rich::styled_terminal(
+                terminal_widget::styled_terminal(
                     terminal,
                     cache,
                     selection,
@@ -383,14 +385,14 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
         let mut layers: Vec<Element<'_, Message>> = vec![below_top_fill.into()];
 
         // Terminal-inline overlay: connection progress bar (shown while modal is closed).
-        layers.push(inline_connecting_overlay(state));
+        layers.push(overlays::inline_connecting_overlay(state));
         // Terminal-inline overlay: password/passphrase input (modal closed, need credential).
-        layers.push(inline_password_overlay(state));
+        layers.push(overlays::inline_password_overlay(state));
 
         // Render quick connect modal when anim phase is opening/open/closing
         // (not yet fully closed). This allows the close animation to play.
         if state.quick_connect_anim.phase != super::state::ModalAnimPhase::Closed {
-            layers.push(quick_connect_modal_stack(state));
+            layers.push(quick_connect::quick_connect_modal_stack(state));
         }
         if state.settings_anim.phase != super::state::ModalAnimPhase::Closed {
             layers.push(settings_modal::modal_stack(state));
@@ -780,7 +782,7 @@ fn vault_modal_stack(state: &IcedState) -> Element<'_, Message> {
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill),
         )
-        .style(modal_scrim_style),
+        .style(super::components::helpers::modal_scrim_style),
     )
     .on_press(Message::VaultClose);
 
@@ -807,19 +809,19 @@ fn vault_modal_stack(state: &IcedState) -> Element<'_, Message> {
 
     if matches!(flow.mode, VaultFlowMode::ChangePassword) {
         body = body.push(
-            text_input(i18n.tr("iced.vault.label.old_password"), flow.old_password.expose_secret())
+            text_input(state.model.i18n.tr("iced.vault.label.old_password"), flow.old_password.expose_secret())
                 .secure(true)
                 .on_input(Message::VaultOldPasswordChanged),
         );
     }
     body = body
         .push(
-            text_input(i18n.tr("iced.vault.label.new_password"), flow.new_password.expose_secret())
+            text_input(state.model.i18n.tr("iced.vault.label.new_password"), flow.new_password.expose_secret())
                 .secure(true)
                 .on_input(Message::VaultNewPasswordChanged),
         )
         .push(
-            text_input(i18n.tr("iced.vault.label.confirm_password"), flow.confirm_password.expose_secret())
+            text_input(state.model.i18n.tr("iced.vault.label.confirm_password"), flow.confirm_password.expose_secret())
                 .secure(true)
                 .on_input(Message::VaultConfirmPasswordChanged),
         );
@@ -851,771 +853,6 @@ fn vault_modal_stack(state: &IcedState) -> Element<'_, Message> {
         .align_y(iced::alignment::Vertical::Center);
 
     Stack::with_children([scrim.into(), centered.into()])
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fill)
-        .into()
-}
-
-fn modal_scrim_style(_theme: &Theme) -> container::Style {
-    container::Style::default().background(Color::from_rgba(0.0, 0.0, 0.0, 0.42))
-}
-
-fn modal_scrim_alpha(alpha: f32) -> impl Fn(&Theme) -> container::Style + 'static {
-    move |_| container::Style::default().background(Color::from_rgba(0.0, 0.0, 0.0, alpha))
-}
-
-fn quick_connect_modal_stack(state: &IcedState) -> Element<'_, Message> {
-    let tick_ms = state.tick_ms();
-    let scrim_alpha = state.quick_connect_anim_alpha(tick_ms);
-    let scrim = mouse_area(
-        container(
-            Space::new()
-                .width(iced::Length::Fill)
-                .height(iced::Length::Fill),
-        )
-        .style(modal_scrim_alpha(scrim_alpha)),
-    )
-    .on_press(Message::QuickConnectDismiss);
-
-    let offset_y = state.quick_connect_anim_offset(tick_ms);
-    let anchored = container(
-        container(quick_connect_panel_content(state))
-            .max_width(520.0)
-            .width(iced::Length::Fill),
-    )
-    .width(iced::Length::Fill)
-    .height(iced::Length::Fill)
-    .align_x(iced::alignment::Horizontal::Center)
-    .align_y(iced::alignment::Vertical::Top)
-    .padding(iced::Padding {
-        top: 6.0 - offset_y,
-        right: 16.0,
-        bottom: 16.0,
-        left: 16.0,
-    });
-
-    Stack::with_children([scrim.into(), anchored.into()])
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fill)
-        .into()
-}
-
-fn quick_connect_group_header_style(theme: &Theme) -> container::Style {
-    let t = theme.extended_palette();
-    container::Style::default().background(t.background.strong.color)
-}
-
-fn grouped_ssh_profiles(profiles: &[SessionProfile]) -> Vec<(String, Vec<SessionProfile>)> {
-    let mut default_v: Vec<SessionProfile> = Vec::new();
-    let mut groups: std::collections::BTreeMap<String, Vec<SessionProfile>> =
-        std::collections::BTreeMap::new();
-    for p in profiles {
-        let TransportConfig::Ssh(_) = &p.transport else {
-            continue;
-        };
-        match p
-            .folder
-            .as_ref()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-        {
-            None => default_v.push(p.clone()),
-            Some(name) => groups.entry(name).or_default().push(p.clone()),
-        }
-    }
-    default_v.sort_by_key(|s| s.name.to_lowercase());
-    for v in groups.values_mut() {
-        v.sort_by_key(|s| s.name.to_lowercase());
-    }
-    let mut out = Vec::new();
-    if !default_v.is_empty() {
-        out.push(("__default__".to_string(), default_v));
-    }
-    for (k, v) in groups {
-        out.push((k, v));
-    }
-    out
-}
-
-fn quick_connect_panel_content(state: &IcedState) -> Element<'_, Message> {
-    use super::state::QuickConnectPanel;
-
-    match state.quick_connect_panel {
-        QuickConnectPanel::Picker => quick_connect_picker(state),
-        QuickConnectPanel::NewConnection => quick_connect_new_form(state),
-    }
-}
-
-fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
-    let i18n = &state.model.i18n;
-
-    let query = state.quick_connect_query.trim();
-    let direct_parts = crate::connection_input::parse_direct_input(query);
-    let is_direct = crate::connection_input::is_direct_candidate(query) && direct_parts.is_some();
-    let direct_label = direct_parts.as_ref().map(|p| {
-        let user = p.user.as_deref().unwrap_or("<user>");
-        let port = p.port.unwrap_or(22);
-        format!("{user}@{}:{port}", p.host)
-    });
-    let direct_cta: Element<'_, Message> = if is_direct && direct_label.is_some() {
-        button(
-            text(i18n.tr_fmt(
-                "iced.quick_connect.direct_cta",
-                &[("target", direct_label.as_deref().unwrap_or(""))],
-            ))
-            .size(13),
-        )
-        .on_press(Message::QuickConnectDirectSubmit)
-        .width(iced::Length::Fill)
-        .padding([8, 12])
-        .style(style_chrome_primary(13.0))
-        .into()
-    } else {
-        Space::new().into()
-    };
-
-    let mut recent_block = column![text(i18n.tr("iced.quick_connect.recent")).size(13)]
-        .spacing(6)
-        .align_x(Alignment::Start);
-    let recent = state.model.recent_connections();
-    if recent.is_empty() {
-        recent_block = recent_block.push(
-            text(i18n.tr("iced.quick_connect.empty_recent"))
-                .size(12)
-                .style(|theme: &Theme| text::Style {
-                    color: Some(
-                        theme
-                            .extended_palette()
-                            .background
-                            .base
-                            .text
-                            .scale_alpha(0.55),
-                    ),
-                }),
-        );
-    } else {
-        for r in recent.iter() {
-            let rec = r.clone();
-            let subtitle = format!("{} · {}", r.user, r.host);
-            recent_block = recent_block.push(
-                button(
-                    column![
-                        text(r.label.clone()).size(13),
-                        text(subtitle).size(11).style(|theme: &Theme| text::Style {
-                            color: Some(
-                                theme
-                                    .extended_palette()
-                                    .background
-                                    .base
-                                    .text
-                                    .scale_alpha(0.6)
-                            ),
-                        }),
-                    ]
-                    .spacing(2)
-                    .align_x(Alignment::Start),
-                )
-                .on_press(Message::QuickConnectPickRecent(rec))
-                .width(iced::Length::Fill)
-                .padding([6, 10])
-                .style(style_chrome_secondary(13.0)),
-            );
-        }
-    }
-
-    let mut saved_block = column![text(i18n.tr("iced.quick_connect.saved")).size(13)]
-        .spacing(8)
-        .align_x(Alignment::Start);
-    saved_block = saved_block.push(
-        button(text(i18n.tr("iced.quick_connect.new_connection")).size(13))
-            .on_press(Message::QuickConnectNewConnection)
-            .width(iced::Length::Fill)
-            .padding([8, 12])
-            .style(style_chrome_primary(13.0)),
-    );
-
-    let q_lower = query.to_lowercase();
-    let saved_profiles: Vec<SessionProfile> = if !q_lower.is_empty() && !is_direct {
-        state
-            .model
-            .profiles()
-            .iter()
-            .filter(|p| matches!(p.transport, TransportConfig::Ssh(_)))
-            .filter(|p| {
-                let mut hay = p.name.to_lowercase();
-                if let TransportConfig::Ssh(ssh) = &p.transport {
-                    hay.push(' ');
-                    hay.push_str(&ssh.host.to_lowercase());
-                    hay.push(' ');
-                    hay.push_str(&ssh.user.to_lowercase());
-                }
-                hay.contains(&q_lower)
-            })
-            .cloned()
-            .collect()
-    } else {
-        state
-            .model
-            .profiles()
-            .iter()
-            .filter(|p| matches!(p.transport, TransportConfig::Ssh(_)))
-            .cloned()
-            .collect()
-    };
-
-    let default_label = i18n.tr("iced.quick_connect.group_default").to_string();
-    for (group_key, sessions) in grouped_ssh_profiles(&saved_profiles) {
-        let display = if group_key == "__default__" {
-            default_label.clone()
-        } else {
-            group_key.clone()
-        };
-        saved_block = saved_block.push(
-            container(text(display).size(12))
-                .padding(iced::Padding {
-                    top: 6.0,
-                    right: 0.0,
-                    bottom: 4.0,
-                    left: 4.0,
-                })
-                .style(quick_connect_group_header_style)
-                .width(iced::Length::Fill),
-        );
-        for p in sessions {
-            let entry_title = p.name.clone();
-            let subtitle = if let TransportConfig::Ssh(ssh) = &p.transport {
-                format!("{} · {}", ssh.user, ssh.host)
-            } else {
-                String::new()
-            };
-            let prof = p.clone();
-            saved_block = saved_block.push(
-                button(
-                    column![
-                        text(entry_title).size(13),
-                        text(subtitle).size(11).style(|theme: &Theme| text::Style {
-                            color: Some(
-                                theme
-                                    .extended_palette()
-                                    .background
-                                    .base
-                                    .text
-                                    .scale_alpha(0.6)
-                            ),
-                        }),
-                    ]
-                    .spacing(2)
-                    .align_x(Alignment::Start),
-                )
-                .on_press(Message::ProfileConnect(prof))
-                .width(iced::Length::Fill)
-                .padding([6, 10])
-                .style(style_chrome_secondary(13.0)),
-            );
-        }
-    }
-
-    let body = column![
-        row![
-            text(i18n.tr("iced.topbar.quick_connect")).size(16),
-            Space::new().width(iced::Length::Fill),
-            button(text("×").size(14))
-                .on_press(Message::QuickConnectDismiss)
-                .width(iced::Length::Fixed(28.0))
-                .height(iced::Length::Fixed(28.0))
-                .style(style_top_icon(14.0)),
-        ]
-        .align_y(Alignment::Center),
-        text_input(
-            i18n.tr("iced.quick_connect.search_or_direct"),
-            &state.quick_connect_query
-        )
-        .on_input(Message::QuickConnectQueryChanged)
-        .on_submit(Message::QuickConnectDirectSubmit)
-        .padding([8, 10]),
-        direct_cta,
-        scrollable(
-            column![recent_block, saved_block]
-                .spacing(16)
-                .width(iced::Length::Fill),
-        )
-        .height(iced::Length::Fixed(440.0))
-        .width(iced::Length::Fill),
-    ]
-    .spacing(10)
-    .width(iced::Length::Fill);
-
-    container(body)
-        .width(iced::Length::Fill)
-        .padding(16)
-        .style(top_bar_material_style)
-        .into()
-}
-
-fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
-    let i18n = &state.model.i18n;
-    let is_connected = state.active_session_is_connected();
-    let flow = state.quick_connect_flow;
-    let err_kind = state.quick_connect_error_kind;
-    let stage = state.connection_stage;
-    let is_connecting = matches!(flow, super::state::QuickConnectFlow::Connecting);
-
-    // Form inputs are disabled while connecting.
-    let host_row = row![
-        text_input(i18n.tr("iced.field.host"), &state.model.draft.host)
-            .on_input(Message::HostChanged)
-            .width(iced::Length::FillPortion(3)),
-        text_input(i18n.tr("iced.field.port"), &state.model.draft.port)
-            .on_input(Message::PortChanged)
-            .width(iced::Length::FillPortion(1)),
-    ]
-    .spacing(10)
-    .align_y(Alignment::Center);
-
-    let user_row = row![
-        text_input(i18n.tr("iced.field.user"), &state.model.draft.user)
-            .on_input(Message::UserChanged)
-            .width(iced::Length::FillPortion(1)),
-        text_input(
-            i18n.tr("iced.field.password"),
-            state.model.draft.password.expose_secret(),
-        )
-        .secure(true)
-        .on_input(Message::PasswordChanged)
-        .width(iced::Length::FillPortion(1)),
-    ]
-    .spacing(10)
-    .align_y(Alignment::Center);
-
-    let auth_options: Vec<crate::session::AuthMethod> = vec![
-        crate::session::AuthMethod::Password,
-        crate::session::AuthMethod::Agent,
-        crate::session::AuthMethod::Interactive,
-        crate::session::AuthMethod::Key {
-            private_key_path: String::new(),
-        },
-    ];
-    let auth_row = row![
-        pick_list(
-            auth_options,
-            Some(state.model.draft.auth.clone()),
-            Message::QuickConnectAuthChanged
-        )
-        .width(iced::Length::Fill),
-    ]
-    .spacing(10)
-    .align_y(Alignment::Center);
-
-    let flow_banner: Option<Element<'_, Message>> = match flow {
-        super::state::QuickConnectFlow::NeedUser => Some(
-            container(
-                text(
-                    err_kind
-                        .unwrap_or(crate::app_model::ConnectErrorKind::MissingHostOrUser)
-                        .user_message(),
-                )
-                .size(12),
-            )
-            .padding(10)
-            .style(top_bar_material_style)
-            .into(),
-        ),
-        super::state::QuickConnectFlow::NeedAuthPassword => {
-            let remaining = 3usize.saturating_sub(state.model.draft.password_error_count as usize);
-            let msg = if err_kind == Some(crate::app_model::ConnectErrorKind::AuthFailed) {
-                if remaining > 0 {
-                    format!("SSH  密码错误，还剩 {} 次机会。", remaining)
-                } else {
-                    "SSH  密码错误次数已达上限。".to_string()
-                }
-            } else {
-                "SSH  需要密码认证。".to_string()
-            };
-            Some(
-                container(text(msg).size(12))
-                    .padding(10)
-                    .style(top_bar_material_style)
-                    .into(),
-            )
-        }
-        super::state::QuickConnectFlow::AuthLocked => Some(
-            container(text("SSH  密码多次错误，已中断本次连接。请编辑后重试或切换认证方式。").size(12))
-                .padding(10)
-                .style(top_bar_material_style)
-                .into(),
-        ),
-        super::state::QuickConnectFlow::Failed => Some(
-            container(
-                text(
-                    err_kind
-                        .unwrap_or(crate::app_model::ConnectErrorKind::Unknown)
-                        .user_message(),
-                )
-                .size(12),
-            )
-            .padding(10)
-            .style(top_bar_material_style)
-            .into(),
-        ),
-        _ => None,
-    };
-
-    // Animated connecting progress indicator: shows current connection stage with animated dots.
-    let connecting_progress: Option<Element<'_, Message>> = if is_connecting {
-        let dots = match state.tick_count % 3 {
-            0 => "",
-            1 => ".",
-            _ => "..",
-        };
-        let stage_label = match stage {
-            super::state::ConnectionStage::VaultLoading => {
-                state.model.i18n.tr("iced.stage.vault_loading")
-            }
-            super::state::ConnectionStage::SshConnecting => {
-                state.model.i18n.tr("iced.stage.ssh_connecting")
-            }
-            super::state::ConnectionStage::Authenticating => {
-                state.model.i18n.tr("iced.stage.authenticating")
-            }
-            super::state::ConnectionStage::SessionSetup => {
-                state.model.i18n.tr("iced.stage.session_setup")
-            }
-            _ => state.model.i18n.tr("iced.term.connecting"),
-        };
-        Some(
-            container(
-                row![
-                    text("⟳").size(14),
-                    text(format!("{stage_label}{dots}")).size(12),
-                ]
-                .spacing(6)
-                .align_y(Alignment::Center),
-            )
-            .padding(10)
-            .style(top_bar_material_style)
-            .into(),
-        )
-    } else {
-        None
-    };
-
-    let key_row: Option<Element<'_, Message>> = if matches!(
-        state.model.draft.auth,
-        crate::session::AuthMethod::Key { .. }
-    ) {
-        Some(
-            column![
-                text_input("Private key path", &state.model.draft.private_key_path)
-                    .on_input(Message::QuickConnectKeyPathChanged)
-                    .width(iced::Length::Fill),
-                text_input(
-                    "Passphrase (optional)",
-                    state.model.draft.passphrase.expose_secret()
-                )
-                .secure(true)
-                .on_input(Message::QuickConnectPassphraseChanged)
-                .width(iced::Length::Fill),
-            ]
-            .spacing(8)
-            .into(),
-        )
-    } else {
-        None
-    };
-
-    let interactive_row: Option<Element<'_, Message>> = if matches!(
-        state.quick_connect_flow,
-        super::state::QuickConnectFlow::NeedAuthInteractive
-    ) {
-        state.quick_connect_interactive.as_ref().map(|flow| {
-            let mut col = column![
-                text(flow.ui.name.clone()).size(13),
-                text(flow.ui.instructions.clone()).size(12),
-            ]
-            .spacing(6)
-            .width(iced::Length::Fill);
-            for (i, p) in flow.ui.prompts.iter().enumerate() {
-                let ans = flow.ui.answers.get(i).cloned().unwrap_or_default();
-                col = col.push(
-                    column![
-                        text(p.prompt.clone()).size(12),
-                        text_input("", &ans)
-                            .secure(!p.echo)
-                            .on_input(move |v| Message::QuickConnectInteractiveAnswerChanged(i, v))
-                            .width(iced::Length::Fill),
-                    ]
-                    .spacing(4),
-                );
-            }
-            if let Some(err) = flow.ui.error.as_ref() {
-                col = col.push(text(err).size(12));
-            }
-            col = col.push(
-                row![
-                    button(text("提交").size(13))
-                        .on_press(Message::QuickConnectInteractiveSubmit)
-                        .style(style_chrome_primary(13.0)),
-                ]
-                .spacing(8),
-            );
-            container(col)
-                .padding(12)
-                .style(top_bar_material_style)
-                .width(iced::Length::Fill)
-                .into()
-        })
-    } else {
-        None
-    };
-
-    let saved_session_hint: Option<Element<'_, Message>> =
-        state.model.selected_session_id.as_deref().and_then(|pid| {
-            state
-                .model
-                .profiles()
-                .iter()
-                .find(|s| s.id == pid)
-                .map(|p| {
-                    text(format!(
-                        "Saved session: {} — confirm below, then click Connect.",
-                        p.name
-                    ))
-                    .size(12)
-                    .style(|theme: &Theme| text::Style {
-                        color: Some(
-                            theme
-                                .extended_palette()
-                                .background
-                                .base
-                                .text
-                                .scale_alpha(0.75),
-                        ),
-                    })
-                    .into()
-                })
-        });
-
-    // Loading spinner: animated rotating symbol based on tick parity.
-    let spinner = if state.tick_count % 2 == 0 { "◐" } else { "◓" };
-    let connecting_label = i18n.tr("iced.btn.connecting");
-    let connect_btn_text = if is_connecting {
-        format!("{spinner} {connecting_label}")
-    } else {
-        i18n.tr("iced.btn.connect").to_string()
-    };
-    let actions = row![
-        button(text(connect_btn_text).size(13))
-            .on_press_maybe(
-                (!matches!(
-                    flow,
-                    super::state::QuickConnectFlow::Connecting
-                        | super::state::QuickConnectFlow::AuthLocked
-                        | super::state::QuickConnectFlow::NeedAuthInteractive
-                ))
-                .then_some(Message::ConnectPressed),
-            )
-            .style(style_chrome_primary(13.0)),
-        button(text(i18n.tr("iced.btn.disconnect")).size(13))
-            .on_press_maybe(is_connected.then_some(Message::DisconnectPressed))
-            .style(style_chrome_secondary(13.0)),
-        button(text(i18n.tr("iced.btn.save_session")).size(13))
-            .on_press(Message::QuickConnectSaveSession)
-            .style(style_chrome_secondary(13.0)),
-        button(text(i18n.tr("iced.btn.save_settings")).size(13))
-            .on_press(Message::SaveSettings)
-            .style(style_chrome_secondary(13.0)),
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center);
-
-    // During connecting: hide back/dismiss buttons and show a spinner in the header.
-    let header_row: Element<'_, Message> = if is_connecting {
-        row![
-            Space::new().width(iced::Length::Fixed(22.0)),
-            text(format!("{spinner} {connecting_label}")).size(16),
-            Space::new().width(iced::Length::Fill),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .into()
-    } else {
-        row![
-            button(text(i18n.tr("iced.quick_connect.back")).size(12))
-                .on_press(Message::QuickConnectBackToList)
-                .style(style_chrome_secondary(12.0)),
-            text(i18n.tr("iced.quick_connect.new_title")).size(16),
-            Space::new().width(iced::Length::Fill),
-            button(text("×").size(14))
-                .on_press(Message::QuickConnectDismiss)
-                .width(iced::Length::Fixed(28.0))
-                .height(iced::Length::Fixed(28.0))
-                .style(style_top_icon(14.0)),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .into()
-    };
-
-    let mut form_cols = column![header_row, text(i18n.tr("iced.title.subtitle")).size(12)]
-        .spacing(14)
-        .width(iced::Length::Fill);
-    if let Some(b) = flow_banner {
-        form_cols = form_cols.push(b);
-    }
-    if let Some(p) = connecting_progress {
-        form_cols = form_cols.push(p);
-    }
-    if let Some(h) = saved_session_hint {
-        form_cols = form_cols.push(h);
-    }
-    let mut form_cols = form_cols.push(host_row).push(auth_row).push(user_row);
-    if let Some(k) = key_row {
-        form_cols = form_cols.push(k);
-    }
-    if let Some(ir) = interactive_row {
-        form_cols = form_cols.push(ir);
-    }
-    let switch_auth_btn: Option<Element<'_, Message>> = if matches!(
-        flow,
-        super::state::QuickConnectFlow::Failed | super::state::QuickConnectFlow::AuthLocked
-    ) {
-        Some(
-            button(text(i18n.tr("iced.btn.switch_auth")).size(13))
-                .on_press(Message::QuickConnectSwitchAuth)
-                .style(style_chrome_secondary(13.0))
-                .into(),
-        )
-    } else {
-        None
-    };
-
-    let body = if let Some(btn) = switch_auth_btn {
-        form_cols.push(row![btn].spacing(8).align_y(Alignment::Center)).push(actions).spacing(14)
-    } else {
-        form_cols.push(actions).spacing(14)
-    };
-
-    container(body)
-        .width(iced::Length::Fill)
-        .padding(16)
-        .style(top_bar_material_style)
-        .into()
-}
-
-/// Terminal-inline overlay: shows animated connection progress when the quick-connect
-/// modal is closed and a connection is in progress.
-fn inline_connecting_overlay(state: &IcedState) -> Element<'_, Message> {
-    let is_connecting = !state.quick_connect_open
-        && matches!(
-            state.quick_connect_flow,
-            super::state::QuickConnectFlow::Connecting
-        );
-
-    if !is_connecting {
-        return Space::new().into();
-    }
-
-    let stage = state.connection_stage;
-    let tick = state.tick_count;
-    let dots = match tick % 3 {
-        0 => "",
-        1 => ".",
-        _ => "..",
-    };
-    let stage_label = match stage {
-        super::state::ConnectionStage::VaultLoading => {
-            state.model.i18n.tr("iced.stage.vault_loading")
-        }
-        super::state::ConnectionStage::SshConnecting => {
-            state.model.i18n.tr("iced.stage.ssh_connecting")
-        }
-        super::state::ConnectionStage::Authenticating => {
-            state.model.i18n.tr("iced.stage.authenticating")
-        }
-        super::state::ConnectionStage::SessionSetup => {
-            state.model.i18n.tr("iced.stage.session_setup")
-        }
-        _ => state.model.i18n.tr("iced.term.connecting"),
-    };
-
-    let content = container(
-        row![
-            text("⟳").size(14),
-            text(format!("{stage_label}{dots}")).size(12),
-        ]
-        .spacing(6)
-        .align_y(Alignment::Center),
-    )
-    .padding(8)
-    .style(top_bar_material_style);
-
-    Stack::with_children([Space::new().into(), content.into()])
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fill)
-        .into()
-}
-
-/// Terminal-inline overlay: shows a compact password/passphrase input form when the
-/// quick-connect modal is closed but the connection needs a credential from the user.
-fn inline_password_overlay(state: &IcedState) -> Element<'_, Message> {
-    let needs_inline_input = !state.quick_connect_open
-        && matches!(
-            state.quick_connect_flow,
-            super::state::QuickConnectFlow::NeedAuthPassword
-        );
-
-    if !needs_inline_input {
-        return Space::new().into();
-    }
-
-    let is_key = matches!(
-        state.model.draft.auth,
-        crate::session::AuthMethod::Key { .. }
-    );
-    let label = if is_key {
-        state.model.i18n.tr("iced.term.passphrase_placeholder")
-    } else {
-        state.model.i18n.tr("iced.term.password_placeholder")
-    };
-
-    let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-        .style(modal_scrim_style);
-
-    let input_form = container(
-        column![
-            row![
-                text(if is_key {
-                    state.model.i18n.tr("iced.quick_connect.need_passphrase")
-                } else {
-                    state.model.i18n.tr("iced.quick_connect.need_password")
-                })
-                .size(13),
-                Space::new().width(iced::Length::Fill),
-            ]
-            .align_y(Alignment::Center),
-            text_input(label, state.inline_password_input.expose_secret())
-                .on_input(Message::QuickConnectInlinePasswordChanged)
-                .on_submit(Message::QuickConnectInlinePasswordSubmit(
-                    state.inline_password_input.expose_secret().to_string()
-                ))
-                .secure(true)
-                .width(iced::Length::Fixed(280.0)),
-            row![
-                button(text(state.model.i18n.tr("iced.btn.connect")).size(13))
-                    .on_press(Message::QuickConnectInlinePasswordSubmit(
-                        state.inline_password_input.expose_secret().to_string()
-                    ))
-                    .style(style_chrome_primary(13.0)),
-            ]
-            .align_y(Alignment::Center),
-        ]
-        .spacing(10)
-        .width(iced::Length::Fixed(320.0)),
-    )
-    .padding(16)
-    .style(top_bar_material_style);
-
-    Stack::with_children([scrim.into(), input_form.into()])
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
         .into()

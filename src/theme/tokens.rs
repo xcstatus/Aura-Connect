@@ -198,6 +198,29 @@ impl DesignTokens {
     }
 }
 
+/// 设计令牌辅助函数
+impl DesignTokens {
+    /// 判断是否为暗色主题
+    pub fn is_dark(&self) -> bool {
+        self.bg_primary.r * 0.2126 + self.bg_primary.g * 0.7152 + self.bg_primary.b * 0.0722 < 0.45
+    }
+
+    /// 获取遮罩层颜色（基于背景色的半透明版本）
+    pub fn scrim(&self) -> Color {
+        Color::from_rgba(self.bg_primary.r, self.bg_primary.g, self.bg_primary.b, 0.42)
+    }
+
+    /// 获取遮罩层颜色（带自定义透明度）
+    pub fn scrim_with_alpha(&self, alpha: f32) -> Color {
+        Color::from_rgba(self.bg_primary.r, self.bg_primary.g, self.bg_primary.b, alpha)
+    }
+
+    /// 终端默认单元格背景（深色，确保文字可见）
+    pub fn terminal_default_bg(&self) -> Color {
+        Color::from_rgb8(10, 10, 15)
+    }
+}
+
 /// ANSI 16 色（终端，见 `doc/组件设计规范.md` §3.4）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TerminalAnsiTokens {

@@ -38,8 +38,10 @@ pub(crate) fn modal_stack(state: &IcedState) -> Element<'_, Message> {
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill),
         )
-        .style(|_t: &Theme| {
-            container::Style::default().background(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.42))
+        .style(|t: &Theme| {
+            let bg = t.extended_palette().background.base.color;
+            container::Style::default()
+                .background(iced::Color::from_rgba(bg.r, bg.g, bg.b, 0.42))
         }),
     )
     .on_press(Message::SettingsDismiss);
@@ -829,8 +831,11 @@ fn restart_banner(state: &IcedState) -> Element<'_, Message> {
         .align_y(Alignment::Center),
     )
     .width(iced::Length::Fill)
-    .style(|_t: &Theme| {
-        container::Style::default().background(iced::Color::from_rgba(1.0, 0.65, 0.0, 0.15))
+    .style(|t: &Theme| {
+        // Use info color with alpha for a consistent blue-tinted warning background
+        let info = t.extended_palette().primary.weak.color;
+        container::Style::default()
+            .background(iced::Color::from_rgba(info.r, info.g, info.b, 0.15))
     })
     .into()
 }

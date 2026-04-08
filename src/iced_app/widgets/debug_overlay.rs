@@ -12,6 +12,9 @@ use crate::iced_app::message::Message;
 use crate::iced_app::state::IcedState;
 
 /// Overlay style constants.
+///
+/// NOTE: Debug overlay intentionally uses fixed colors for clarity.
+/// These should remain high-contrast for readability across all themes.
 const OVERLAY_BG: iced::Color = iced::Color {
     r: 0.08,
     g: 0.08,
@@ -31,10 +34,12 @@ struct TabLine {
 
 impl<'a> From<TabLine> for iced::Element<'a, Message> {
     fn from(val: TabLine) -> Self {
+        // Colors tuned for debug readability across all themes
+        // (developer-facing, so high contrast is prioritized)
         let color = if val.idx == 0 {
-            iced::Color::from_rgb(0.6, 0.9, 0.6)
+            iced::Color::from_rgb(0.6, 0.9, 0.6) // First tab: green tint
         } else {
-            iced::Color::from_rgb(0.7, 0.7, 0.8)
+            iced::Color::from_rgb(0.7, 0.7, 0.8) // Other tabs: neutral gray
         };
         let color_inner = color;
         text(format!(

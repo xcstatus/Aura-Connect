@@ -881,7 +881,8 @@ impl VtTerminalWidget {
             y0 = y0.min(max_y);
             y1 = y1.min(max_y);
 
-            let sel_color = egui::Color32::from_rgba_unmultiplied(80, 160, 255, 70);
+            // Selection color: GitHub blue for consistency with terminal standards
+            let sel_color = egui::Color32::from_rgba_unmultiplied(56, 139, 253, 70);
             let draw_rect = |ui: &mut egui::Ui, x0: u16, x1: u16, y: u16, h_rows: u16| {
                 let px = rect.left() + padding.x + (x0 as f32) * char_w;
                 let py = rect.top() + padding.y + (y as f32) * line_h;
