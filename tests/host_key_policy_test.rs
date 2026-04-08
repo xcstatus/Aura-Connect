@@ -25,7 +25,6 @@ fn test_host_key_policy_variants() {
         HostKeyPolicy::Strict => {}
         HostKeyPolicy::Ask => {}
         HostKeyPolicy::AcceptNew => {}
-        HostKeyPolicy::Reject => {}
     }
 }
 
@@ -121,16 +120,18 @@ fn test_ask_policy_rejects_unknown_host() {
     assert!(should_reject, "Ask 策略应该拒绝未知主机以触发 UI 弹窗");
 }
 
-/// 验证 Reject 策略：未知主机应该被拒绝
+/// 验证 Strict 策略：未知主机应该被拒绝
+/// (Reject 策略与 Strict 行为相同，因此复用此测试)
 #[test]
-fn test_reject_policy_rejects_unknown_host() {
-    let policy = HostKeyPolicy::Reject;
+fn test_strict_policy_unknown_host_behavior() {
+    // Strict 策略测试
+    let policy = HostKeyPolicy::Strict;
     let known_hosts: Vec<KnownHostRecord> = vec![];
     let host = "example.com";
     let port = 22;
 
     let should_reject = should_reject_for_policy(policy, host, port, &known_hosts);
-    assert!(should_reject, "Reject 策略应该拒绝未知主机");
+    assert!(should_reject, "Strict 策略应该拒绝未知主机");
 }
 
 /// 验证认证信息传输不会在 check_server_key 返回错误之前发生
@@ -180,7 +181,6 @@ fn test_all_policies_accept_matching_known_host() {
         HostKeyPolicy::Strict,
         HostKeyPolicy::Ask,
         HostKeyPolicy::AcceptNew,
-        HostKeyPolicy::Reject,
     ] {
         let should_reject = should_reject_for_policy(policy, host, port, &known_hosts);
         assert!(
@@ -215,7 +215,7 @@ fn should_reject_for_policy(
         None => {
             // 未知主机 → 根据策略决定
             match policy {
-                HostKeyPolicy::Strict | HostKeyPolicy::Reject | HostKeyPolicy::Ask => true,
+                HostKeyPolicy::Strict | HostKeyPolicy::Ask => true,
                 HostKeyPolicy::AcceptNew => false,
             }
         }
@@ -241,7 +241,7 @@ fn should_reject_for_mismatch(
         None => {
             // 未知主机 → 根据策略决定
             match policy {
-                HostKeyPolicy::Strict | HostKeyPolicy::Reject | HostKeyPolicy::Ask => true,
+                HostKeyPolicy::Strict | HostKeyPolicy::Ask => true,
                 HostKeyPolicy::AcceptNew => false,
             }
         }

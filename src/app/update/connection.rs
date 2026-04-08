@@ -202,7 +202,7 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
                     let host_key_policy = host_key_policy;
                     Box::pin(async move {
                         let session = crate::backend::ssh_session::SshSession::new();
-                        session
+                        let result = session
                             .connect_base(
                                 &draft.host.trim(),
                                 draft.port.trim().parse().unwrap_or(22),
@@ -214,8 +214,44 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
                                 &merged_known_hosts,
                                 host_key_policy,
                             )
-                            .await
-                            .map_err(|e| crate::app::model::AppModel::classify_connect_error(&e))
+                            .await;
+                        match result {
+                            Ok(conn) => Ok(conn),
+                            Err(e) => {
+                                let kind = crate::app::model::AppModel::classify_connect_error(&e);
+                                let host_key_error = e
+                                    .downcast_ref::<crate::backend::ssh_session::SshConnectError>()
+                                    .and_then(|se| match se {
+                                        crate::backend::ssh_session::SshConnectError::HostKeyUnknown {
+                                            host,
+                                            port,
+                                            algo,
+                                            fingerprint,
+                                        } => Some(crate::app::model::HostKeyErrorInfo {
+                                            host: host.clone(),
+                                            port: *port,
+                                            algo: algo.clone(),
+                                            fingerprint: fingerprint.clone(),
+                                            old_fingerprint: None,
+                                        }),
+                                        crate::backend::ssh_session::SshConnectError::HostKeyMismatch {
+                                            host,
+                                            port,
+                                            algo,
+                                            old_fingerprint,
+                                            new_fingerprint,
+                                        } => Some(crate::app::model::HostKeyErrorInfo {
+                                            host: host.clone(),
+                                            port: *port,
+                                            algo: algo.clone(),
+                                            fingerprint: new_fingerprint.clone(),
+                                            old_fingerprint: Some(old_fingerprint.clone()),
+                                        }),
+                                        _ => None,
+                                    });
+                                Err((kind, host_key_error))
+                            }
+                        }
                     })
                 },
             )
@@ -226,16 +262,18 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
                 Message::ConnectResult(Ok(session))
             }
             Err(e) => {
-                let kind = match e {
-                    crate::backend::shared_ssh_session::SharedSessionError::ConnectFailed(kind) => kind,
+                let (kind, host_key_error) = match e {
+                    crate::backend::shared_ssh_session::SharedSessionError::ConnectFailed(kind, info) => (kind, info),
                     crate::backend::shared_ssh_session::SharedSessionError::ChannelOpenFailed(e) => {
-                        crate::app::model::AppModel::classify_connect_error(&e)
+                        let kind = crate::app::model::AppModel::classify_connect_error(&e);
+                        // ChannelOpenFailed 不包含 host key 信息
+                        (kind, None)
                     }
                     crate::backend::shared_ssh_session::SharedSessionError::MaxConnectionsReached(_) => {
-                        crate::app::model::ConnectErrorKind::Unknown
+                        (crate::app::model::ConnectErrorKind::Unknown, None)
                     }
                 };
-                Message::ConnectResult(Err((kind, draft.host_key_error.clone())))
+                Message::ConnectResult(Err((kind, host_key_error)))
             }
         }
     };

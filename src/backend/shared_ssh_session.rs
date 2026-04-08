@@ -2,9 +2,9 @@
 //!
 //! 支持多个标签页连接到同一台服务器时，复用单个 TCP 连接。
 
+use crate::app::{ConnectErrorKind, HostKeyErrorInfo};
 use crate::backend::ssh_session::{BaseSshConnection, SshChannel};
 use crate::session::AuthMethod;
-use crate::app::ConnectErrorKind;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -60,7 +60,7 @@ impl SharedSessionManager {
         key: ConnectionKey,
         cols: u16,
         rows: u16,
-        connect_fn: impl FnOnce() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Arc<BaseSshConnection>, ConnectErrorKind>> + Send>>,
+        connect_fn: impl FnOnce() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Arc<BaseSshConnection>, (ConnectErrorKind, Option<HostKeyErrorInfo>)>> + Send>>,
     ) -> Result<Arc<SshChannel>, SharedSessionError> {
         // 检查是否已有连接
         {
@@ -94,7 +94,7 @@ impl SharedSessionManager {
             key.user, key.host, key.port
         );
 
-        let conn = connect_fn().await.map_err(SharedSessionError::ConnectFailed)?;
+        let conn = connect_fn().await.map_err(|(kind, info)| SharedSessionError::ConnectFailed(kind, info))?;
 
         {
             let mut connections = self.connections.write().await;
@@ -181,7 +181,7 @@ impl SharedSessionManager {
 #[derive(Debug, thiserror::Error)]
 pub enum SharedSessionError {
     #[error("连接失败: {0}")]
-    ConnectFailed(ConnectErrorKind),
+    ConnectFailed(ConnectErrorKind, Option<HostKeyErrorInfo>),
     #[error("SSH 通道打开失败")]
     ChannelOpenFailed(anyhow::Error),
     #[error("已达到最大连接数限制 ({0})")]
