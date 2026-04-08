@@ -76,3 +76,40 @@ pub const FOCUS_OUTLINE_ALPHA: f32 = 0.6;
 /// 滚动条透明度常量
 pub const SCROLLBAR_HIDE_ALPHA: f32 = 0.08;
 pub const SCROLLBAR_HOVER_ALPHA: f32 = 0.25;
+
+// ============ 设置中心布局常量 ============
+
+/// 设置中心模态框宽度比例（主窗口的 85%）
+pub const SETTINGS_MODAL_WIDTH_RATIO: f32 = 0.85;
+/// 设置中心模态框最小宽度
+pub const SETTINGS_MODAL_MIN_WIDTH: f32 = 800.0;
+/// 设置中心模态框最大宽度
+pub const SETTINGS_MODAL_MAX_WIDTH: f32 = 1200.0;
+/// 设置中心模态框高度比例（主窗口的 80%）
+pub const SETTINGS_MODAL_HEIGHT_RATIO: f32 = 0.80;
+/// 设置中心模态框最小高度
+pub const SETTINGS_MODAL_MIN_HEIGHT: f32 = 600.0;
+
+/// 设置中心侧边栏宽度
+pub const SETTINGS_SIDEBAR_WIDTH: f32 = 220.0;
+/// 设置中心侧边栏内边距
+pub const SETTINGS_SIDEBAR_PADDING: f32 = 12.0;
+/// 设置中心侧边栏项间距
+pub const SETTINGS_SIDEBAR_ITEM_SPACING: f32 = 4.0;
+
+/// 设置中心标题栏高度
+pub const SETTINGS_HEADER_HEIGHT: f32 = 36.0;
+
+/// 设置中心 Tab 栏高度
+pub const SETTINGS_TAB_HEIGHT: f32 = 40.0;
+/// 设置中心 Tab 项间距
+pub const SETTINGS_TAB_SPACING: f32 = 12.0;
+/// 设置中心 Tab 选中指示条高度
+pub const SETTINGS_TAB_INDICATOR_HEIGHT: f32 = 2.0;
+
+/// 设置中心内容区内边距
+pub const SETTINGS_CONTENT_PADDING: f32 = 24.0;
+/// 设置中心配置项间距
+pub const SETTINGS_ITEM_SPACING: f32 = 16.0;
+/// 设置中心标题与描述间距
+pub const SETTINGS_LABEL_DESC_SPACING: f32 = 4.0;

@@ -8,14 +8,27 @@ use iced::widget::{
     Space, Stack, button, checkbox, column, container, mouse_area, pick_list, radio, row,
     scrollable, slider, text, text_input,
 };
-use iced::{Element, Theme};
+use iced::{Border, Element, Theme};
 
 use crate::session::{ProtocolType, SessionProfile, TransportConfig};
 use crate::settings::HostKeyPolicy;
+use crate::theme::layout;
+use crate::theme::{DesignTokens, RustSshThemeId};
 
 use super::message::{Message, SettingsCategory, SettingsField};
 use super::state::IcedState;
 use super::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
+
+fn settings_tokens(state: &IcedState) -> DesignTokens {
+    let theme_id = match state.model.settings.general.theme.as_str() {
+        "Dark" => RustSshThemeId::Dark,
+        "Light" => RustSshThemeId::Light,
+        "Warm" => RustSshThemeId::Warm,
+        "GitHub" => RustSshThemeId::GitHub,
+        _ => RustSshThemeId::Dark,
+    };
+    DesignTokens::for_id(theme_id)
+}
 
 pub(crate) fn max_sub_tab(category: SettingsCategory) -> usize {
     match category {
@@ -32,22 +45,25 @@ pub(crate) fn clamp_sub_tab(category: SettingsCategory, sub: usize) -> usize {
 }
 
 pub(crate) fn modal_stack(state: &IcedState) -> Element<'_, Message> {
+    let tokens = settings_tokens(state);
+
     let scrim = mouse_area(
         container(
             Space::new()
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill),
         )
-        .style(|t: &Theme| {
-            let bg = t.extended_palette().background.base.color;
+        .style(move |_t: &Theme| {
             container::Style::default()
-                .background(iced::Color::from_rgba(bg.r, bg.g, bg.b, 0.42))
+                .background(tokens.scrim())
         }),
     )
     .on_press(Message::SettingsDismiss);
 
-    let mw = (state.window_size.width * 0.9).min(1000.0).max(480.0);
-    let mh = (state.window_size.height * 0.85).min(800.0).max(400.0);
+    let mw = (state.window_size.width * layout::SETTINGS_MODAL_WIDTH_RATIO)
+        .clamp(layout::SETTINGS_MODAL_MIN_WIDTH, layout::SETTINGS_MODAL_MAX_WIDTH);
+    let mh = (state.window_size.height * layout::SETTINGS_MODAL_HEIGHT_RATIO)
+        .max(layout::SETTINGS_MODAL_MIN_HEIGHT);
 
     let panel = container(modal_card(state))
         .width(iced::Length::Fixed(mw))
@@ -67,22 +83,32 @@ pub(crate) fn modal_stack(state: &IcedState) -> Element<'_, Message> {
 
 fn modal_card(state: &IcedState) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
-    let sidebar = settings_sidebar(state);
+    let tokens = settings_tokens(state);
+    let sidebar = settings_sidebar(state, tokens);
     let body = column![
-        settings_header_row(i18n),
-        settings_sub_tab_row(state),
-        scrollable(settings_main_content(state))
+        settings_header_row(i18n, tokens),
+        settings_sub_tab_row(state, tokens),
+        scrollable(settings_main_content(state, tokens))
             .direction(ScrollDirection::Vertical(Scrollbar::default()))
             .width(iced::Length::Fill)
             .height(iced::Length::Fill),
-        restart_banner(state),
+        restart_banner(state, tokens),
     ]
     .spacing(0)
     .width(iced::Length::Fill)
     .height(iced::Length::Fill);
 
+    // 侧边栏与内容区之间添加 1px 分隔线
+    let divider = container(Space::new())
+        .width(iced::Length::Fixed(1.0))
+        .height(iced::Length::Fill)
+        .style(move |_t: &Theme| {
+            container::Style::default().background(tokens.border_subtle)
+        });
+
     let row_content = row![
         sidebar,
+        divider,
         container(body).width(iced::Length::Fill).padding(0)
     ]
     .spacing(0)
@@ -92,30 +118,27 @@ fn modal_card(state: &IcedState) -> Element<'_, Message> {
     container(row_content)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
-        .style(modal_frame_style)
+        .style(move |_t: &Theme| {
+            container::Style::default()
+                .background(tokens.bg_primary)
+                .border(Border {
+                    width: 1.0,
+                    color: tokens.border_default,
+                    radius: 12.0.into(),
+                })
+        })
         .into()
 }
 
-fn modal_frame_style(theme: &Theme) -> container::Style {
-    let base = theme.extended_palette().background.base.color;
-    let border = iced::Border {
-        width: 1.0,
-        color: theme.extended_palette().background.strong.color,
-        radius: 12.0.into(),
-    };
-    container::Style::default().background(base).border(border)
-}
-
-fn sidebar_item_style(active: bool, theme: &Theme) -> container::Style {
-    let t = theme.extended_palette();
+fn sidebar_item_style(active: bool, tokens: DesignTokens) -> container::Style {
     if active {
-        container::Style::default().background(t.background.strong.color)
+        container::Style::default().background(tokens.surface_2)
     } else {
-        container::Style::default()
+        container::Style::default().background(tokens.bg_secondary)
     }
 }
 
-fn settings_sidebar(state: &IcedState) -> Element<'_, Message> {
+fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
     let entries: [(SettingsCategory, &'static str); 5] = [
         (SettingsCategory::General, "iced.settings.cat.general"),
@@ -126,14 +149,17 @@ fn settings_sidebar(state: &IcedState) -> Element<'_, Message> {
     ];
     let mut col = column![]
         .spacing(4)
-        .width(iced::Length::Fixed(220.0))
-        .padding(12);
+        .width(iced::Length::Fixed(layout::SETTINGS_SIDEBAR_WIDTH))
+        .padding(layout::SETTINGS_SIDEBAR_PADDING);
     col = col.push(Space::new().height(iced::Length::Fixed(24.0)));
     for (cat, key) in entries {
         let label = i18n.tr(key).to_string();
         let active = state.settings_category == cat;
+        let text_color = if active { tokens.text_primary } else { tokens.text_secondary };
         let cell = button(
-            container(text(label).size(13))
+            container(text(label).size(13).style(move |_t: &Theme| text::Style {
+                color: Some(text_color),
+            }))
                 .width(iced::Length::Fill)
                 .padding([10, 16]),
         )
@@ -141,24 +167,26 @@ fn settings_sidebar(state: &IcedState) -> Element<'_, Message> {
         .width(iced::Length::Fill)
         .style(style_chrome_secondary(13.0));
         col = col.push(
-            container(if active { cell } else { cell })
-                .style(move |theme: &Theme| sidebar_item_style(active, theme)),
+            container(cell)
+                .style(move |_theme: &Theme| sidebar_item_style(active, tokens)),
         );
     }
     container(col)
-        .width(iced::Length::Fixed(220.0))
+        .width(iced::Length::Fixed(layout::SETTINGS_SIDEBAR_WIDTH))
         .height(iced::Length::Fill)
-        .style(|theme: &Theme| {
-            let t = theme.extended_palette();
-            container::Style::default().background(t.background.strong.color)
+        .style(move |_t: &Theme| {
+            container::Style::default().background(tokens.bg_secondary)
         })
         .into()
 }
 
-fn settings_header_row(i18n: &crate::i18n::I18n) -> Element<'_, Message> {
+fn settings_header_row(i18n: &crate::i18n::I18n, tokens: DesignTokens) -> Element<'_, Message> {
+    let text_primary = tokens.text_primary;
     container(
         row![
-            text(i18n.tr("iced.settings.title")).size(16),
+            text(i18n.tr("iced.settings.title")).size(16).style(move |_t: &Theme| text::Style {
+                color: Some(text_primary),
+            }),
             Space::new().width(iced::Length::Fill),
             button(text("×").size(14))
                 .on_press(Message::SettingsDismiss)
@@ -169,7 +197,7 @@ fn settings_header_row(i18n: &crate::i18n::I18n) -> Element<'_, Message> {
         .align_y(Alignment::Center),
     )
     .width(iced::Length::Fill)
-    .height(iced::Length::Fixed(36.0))
+    .height(iced::Length::Fixed(layout::SETTINGS_HEADER_HEIGHT))
     .padding([4, 12])
     .into()
 }
@@ -202,17 +230,27 @@ fn sub_tab_labels(category: SettingsCategory, i18n: &crate::i18n::I18n) -> Vec<S
     keys.iter().map(|k| i18n.tr(k).to_string()).collect()
 }
 
-fn settings_sub_tab_row(state: &IcedState) -> Element<'_, Message> {
+fn settings_sub_tab_row(state: &IcedState, tokens: DesignTokens) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
     let labels = sub_tab_labels(state.settings_category, i18n);
     let cat_i = state.settings_category as usize;
     let current = state.settings_sub_tab[cat_i].min(max_sub_tab(state.settings_category));
+    let accent_base = tokens.accent_base;
+    let text_secondary = tokens.text_secondary;
+    let border_subtle = tokens.border_subtle;
 
-    let mut r = row![].spacing(16).align_y(Alignment::Center);
+    let mut r = row![].spacing(layout::SETTINGS_TAB_SPACING).align_y(Alignment::Center);
     for (idx, lab) in labels.iter().enumerate() {
         let active = idx == current;
         let lab_clone = lab.clone();
-        let btn = button(text(lab_clone).size(13))
+        let btn_color = if active { accent_base } else { text_secondary };
+        let btn = button(
+            container(
+                text(lab_clone).size(13).style(move |_t: &Theme| text::Style {
+                    color: Some(btn_color),
+                })
+            )
+        )
             .on_press(Message::SettingsSubTabChanged(idx))
             .style(move |theme: &Theme, status: iced::widget::button::Status| {
                 if active {
@@ -223,34 +261,43 @@ fn settings_sub_tab_row(state: &IcedState) -> Element<'_, Message> {
             });
         r = r.push(btn);
     }
+
+    // Tab 栏容器，底部添加 1px border_subtle 分隔线
     container(r)
         .width(iced::Length::Fill)
-        .padding([8, 20])
-        .style(|theme: &Theme| {
-            container::Style::default().border(iced::Border {
-                width: 0.0,
-                color: theme.extended_palette().background.strong.color,
-                radius: 0.0.into(),
-            })
+        .height(iced::Length::Fixed(layout::SETTINGS_TAB_HEIGHT))
+        .padding([8, 24])
+        .style(move |_t: &Theme| {
+            container::Style::default()
+                .border(Border {
+                    width: 1.0,
+                    color: border_subtle,
+                    radius: 0.0.into(),
+                })
         })
         .into()
 }
 
-fn settings_main_content(state: &IcedState) -> Element<'_, Message> {
+fn settings_main_content(state: &IcedState, tokens: DesignTokens) -> Element<'_, Message> {
     let cat = state.settings_category;
     let sub = state.settings_sub_tab[cat as usize];
     let sub = clamp_sub_tab(cat, sub);
     match cat {
-        SettingsCategory::General => general_pane(state, sub),
-        SettingsCategory::Terminal => terminal_pane(state, sub),
-        SettingsCategory::Connection => connection_pane(state, sub),
-        SettingsCategory::Security => security_pane(state, sub),
-        SettingsCategory::Backup => backup_pane(state),
+        SettingsCategory::General => general_pane(state, sub, tokens),
+        SettingsCategory::Terminal => terminal_pane(state, sub, tokens),
+        SettingsCategory::Connection => connection_pane(state, sub, tokens),
+        SettingsCategory::Security => security_pane(state, sub, tokens),
+        SettingsCategory::Backup => backup_pane(state, tokens),
     }
 }
 
-fn section_title(s: &str) -> Element<'_, Message> {
-    container(text(s).size(18))
+fn section_title(s: &str, tokens: DesignTokens) -> Element<'_, Message> {
+    let text_primary = tokens.text_primary;
+    container(
+        text(s).size(18).style(move |_t: &Theme| text::Style {
+            color: Some(text_primary),
+        })
+    )
         .padding(iced::Padding {
             top: 8.0,
             right: 0.0,
@@ -260,8 +307,13 @@ fn section_title(s: &str) -> Element<'_, Message> {
         .into()
 }
 
-fn section_title_owned(s: String) -> Element<'static, Message> {
-    container(text(s).size(18))
+fn section_title_owned(s: String, tokens: DesignTokens) -> Element<'static, Message> {
+    let text_primary = tokens.text_primary;
+    container(
+        text(s).size(18).style(move |_t: &Theme| text::Style {
+            color: Some(text_primary),
+        })
+    )
         .padding(iced::Padding {
             top: 8.0,
             right: 0.0,
@@ -271,12 +323,14 @@ fn section_title_owned(s: String) -> Element<'static, Message> {
         .into()
 }
 
-fn general_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
+fn general_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
     let g = &state.model.settings.general;
+    let text_secondary = tokens.text_secondary;
+
     match sub {
         0 => column![
-            section_title(i18n.tr("iced.settings.section.startup")),
+            section_title(i18n.tr("iced.settings.section.startup"), tokens),
             settings_row(
                 i18n.tr("iced.settings.row.language"),
                 radio(
@@ -285,6 +339,7 @@ fn general_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                     (g.language == "zh-CN").then_some("zh-CN"),
                     |c| Message::SettingsFieldChanged(SettingsField::Language(c.to_string())),
                 ),
+                tokens,
             ),
             settings_row(
                 "",
@@ -294,14 +349,17 @@ fn general_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                     (g.language == "en-US").then_some("en-US"),
                     |c| Message::SettingsFieldChanged(SettingsField::Language(c.to_string())),
                 ),
+                tokens,
             ),
             checkbox(g.auto_check_update)
                 .label(i18n.tr("iced.settings.row.auto_update"))
                 .on_toggle(|v| Message::SettingsFieldChanged(SettingsField::AutoCheckUpdate(v))),
-            text(i18n.tr("iced.settings.language.help")).size(12),
+            text(i18n.tr("iced.settings.language.help")).size(12).style(move |_t: &Theme| text::Style {
+                color: Some(text_secondary),
+            }),
         ]
-        .spacing(12)
-        .padding(20)
+        .spacing(layout::SETTINGS_ITEM_SPACING)
+        .padding(layout::SETTINGS_CONTENT_PADDING as u16)
         .width(iced::Length::Fill)
         .into(),
         1 => {
@@ -311,62 +369,73 @@ fn general_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 .find(|&&x| x == g.theme.as_str())
                 .map(|_| g.theme.as_str());
             column![
-                section_title(i18n.tr("iced.settings.section.appearance")),
+                section_title(i18n.tr("iced.settings.section.appearance"), tokens),
                 settings_row(
                     i18n.tr("iced.settings.row.theme"),
                     pick_list(THEMES.as_slice(), theme_sel, |t: &str| {
                         Message::SettingsFieldChanged(SettingsField::Theme(t.to_string()))
                     },)
                     .width(200.0),
+                    tokens,
                 ),
                 settings_row(
                     i18n.tr("iced.settings.row.accent"),
                     text_input("#RRGGBB", &g.accent_color)
                         .on_input(|s| Message::SettingsFieldChanged(SettingsField::AccentColor(s)))
                         .width(240.0),
+                    tokens,
                 ),
             ]
-            .spacing(12)
-            .padding(20)
+            .spacing(layout::SETTINGS_ITEM_SPACING)
+            .padding(layout::SETTINGS_CONTENT_PADDING as u16)
             .width(iced::Length::Fill)
             .into()
         }
         2 => column![
-            section_title(i18n.tr("iced.settings.section.typography")),
+            section_title(i18n.tr("iced.settings.section.typography"), tokens),
             settings_row(
                 i18n.tr("iced.settings.row.ui_font_size"),
-                text(format!("{:.0}px", g.font_size)).size(12),
+                text(format!("{:.0}px", g.font_size)).size(12).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
+                tokens,
             ),
             slider(12.0..=20.0, g.font_size, |v| {
                 Message::SettingsFieldChanged(SettingsField::FontSize(v))
             })
             .width(300.0),
         ]
-        .spacing(12)
-        .padding(20)
+        .spacing(layout::SETTINGS_ITEM_SPACING)
+        .padding(layout::SETTINGS_CONTENT_PADDING as u16)
         .width(iced::Length::Fill)
         .into(),
         _ => Space::new().into(),
     }
 }
 
-fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
+fn terminal_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
     let t = &state.model.settings.terminal;
+    let text_primary = tokens.text_primary;
+    let text_secondary = tokens.text_secondary;
+
     match sub {
         0 => column![
-            section_title(i18n.tr("iced.settings.section.render_engine")),
+            section_title(i18n.tr("iced.settings.section.render_engine"), tokens),
             settings_row(
                 i18n.tr("iced.settings.row.target_fps"),
-                text(format!("{}", t.target_fps)).size(12),
+                text(format!("{}", t.target_fps)).size(12).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
+                tokens,
             ),
             slider(10u32..=240u32, t.target_fps, |v| {
                 Message::SettingsFieldChanged(SettingsField::TargetFps(v))
             })
             .width(300.0),
         ]
-        .spacing(12)
-        .padding(20)
+        .spacing(layout::SETTINGS_ITEM_SPACING)
+        .padding(layout::SETTINGS_CONTENT_PADDING as u16)
         .width(iced::Length::Fill)
         .into(),
         1 => {
@@ -377,25 +446,20 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 ("Solarized", "Precision colors for digital clarity"),
             ];
             let mut col =
-                column![section_title(i18n.tr("iced.settings.section.color_scheme"))].spacing(12);
+                column![section_title(i18n.tr("iced.settings.section.color_scheme"), tokens)].spacing(layout::SETTINGS_ITEM_SPACING);
             for (name, desc) in schemes {
                 let active = t.color_scheme == name;
                 col = col.push(
                     row![
                         column![
-                            text(name).size(13),
-                            text(desc).size(11).style(|theme: &Theme| text::Style {
-                                color: Some(
-                                    theme
-                                        .extended_palette()
-                                        .background
-                                        .base
-                                        .text
-                                        .scale_alpha(0.65),
-                                ),
+                            text(name).size(13).style(move |_t: &Theme| text::Style {
+                                color: Some(text_primary),
+                            }),
+                            text(desc).size(11).style(move |_t: &Theme| text::Style {
+                                color: Some(text_secondary),
                             }),
                         ]
-                        .spacing(4),
+                        .spacing(layout::SETTINGS_LABEL_DESC_SPACING),
                         Space::new().width(iced::Length::Fill),
                         button(text(if active {
                             i18n.tr("iced.settings.scheme.applied")
@@ -410,7 +474,10 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                     .align_y(Alignment::Center),
                 );
             }
-            col.spacing(16).padding(20).width(iced::Length::Fill).into()
+            col.spacing(layout::SETTINGS_ITEM_SPACING)
+                .padding(layout::SETTINGS_CONTENT_PADDING as u16)
+                .width(iced::Length::Fill)
+                .into()
         }
         2 => {
             const FONTS: [&str; 3] = ["JetBrains Mono", "SF Mono", "Cascadia Code"];
@@ -419,7 +486,7 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 .find(|&&x| x == t.font_family.as_str())
                 .map(|_| t.font_family.as_str());
             column![
-                section_title(i18n.tr("iced.settings.section.text_render")),
+                section_title(i18n.tr("iced.settings.section.text_render"), tokens),
                 checkbox(t.apply_terminal_metrics)
                     .label(i18n.tr("iced.settings.row.apply_terminal_metrics"))
                     .on_toggle(|v| {
@@ -427,7 +494,10 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                     }),
                 settings_row(
                     i18n.tr("iced.settings.row.terminal_font_size"),
-                    text(format!("{:.0}", t.font_size)).size(12),
+                    text(format!("{:.0}", t.font_size)).size(12).style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
+                    tokens,
                 ),
                 slider(8.0..=36.0, t.font_size, |v| {
                     Message::SettingsFieldChanged(SettingsField::TerminalFontSize(v))
@@ -435,7 +505,10 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 .width(300.0),
                 settings_row(
                     i18n.tr("iced.settings.row.line_height"),
-                    text(format!("{:.2}", t.line_height)).size(12),
+                    text(format!("{:.2}", t.line_height)).size(12).style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
+                    tokens,
                 ),
                 slider(1.0..=2.0, t.line_height, |v| {
                     Message::SettingsFieldChanged(SettingsField::LineHeight(v))
@@ -447,15 +520,16 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                         Message::SettingsFieldChanged(SettingsField::FontFamily(f.to_string()))
                     },)
                     .width(220.0),
+                    tokens,
                 ),
             ]
-            .spacing(12)
-            .padding(20)
+            .spacing(layout::SETTINGS_ITEM_SPACING)
+            .padding(layout::SETTINGS_CONTENT_PADDING as u16)
             .width(iced::Length::Fill)
             .into()
         }
         3 => column![
-            section_title(i18n.tr("iced.settings.section.interaction")),
+            section_title(i18n.tr("iced.settings.section.interaction"), tokens),
             checkbox(t.right_click_paste)
                 .label(i18n.tr("iced.settings.row.right_paste"))
                 .on_toggle(|v| Message::SettingsFieldChanged(SettingsField::RightClickPaste(v))),
@@ -469,7 +543,10 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 }),
             settings_row(
                 i18n.tr("iced.settings.row.scrollback"),
-                text(format!("{}", t.scrollback_limit)).size(12),
+                text(format!("{}", t.scrollback_limit)).size(12).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
+                tokens,
             ),
             slider(1000u32..=50000u32, t.scrollback_limit as u32, |v| {
                 Message::SettingsFieldChanged(SettingsField::ScrollbackLimit(v as usize))
@@ -483,8 +560,8 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 .label(i18n.tr("iced.settings.row.path_completion"))
                 .on_toggle(|v| Message::SettingsFieldChanged(SettingsField::PathCompletion(v))),
         ]
-        .spacing(12)
-        .padding(20)
+        .spacing(layout::SETTINGS_ITEM_SPACING)
+        .padding(layout::SETTINGS_CONTENT_PADDING as u16)
         .width(iced::Length::Fill)
         .into(),
         _ => Space::new().into(),
@@ -516,28 +593,34 @@ fn matches_search(s: &SessionProfile, search: &str) -> bool {
     s.name.to_lowercase().contains(&q) || target_of(s).to_lowercase().contains(&q)
 }
 
-fn connection_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
+fn connection_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
     let search = state.settings_connection_search.as_str();
+    let text_secondary = tokens.text_secondary;
+
     match sub {
-        0 => connection_protocol_page(state, ProtocolType::SSH, "SSH", search),
-        1 => connection_protocol_page(state, ProtocolType::Telnet, "TELNET", search),
-        2 => connection_protocol_page(state, ProtocolType::Serial, "SERIAL", search),
+        0 => connection_protocol_page(state, ProtocolType::SSH, "SSH", search, tokens),
+        1 => connection_protocol_page(state, ProtocolType::Telnet, "TELNET", search, tokens),
+        2 => connection_protocol_page(state, ProtocolType::Serial, "SERIAL", search, tokens),
         3 => {
             let single = state.model.settings.quick_connect.single_shared_session;
             column![
-                section_title(i18n.tr("iced.settings.conn.session_model_title")),
+                section_title(i18n.tr("iced.settings.conn.session_model_title"), tokens),
                 checkbox(single)
                     .label(i18n.tr("iced.settings.row.single_shared_session"))
                     .on_toggle(|v| {
                         Message::SettingsFieldChanged(SettingsField::SingleSharedSession(v))
                     }),
-                text(i18n.tr("iced.settings.hint.single_shared_session")).size(12),
-                section_title(i18n.tr("iced.settings.conn.advanced_title")),
-                text(i18n.tr("iced.settings.conn.advanced_hint")).size(13),
+                text(i18n.tr("iced.settings.hint.single_shared_session")).size(12).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
+                section_title(i18n.tr("iced.settings.conn.advanced_title"), tokens),
+                text(i18n.tr("iced.settings.conn.advanced_hint")).size(13).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
             ]
-            .spacing(12)
-            .padding(20)
+            .spacing(layout::SETTINGS_ITEM_SPACING)
+            .padding(layout::SETTINGS_CONTENT_PADDING as u16)
             .width(iced::Length::Fill)
             .into()
         }
@@ -550,8 +633,11 @@ fn connection_protocol_page<'a>(
     protocol: ProtocolType,
     title: &str,
     search: &'a str,
+    tokens: DesignTokens,
 ) -> Element<'a, Message> {
     let i18n = &state.model.i18n;
+    let text_primary = tokens.text_primary;
+    let text_secondary = tokens.text_secondary;
     let mut grouped: BTreeMap<String, Vec<SessionProfile>> = BTreeMap::new();
     for s in state.model.profiles() {
         if !matches_protocol(&s.transport, protocol) {
@@ -574,7 +660,7 @@ fn connection_protocol_page<'a>(
 
     let head = format!("{} {}", title, i18n.tr("iced.settings.conn.manage_suffix"));
     let mut col = column![
-        section_title_owned(head),
+        section_title_owned(head, tokens),
         row![
             text_input(i18n.tr("iced.settings.conn.search_hint"), search)
                 .on_input(|q| Message::SettingsFieldChanged(SettingsField::ConnectionSearch(q)))
@@ -586,12 +672,14 @@ fn connection_protocol_page<'a>(
         .spacing(8)
         .align_y(Alignment::Center),
     ]
-    .spacing(12)
-    .padding(20)
+    .spacing(layout::SETTINGS_ITEM_SPACING)
+    .padding(layout::SETTINGS_CONTENT_PADDING as u16)
     .width(iced::Length::Fill);
 
     if grouped.is_empty() {
-        col = col.push(text(i18n.tr("iced.settings.conn.empty")).size(13));
+        col = col.push(text(i18n.tr("iced.settings.conn.empty")).size(13).style(move |_t: &Theme| text::Style {
+            color: Some(text_secondary),
+        }));
     } else {
         for (group, sessions) in grouped {
             let is_default = group == "Default" || group == "未分类";
@@ -601,7 +689,9 @@ fn connection_protocol_page<'a>(
                 group.clone()
             };
             if !header.is_empty() {
-                col = col.push(text(header).size(13));
+                col = col.push(text(header).size(13).style(move |_t: &Theme| text::Style {
+                    color: Some(text_primary),
+                }));
             }
             for s in sessions {
                 let id = s.id.clone();
@@ -609,19 +699,14 @@ fn connection_protocol_page<'a>(
                 col = col.push(
                     row![
                         column![
-                            text(s.name.clone()).size(13),
-                            text(subtitle).size(11).style(|theme: &Theme| text::Style {
-                                color: Some(
-                                    theme
-                                        .extended_palette()
-                                        .background
-                                        .base
-                                        .text
-                                        .scale_alpha(0.6),
-                                ),
+                            text(s.name.clone()).size(13).style(move |_t: &Theme| text::Style {
+                                color: Some(text_primary),
+                            }),
+                            text(subtitle).size(11).style(move |_t: &Theme| text::Style {
+                                color: Some(text_secondary),
                             }),
                         ]
-                        .spacing(2),
+                        .spacing(layout::SETTINGS_LABEL_DESC_SPACING),
                         Space::new().width(iced::Length::Fill),
                         button(text(i18n.tr("iced.settings.conn.edit")))
                             .on_press(Message::OpenSessionEditor(Some(id.clone())))
@@ -638,19 +723,26 @@ fn connection_protocol_page<'a>(
     col.into()
 }
 
-fn security_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
+fn security_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
     let sec = &state.model.settings.security;
+    let text_primary = tokens.text_primary;
+    let text_secondary = tokens.text_secondary;
+
     match sub {
         0 => {
             let timeout = sec.idle_timeout_mins;
             column![
-                section_title(i18n.tr("settings.security.vault.title")),
+                section_title(i18n.tr("settings.security.vault.title"), tokens),
                 column![
-                    text(i18n.tr("settings.security.auto_lock.label")).size(14),
-                    text(i18n.tr("settings.security.auto_lock.help")).size(11),
+                    text(i18n.tr("settings.security.auto_lock.label")).size(14).style(move |_t: &Theme| text::Style {
+                        color: Some(text_primary),
+                    }),
+                    text(i18n.tr("settings.security.auto_lock.help")).size(11).style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
                 ]
-                .spacing(4),
+                .spacing(layout::SETTINGS_LABEL_DESC_SPACING),
                 radio(
                     i18n.tr("settings.security.timeout.minute_1"),
                     1u32,
@@ -684,10 +776,14 @@ fn security_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 checkbox(sec.lock_on_sleep)
                     .label(i18n.tr("settings.security.lock_on_sleep.label"))
                     .on_toggle(|v| Message::SettingsFieldChanged(SettingsField::LockOnSleep(v))),
-                text(i18n.tr("settings.security.lock_on_sleep.help")).size(11),
+                text(i18n.tr("settings.security.lock_on_sleep.help")).size(11).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
                 Space::new().height(iced::Length::Fixed(8.0)),
-                section_title(i18n.tr("settings.security.kdf.title")),
-                text(i18n.tr("settings.security.kdf.help")).size(11),
+                section_title(i18n.tr("settings.security.kdf.title"), tokens),
+                text(i18n.tr("settings.security.kdf.help")).size(11).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
                 radio(
                     i18n.tr("settings.security.kdf.balanced"),
                     crate::settings::KdfMemoryLevel::Balanced,
@@ -708,22 +804,28 @@ fn security_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 }))
                 .on_press(Message::VaultOpen)
                 .style(style_chrome_secondary(12.0)),
-                text(i18n.tr("settings.security.biometrics.title")).size(16),
+                text(i18n.tr("settings.security.biometrics.title")).size(16).style(move |_t: &Theme| text::Style {
+                    color: Some(text_primary),
+                }),
                 checkbox(sec.use_biometrics)
                     .label(i18n.tr("settings.security.biometrics.label"))
                     .on_toggle(Message::BiometricsToggle),
-                text(i18n.tr("settings.security.biometrics.help")).size(11),
+                text(i18n.tr("settings.security.biometrics.help")).size(11).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
             ]
-            .spacing(12)
-            .padding(20)
+            .spacing(layout::SETTINGS_ITEM_SPACING)
+            .padding(layout::SETTINGS_CONTENT_PADDING as u16)
             .width(iced::Length::Fill)
             .into()
         }
         1 => {
             let policy = sec.host_key_policy;
             column![
-                section_title(i18n.tr("settings.security.hosts.title")),
-                text(i18n.tr("settings.security.hosts.policy.label")).size(14),
+                section_title(i18n.tr("settings.security.hosts.title"), tokens),
+                text(i18n.tr("settings.security.hosts.policy.label")).size(14).style(move |_t: &Theme| text::Style {
+                    color: Some(text_primary),
+                }),
                 radio(
                     i18n.tr("settings.security.hosts.policy.strict"),
                     HostKeyPolicy::Strict,
@@ -742,13 +844,21 @@ fn security_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                     Some(policy),
                     |p| Message::SettingsFieldChanged(SettingsField::HostKeyPolicy(p)),
                 ),
-                text(i18n.tr("settings.security.hosts.policy.help")).size(11),
-                text(i18n.tr("settings.security.hosts.table.title")).size(14),
-                text("(mock) 10.0.0.1:22  ·  ED25519").size(12),
-                text("(mock) github.com  ·  RSA").size(12),
+                text(i18n.tr("settings.security.hosts.policy.help")).size(11).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
+                text(i18n.tr("settings.security.hosts.table.title")).size(14).style(move |_t: &Theme| text::Style {
+                    color: Some(text_primary),
+                }),
+                text("(mock) 10.0.0.1:22  ·  ED25519").size(12).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
+                text("(mock) github.com  ·  RSA").size(12).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
             ]
-            .spacing(12)
-            .padding(20)
+            .spacing(layout::SETTINGS_ITEM_SPACING)
+            .padding(layout::SETTINGS_CONTENT_PADDING as u16)
             .width(iced::Length::Fill)
             .into()
         }
@@ -756,14 +866,17 @@ fn security_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
     }
 }
 
-fn backup_pane(state: &IcedState) -> Element<'_, Message> {
+fn backup_pane(state: &IcedState, tokens: DesignTokens) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
+    let text_secondary = tokens.text_secondary;
     column![
-        section_title(i18n.tr("iced.settings.backup.title")),
-        text(i18n.tr("iced.settings.backup.hint")).size(13),
+        section_title(i18n.tr("iced.settings.backup.title"), tokens),
+        text(i18n.tr("iced.settings.backup.hint")).size(13).style(move |_t: &Theme| text::Style {
+            color: Some(text_secondary),
+        }),
     ]
-    .spacing(12)
-    .padding(20)
+    .spacing(layout::SETTINGS_ITEM_SPACING)
+    .padding(layout::SETTINGS_CONTENT_PADDING as u16)
     .width(iced::Length::Fill)
     .into()
 }
@@ -771,28 +884,39 @@ fn backup_pane(state: &IcedState) -> Element<'_, Message> {
 fn settings_row<'a, L: Into<Element<'a, Message>>>(
     label: &'static str,
     right: L,
+    tokens: DesignTokens,
 ) -> Element<'a, Message> {
+    let text_primary = tokens.text_primary;
     row![
-        container(text(label).size(14))
+        container(
+            text(label).size(14).style(move |_t: &Theme| text::Style {
+                color: Some(text_primary),
+            })
+        )
             .width(iced::Length::FillPortion(1))
             .align_y(iced::alignment::Vertical::Top),
         container(right.into())
             .width(iced::Length::FillPortion(1))
             .align_x(iced::alignment::Horizontal::Right),
     ]
-    .spacing(16)
+    .spacing(layout::SETTINGS_ITEM_SPACING)
     .align_y(Alignment::Start)
     .into()
 }
 
-fn restart_banner(state: &IcedState) -> Element<'_, Message> {
+fn restart_banner(state: &IcedState, tokens: DesignTokens) -> Element<'_, Message> {
     if !state.settings_needs_restart {
         return Space::new().height(0).into();
     }
     let i18n = &state.model.i18n;
+    let text_primary = tokens.text_primary;
+    let warning_color = tokens.warning;
+
     container(
         row![
-            text(i18n.tr("iced.settings.restart.banner")).size(13),
+            text(i18n.tr("iced.settings.restart.banner")).size(13).style(move |_t: &Theme| text::Style {
+                color: Some(text_primary),
+            }),
             Space::new().width(iced::Length::Fill),
             button(text(i18n.tr("iced.settings.restart.ok")))
                 .on_press(Message::SettingsRestartAcknowledged)
@@ -802,11 +926,14 @@ fn restart_banner(state: &IcedState) -> Element<'_, Message> {
         .align_y(Alignment::Center),
     )
     .width(iced::Length::Fill)
-    .style(|t: &Theme| {
-        // Use info color with alpha for a consistent blue-tinted warning background
-        let info = t.extended_palette().primary.weak.color;
+    .style(move |_t: &Theme| {
         container::Style::default()
-            .background(iced::Color::from_rgba(info.r, info.g, info.b, 0.15))
+            .background(iced::Color::from_rgba(
+                warning_color.r,
+                warning_color.g,
+                warning_color.b,
+                0.15,
+            ))
     })
     .into()
 }
