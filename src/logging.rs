@@ -22,7 +22,7 @@ pub struct LoggingGuard;
 #[cfg(feature = "term-prof")]
 impl Drop for LoggingGuard {
     fn drop(&mut self) {
-        let (text, bg, rows, runs, cells) = crate::prof::term_counters::snapshot();
+        let (text, bg, rows, runs, cells) = crate::terminal::prof::term_counters::snapshot();
         eprintln!(
             "[term-prof] paint counters: text_calls={} bg_rects={} rows_drawn={} runs_drawn={} cells_drawn={}",
             text, bg, rows, runs, cells
@@ -60,7 +60,7 @@ pub fn init() -> anyhow::Result<LoggingGuard> {
             .try_init()
             .map_err(|e| anyhow::anyhow!("tracing subscriber (term-prof): {e}"))?;
 
-        crate::prof::spawn_term_prof_heartbeat_thread();
+        crate::terminal::prof::spawn_term_prof_heartbeat_thread();
 
         return Ok(LoggingGuard {
             _flame: flame_guard,

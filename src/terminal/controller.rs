@@ -10,6 +10,7 @@ use crate::backend::ghostty_vt::{
 use crate::backend::ssh_session::AsyncSession;
 use crate::settings::TerminalSettings;
 use crate::terminal::selection::TerminalSelection;
+use crate::terminal::ScrollState;
 
 #[derive(Error, Debug)]
 pub enum TerminalInitError {
@@ -19,16 +20,6 @@ pub enum TerminalInitError {
 
 /// Terminal initialization result type.
 pub type TerminalResult<T> = Result<T, TerminalInitError>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ScrollState {
-    /// Total scrollback rows (including visible viewport).
-    pub total_rows: u64,
-    /// Current top row offset into the scrollback.
-    pub offset_rows: u64,
-    /// Visible viewport height in rows.
-    pub viewport_rows: u64,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EngineSnapshot {
@@ -689,7 +680,7 @@ impl TerminalController {
         self.last_pty_size = (0, 0);
     }
 
-    /// Last-resort UTF-8 bytes when libghostty’s unidentified encode yields nothing.
+    /// Last-resort UTF-8 bytes when libghostty's unidentified encode yields nothing.
     /// Whitelist: no control characters, bounded length — logged at `warn` (`target: term_key_fallback`).
     pub fn encode_text_raw_fallback_whitelisted(&mut self, text: &str) -> Option<Vec<u8>> {
         const MAX_BYTES: usize = 16 * 1024;
@@ -974,7 +965,7 @@ fn build_row_fragments(row: &VtStyledRow) -> Vec<StyledFragment> {
     out
 }
 
-/// Named keys that still need VT‑compatible bytes when libghostty returns empty (no modifiers).
+/// Named keys that still need VT-compatible bytes when libghostty returns empty (no modifiers).
 /// **Not** function keys — those must stay on the encoder path only.
 fn whitelisted_minimal_named_key_fallback(key: TerminalKey) -> Option<Vec<u8>> {
     let bytes: &[u8] = match key {

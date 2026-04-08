@@ -84,10 +84,6 @@ pub(crate) fn handle_save_settings(state: &mut IcedState) -> Task<Message> {
     Task::none()
 }
 
-fn mark_restart_if_gpu_setting(state: &mut IcedState) {
-    state.settings_needs_restart = true;
-}
-
 fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
     let sync_layout = matches!(
         &field,
@@ -109,27 +105,12 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
         SettingsField::Theme(v) => s.general.theme = v,
         SettingsField::AccentColor(v) => s.general.accent_color = v.trim().to_string(),
         SettingsField::FontSize(v) => s.general.font_size = v,
-        SettingsField::GpuAcceleration(v) => {
-            s.terminal.gpu_acceleration = v;
-            mark_restart_if_gpu_setting(state);
-        }
         SettingsField::TargetFps(v) => s.terminal.target_fps = v,
-        SettingsField::AtlasResetOnPressure(v) => s.terminal.atlas_reset_on_pressure = v,
         SettingsField::ColorScheme(v) => s.terminal.color_scheme = v,
         SettingsField::TerminalFontSize(v) => s.terminal.font_size = v,
         SettingsField::LineHeight(v) => s.terminal.line_height = v,
         SettingsField::ApplyTerminalMetrics(v) => s.terminal.apply_terminal_metrics = v,
         SettingsField::FontFamily(v) => s.terminal.font_family = v,
-        SettingsField::GpuFontPath(v) => {
-            let t = v.trim().to_string();
-            s.terminal.gpu_font_path = if t.is_empty() { None } else { Some(t) };
-            mark_restart_if_gpu_setting(state);
-        }
-        SettingsField::GpuFontFaceIndex(v) => {
-            let t = v.trim();
-            s.terminal.gpu_font_face_index = if t.is_empty() { None } else { t.parse().ok() };
-            mark_restart_if_gpu_setting(state);
-        }
         SettingsField::RightClickPaste(v) => s.terminal.right_click_paste = v,
         SettingsField::BracketedPaste(v) => {
             s.terminal.bracketed_paste = v;

@@ -1,1 +1,1 @@
-pub(crate) mod compare_dump;
+// Diagnostics module - intentionally empty after GPU code removal

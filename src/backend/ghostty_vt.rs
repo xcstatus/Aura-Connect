@@ -64,6 +64,12 @@ pub struct ScrollbarState {
     pub viewport_rows: u64,
 }
 
+/// Helper to pack DEC private mode values.
+/// Bits 0..14: value, bit 15: ansi flag (0 for DEC private).
+fn ghostty_dec_mode(value: u16) -> ffi::GhosttyMode {
+    (value & 0x7fff) as ffi::GhosttyMode
+}
+
 #[derive(Clone, Debug)]
 pub struct VtStyledCell {
     /// Grapheme for the base cell. For empty/continuation cells this will be `" "`.
@@ -244,6 +250,77 @@ impl GhosttyVtTerminal {
                 anyhow::bail!("ghostty_terminal_mode_get failed: {}", res);
             }
             Ok(v)
+        }
+    }
+
+    pub fn encode_paste(&mut self, text: &str) -> Vec<u8> {
+        let bracketed = self
+            .mode_get(ghostty_dec_mode(2004))
+            .unwrap_or(false);
+
+        // Safety check (best-effort): still allow paste, but prefer bracketed
+        // paste when enabled by the remote application.
+        let safe = unsafe { ffi::ghostty_paste_is_safe(text.as_ptr() as *const _, text.len()) };
+
+        if bracketed {
+            let mut out = Vec::with_capacity(text.len() + 16);
+            out.extend_from_slice(b"\x1b[200~");
+            out.extend_from_slice(text.as_bytes());
+            out.extend_from_slice(b"\x1b[201~");
+            out
+        } else if safe {
+            text.as_bytes().to_vec()
+        } else {
+            text.as_bytes().to_vec()
+        }
+    }
+
+    pub fn encode_focus_event(&mut self, focused: bool) -> Vec<u8> {
+        let focus_mode = self
+            .mode_get(ghostty_dec_mode(1004))
+            .unwrap_or(false);
+        if !focus_mode {
+            return Vec::new();
+        }
+
+        let ev = if focused {
+            ffi::GhosttyFocusEvent_GHOSTTY_FOCUS_GAINED
+        } else {
+            ffi::GhosttyFocusEvent_GHOSTTY_FOCUS_LOST
+        };
+
+        // CSI I / CSI O are tiny, but handle OUT_OF_SPACE anyway.
+        let mut buf = [0u8; 8];
+        let mut written: usize = 0;
+        let res = unsafe {
+            ffi::ghostty_focus_encode(
+                ev,
+                buf.as_mut_ptr() as *mut _,
+                buf.len(),
+                &mut written,
+            )
+        };
+        if res == ffi::GhosttyResult_GHOSTTY_SUCCESS {
+            buf[..written].to_vec()
+        } else if res == ffi::GhosttyResult_GHOSTTY_OUT_OF_SPACE && written > 0 {
+            let mut v = vec![0u8; written];
+            let mut written2: usize = 0;
+            let res2 = unsafe {
+                ffi::ghostty_focus_encode(
+                    ev,
+                    v.as_mut_ptr() as *mut _,
+                    v.len(),
+                    &mut written2,
+                )
+            };
+            if res2 == ffi::GhosttyResult_GHOSTTY_SUCCESS {
+                v.truncate(written2);
+                v
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
         }
     }
 

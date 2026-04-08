@@ -4,7 +4,8 @@ use iced::keyboard::key::{Named, Physical};
 use iced::keyboard::{Key, Modifiers};
 use iced::mouse::ScrollDelta;
 
-use crate::terminal_core::{TerminalKey, TerminalModifiers};
+use crate::terminal::controller::{TerminalKey, TerminalModifiers};
+use crate::terminal::diag;
 use crate::theme::layout::terminal_scroll_hit_exclude_right_px;
 
 use super::engine_adapter::EngineAdapterMut;
@@ -249,7 +250,7 @@ impl TerminalHost {
                     let ideal_row_f = (local_y / ch).floor();
                     let ideal_col_f = (local_x / cell_w).floor();
                     let hr = if rows > 0 { h / (rows as f32) } else { 0.0 };
-                    if crate::term_diag::enabled("HIT_TEST") {
+                    if diag::enabled("HIT_TEST") {
                         log::debug!(
                             target: "term_hit_test",
                             "MouseLeftDown hit p=({:.2},{:.2}) origin=({:.2},{:.2}) local=({:.2},{:.2}) cell=({},{}) ideal_f=({:.2},{:.2}) cell_w={:.2} metric_cw={:.2} ch={:.2} rect_wh=({:.2},{:.2}) h/rows={:.2} rows*ch={:.2} slack_y={:.2}",
@@ -278,7 +279,7 @@ impl TerminalHost {
                     let mut engine = EngineAdapterMut::new(&mut pane.terminal);
                     engine.selection_begin((c, r));
                 } else if local_x >= 0.0 && local_y >= 0.0 && local_x < w && local_y < h {
-                    if crate::term_diag::enabled("HIT_TEST") {
+                    if diag::enabled("HIT_TEST") {
                         log::debug!(
                             target: "term_hit_test",
                             "MouseLeftDown miss inside rect p=({:.2},{:.2}) local=({:.2},{:.2}) (e.g. scrollbar strip) rect_wh=({:.2},{:.2})",

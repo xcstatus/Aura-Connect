@@ -7,6 +7,7 @@ use iced::Point;
 use iced::{Padding, Size};
 
 use crate::settings::TerminalSettings;
+use crate::terminal::diag;
 use crate::theme::layout::{
     BOTTOM_BAR_HEIGHT, TOP_BAR_HEIGHT, terminal_scroll_hit_exclude_right_px,
 };
@@ -46,16 +47,6 @@ fn qx100(x: f32) -> i32 {
 }
 
 fn pick_font_file_for_terminal(t: &TerminalSettings) -> (String, u32) {
-    // Prefer explicit override used by the GPU glyph atlas (file path + face index).
-    if let Some(p) = t
-        .gpu_font_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        return (p.to_string(), t.gpu_font_face_index.unwrap_or(0));
-    }
-
     // Best-effort mapping for common terminal fonts.
     // When we cannot resolve the exact font family, fall back to a stable system monospace.
     #[cfg(target_os = "macos")]
@@ -417,7 +408,7 @@ pub fn log_viewport_geometry_if_changed(
     rows: u16,
     pty_resize_sent: bool,
 ) {
-    if !crate::term_diag::enabled("VIEWPORT") {
+    if !diag::enabled("VIEWPORT") {
         return;
     }
     let (tw, th) = terminal_scroll_area_px(window, spec);

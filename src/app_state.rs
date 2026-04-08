@@ -7,7 +7,7 @@ use crate::backend::ssh_session::{SshSession, SshChannel};
 use crate::i18n::{I18n, Locale};
 use crate::repository::JsonSessionStore;
 use crate::session::{AuthMethod, SessionProfile, TransportConfig};
-use crate::tab_manager::SessionManager;
+use crate::session_repository::SessionManager;
 use crate::settings::{RecentConnectionRecord, Settings};
 use crate::storage::StorageManager;
 

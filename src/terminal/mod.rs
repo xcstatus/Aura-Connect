@@ -55,7 +55,7 @@ pub trait TerminalEngine {
 }
 
 // NOTE:
-// Active Iced path currently uses `terminal_core::TerminalController` as the engine.
+// Active Iced path currently uses `terminal::controller::TerminalController` as the engine.
 // `TerminalController::query_snapshot()` now provides a compact engine snapshot
 // (size/cursor/scroll/selection) that can be adapted to this trait boundary as
 // we continue renderer decoupling.
@@ -75,13 +75,23 @@ pub trait TerminalRenderer {
     fn clear_cache(&mut self);
 }
 
+// Terminal core modules
+pub mod controller;
+pub mod palette;
+pub mod selection;
+pub mod diag;
+pub mod prof;
+
+// Re-exports for convenience
+pub use controller::{TerminalController, TerminalSessionBridge};
+pub use palette::scheme_vt_bytes;
+pub use selection::TerminalSelection;
+pub use controller::{TerminalKey, TerminalModifiers, StyledFragment};
+pub use controller::EngineSnapshot;
+
+// Terminal supporting modules
 pub mod backend;
 pub(crate) mod diagnostics;
 pub mod display_test;
 pub mod session_bridge;
-mod glyph_atlas;
-pub mod gpu_renderer;
-
-#[cfg(feature = "ghostty-vt")]
-pub mod vt_widget;
 

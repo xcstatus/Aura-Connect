@@ -2,11 +2,11 @@ use iced::Task;
 use iced::{Point, Size};
 
 use crate::app_state::AppModel;
-use crate::iced_app::tab_manager::SessionManager;
+use crate::iced_app::ssh_session_manager::SessionManager;
 use crate::iced_app::terminal_widget::RowWidgetCache;
 use crate::settings::TerminalSettings;
 use crate::storage::StorageManager;
-use crate::terminal_core::TerminalController;
+use crate::terminal::controller::TerminalController;
 use crate::theme::layout;
 use secrecy::SecretString;
 

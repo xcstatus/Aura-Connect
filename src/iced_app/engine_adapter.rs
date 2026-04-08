@@ -1,4 +1,5 @@
-use crate::terminal_core::{EngineSnapshot, ScrollState};
+use crate::terminal::controller::{EngineSnapshot, TerminalController, TerminalKey, TerminalModifiers, StyledFragment};
+use crate::terminal::ScrollState;
 
 use super::state::IcedState;
 
@@ -44,11 +45,11 @@ impl<'a> EngineAdapter<'a> {
 }
 
 pub(crate) struct EngineAdapterMut<'a> {
-    terminal: &'a mut crate::terminal_core::TerminalController,
+    terminal: &'a mut TerminalController,
 }
 
 impl<'a> EngineAdapterMut<'a> {
-    pub(crate) fn new(terminal: &'a mut crate::terminal_core::TerminalController) -> Self {
+    pub(crate) fn new(terminal: &'a mut TerminalController) -> Self {
         Self { terminal }
     }
 
@@ -106,7 +107,7 @@ impl<'a> EngineAdapterMut<'a> {
     pub(crate) fn encode_keypress_from_physical(
         &mut self,
         code: iced::keyboard::key::Code,
-        mods: crate::terminal_core::TerminalModifiers,
+        mods: TerminalModifiers,
         text: Option<&str>,
     ) -> Option<Vec<u8>> {
         self.terminal
@@ -132,8 +133,8 @@ impl<'a> EngineAdapterMut<'a> {
     pub(crate) fn on_named_key(
         &mut self,
         session: &mut dyn crate::backend::ssh_session::AsyncSession,
-        key: crate::terminal_core::TerminalKey,
-        mods: crate::terminal_core::TerminalModifiers,
+        key: TerminalKey,
+        mods: TerminalModifiers,
     ) -> anyhow::Result<()> {
         self.terminal.on_key(session, key, mods)
     }

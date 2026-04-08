@@ -104,7 +104,6 @@ pub struct GeneralSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TerminalSettings {
-    pub gpu_acceleration: bool,
     pub target_fps: u32,
     pub font_family: String,
     /// Terminal text size (logical px). Drives Iced terminal widget and PTY `cols`/`rows` math.
@@ -112,14 +111,6 @@ pub struct TerminalSettings {
     pub line_height: f32,
     pub color_scheme: String,
     pub scrollback_limit: usize,
-    /// Optional override path for GPU glyph atlas font (TTF/TTC).
-    /// If None, use platform defaults.
-    pub gpu_font_path: Option<String>,
-    /// Optional face index within TTC collection, used only when `gpu_font_path` is set.
-    pub gpu_font_face_index: Option<u32>,
-    /// When the GPU glyph atlas is under sustained eviction pressure, allow a best-effort reset to
-    /// stabilize long-running sessions (may cause a brief re-rasterization burst).
-    pub atlas_reset_on_pressure: bool,
     pub right_click_paste: bool,
     /// When true and the remote terminal has enabled DEC mode 2004, wrap paste in `\e[200~` … `\e[201~`.
     /// Default off: the ESC prefix breaks many vim setups and non‑xterm clients; raw UTF‑8 paste is safer.
@@ -218,16 +209,12 @@ impl Default for GeneralSettings {
 impl Default for TerminalSettings {
     fn default() -> Self {
         Self {
-            gpu_acceleration: true,
             target_fps: 60,
             font_family: "JetBrains Mono".to_string(),
             font_size: 14.0,
             line_height: 1.4,
             color_scheme: "Default".to_string(),
             scrollback_limit: 10000,
-            gpu_font_path: None,
-            gpu_font_face_index: None,
-            atlas_reset_on_pressure: false,
             right_click_paste: true,
             bracketed_paste: false,
             keep_selection_highlight: true,

@@ -1,7 +1,7 @@
 mod chrome;
 mod engine_adapter;
 mod message;
-mod tab_manager;
+mod ssh_session_manager;
 mod settings_modal;
 mod state;
 mod subscription;

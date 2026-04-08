@@ -16,7 +16,8 @@ use std::sync::Arc;
 
 use crate::backend::ghostty_vt::ffi;
 use crate::backend::ghostty_vt::{CursorState, VtStyledCell, VtStyledRow, VtStyledRun};
-use crate::terminal_core::{ScrollState, StyledFragment, TerminalController};
+use crate::terminal::controller::{StyledFragment, TerminalController};
+use crate::terminal::ScrollState;
 use crate::theme::layout::{SCROLLBAR_WIDTH, TERMINAL_SCROLLBAR_OVERLAY_PAD_RIGHT};
 use iced::alignment::{Horizontal, Vertical};
 use iced::font::{self, Font};

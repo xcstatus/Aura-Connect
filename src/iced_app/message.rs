@@ -17,9 +17,7 @@ pub(crate) enum SettingsField {
     Theme(String),
     AccentColor(String),
     FontSize(f32),
-    GpuAcceleration(bool),
     TargetFps(u32),
-    AtlasResetOnPressure(bool),
     ColorScheme(String),
     /// Terminal text size (logical px); affects PTY grid when metrics are applied.
     TerminalFontSize(f32),
@@ -27,8 +25,6 @@ pub(crate) enum SettingsField {
     FontFamily(String),
     /// When true, `font_size` / `line_height` drive PTY cols/rows and Iced terminal rendering.
     ApplyTerminalMetrics(bool),
-    GpuFontPath(String),
-    GpuFontFaceIndex(String),
     RightClickPaste(bool),
     BracketedPaste(bool),
     KeepSelectionHighlight(bool),

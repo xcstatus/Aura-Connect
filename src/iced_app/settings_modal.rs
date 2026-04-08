@@ -356,9 +356,6 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
     match sub {
         0 => column![
             section_title(i18n.tr("iced.settings.section.render_engine")),
-            checkbox(t.gpu_acceleration)
-                .label(i18n.tr("iced.settings.row.gpu_accel"))
-                .on_toggle(|v| Message::SettingsFieldChanged(SettingsField::GpuAcceleration(v))),
             settings_row(
                 i18n.tr("iced.settings.row.target_fps"),
                 text(format!("{}", t.target_fps)).size(12),
@@ -367,12 +364,6 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 Message::SettingsFieldChanged(SettingsField::TargetFps(v))
             })
             .width(300.0),
-            text(i18n.tr("iced.settings.section.stability")).size(14),
-            checkbox(t.atlas_reset_on_pressure)
-                .label(i18n.tr("iced.settings.row.atlas_reset"))
-                .on_toggle(|v| {
-                    Message::SettingsFieldChanged(SettingsField::AtlasResetOnPressure(v))
-                }),
         ]
         .spacing(12)
         .padding(20)
@@ -427,11 +418,6 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                 .iter()
                 .find(|&&x| x == t.font_family.as_str())
                 .map(|_| t.font_family.as_str());
-            let gpu_path = t.gpu_font_path.clone().unwrap_or_default();
-            let face_raw = t
-                .gpu_font_face_index
-                .map(|n| n.to_string())
-                .unwrap_or_default();
             column![
                 section_title(i18n.tr("iced.settings.section.text_render")),
                 checkbox(t.apply_terminal_metrics)
@@ -461,21 +447,6 @@ fn terminal_pane(state: &IcedState, sub: usize) -> Element<'_, Message> {
                         Message::SettingsFieldChanged(SettingsField::FontFamily(f.to_string()))
                     },)
                     .width(220.0),
-                ),
-                text(i18n.tr("iced.settings.section.gpu_font")).size(14),
-                settings_row(
-                    i18n.tr("iced.settings.row.gpu_font_path"),
-                    text_input("TTF/TTC path", &gpu_path)
-                        .on_input(|s| Message::SettingsFieldChanged(SettingsField::GpuFontPath(s)))
-                        .width(iced::Length::Fill),
-                ),
-                settings_row(
-                    i18n.tr("iced.settings.row.gpu_face_index"),
-                    text_input("0", &face_raw)
-                        .on_input(|s| {
-                            Message::SettingsFieldChanged(SettingsField::GpuFontFaceIndex(s))
-                        })
-                        .width(120.0),
                 ),
             ]
             .spacing(12)

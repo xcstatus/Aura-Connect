@@ -1,8 +1,8 @@
 /// Build a deterministic VT payload for terminal display verification.
 ///
 /// Enable injection by setting:
-/// - `RUST_SSH_TERM_DISPLAY_TEST=1` (includes combining marks; should force CPU fallback)
-/// - `RUST_SSH_TERM_DISPLAY_TEST=2` (omits combining marks; should allow GPU text)
+/// - `RUST_SSH_TERM_DISPLAY_TEST=1` (includes combining marks)
+/// - `RUST_SSH_TERM_DISPLAY_TEST=2` (omits combining marks)
 pub fn test_pattern_bytes() -> Vec<u8> {
     let omit_marks = std::env::var("RUST_SSH_TERM_DISPLAY_TEST")
         .ok()
