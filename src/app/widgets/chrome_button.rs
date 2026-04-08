@@ -127,16 +127,16 @@ impl ButtonStyleSpec {
         }
     }
 
-    /// 标签条内的文字按钮（透明底、极弱悬停，避免抢了顶部分隔线视觉）。
+    /// 标签条内的文字按钮（透明底、悬停/按下均无背景变化）。
     pub fn tab_strip(tokens: DesignTokens) -> Self {
         Self {
             label: ButtonLabel::new(tokens.text_primary),
             tint: ButtonTint {
                 idle: None,
-                hover_bg: None,
-                pressed_bg: None,
-                hover_blend: 0.08,
-                pressed_blend: 0.16,
+                hover_bg: Some(iced::Color::TRANSPARENT),
+                pressed_bg: Some(iced::Color::TRANSPARENT),
+                hover_blend: 0.0,
+                pressed_blend: 0.0,
                 focus_ring: Border::default(),
             },
             border_radius: 0.0,

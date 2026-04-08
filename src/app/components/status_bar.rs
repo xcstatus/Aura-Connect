@@ -4,19 +4,18 @@ use iced::widget::{container, row, text};
 
 use crate::theme::layout::BOTTOM_BAR_HEIGHT;
 
-use crate::app::chrome::main_chrome_style;
-use crate::app::components::helpers::tokens_for_state;
+use crate::app::components::helpers::{terminal_area_bg_style, tokens_for_state};
 use crate::app::message::Message;
 use crate::app::state::{IcedState, VaultStatus};
 
 /// Build the status bar at the bottom of the terminal area.
 pub(crate) fn status_bar(state: &IcedState) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
-    let tokens = tokens_for_state(state);
     let engine = crate::app::engine_adapter::EngineAdapter::active(state);
     let term_scroll = engine.scroll();
     let term_in_scrollback = engine.is_in_scrollback();
     let is_connected = state.active_session_is_connected();
+    let tokens = tokens_for_state(state);
     let term_scroll_word = if term_in_scrollback {
         "回滚中"
     } else {
@@ -36,7 +35,6 @@ pub(crate) fn status_bar(state: &IcedState) -> Element<'_, Message> {
         VaultStatus::Unavailable => "不可用",
     };
 
-    let chrome_style = main_chrome_style(tokens);
     container(
         row![
             text(format!("{}: {}", i18n.tr("iced.footer.status"), status_word)),
@@ -66,6 +64,6 @@ pub(crate) fn status_bar(state: &IcedState) -> Element<'_, Message> {
     .width(iced::Length::Fill)
     .height(iced::Length::Fixed(BOTTOM_BAR_HEIGHT))
     .padding([0, 12])
-    .style(chrome_style)
+    .style(terminal_area_bg_style(tokens))
     .into()
 }

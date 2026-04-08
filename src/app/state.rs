@@ -7,7 +7,7 @@ use crate::app::terminal_widget::RowWidgetCache;
 use crate::settings::TerminalSettings;
 use crate::utils::StorageManager;
 use crate::terminal::controller::TerminalController;
-use crate::theme::layout;
+use crate::theme::layout::{self, TAB_CHIP_WIDTH};
 use secrecy::SecretString;
 
 use super::message::{Message, SettingsCategory};
@@ -203,7 +203,7 @@ pub(crate) struct IcedTab {
 /// Per-tab animation state for tab width expand/collapse.
 #[derive(Debug, Clone)]
 pub(crate) struct TabAnimEntry {
-    /// Target width in pixels (126.0 when fully open, 0.0 when closed).
+    /// Target width in pixels (TAB_CHIP_WIDTH when fully open, 0.0 when closed).
     pub target_w: f32,
     pub enter_tick: u64,
     pub done: bool,
@@ -462,7 +462,7 @@ impl IcedState {
     /// Uses `tab_anims[i]` if animating, otherwise `target_w`.
     pub(crate) fn tab_animated_width(&self, i: usize, tick_ms: f32) -> f32 {
         if i >= self.tab_anims.len() {
-            return 126.0;
+            return TAB_CHIP_WIDTH;
         }
         let anim = &self.tab_anims[i];
         if anim.done {
@@ -474,7 +474,7 @@ impl IcedState {
         if anim.target_w > 0.0 {
             anim.target_w * t
         } else {
-            126.0 * (1.0 - t)
+            TAB_CHIP_WIDTH * (1.0 - t)
         }
     }
 
@@ -920,7 +920,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             reconnect_context: None,
             restore_session_modal: None,
             last_reconnect_tick_ms: now,
-            tab_anims: vec![TabAnimEntry { target_w: 126.0, enter_tick: 0, done: true }],
+            tab_anims: vec![TabAnimEntry { target_w: TAB_CHIP_WIDTH, enter_tick: 0, done: true }],
             quick_connect_anim: ModalAnimState::default(),
             settings_anim: ModalAnimState::default(),
             scrollbar_hovered: false,

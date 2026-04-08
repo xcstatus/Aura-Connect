@@ -1,6 +1,7 @@
 use iced::Element;
 use iced::widget::{column, container};
 
+use crate::app::components::helpers::terminal_area_bg_style;
 use crate::app::engine_adapter::EngineAdapter;
 use crate::app::message::Message;
 use crate::app::state::IcedState;
@@ -40,7 +41,7 @@ pub(crate) fn terminal_panel(state: &IcedState) -> Element<'_, Message> {
         })
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
-        .style(container::bordered_box)]
+        .style(terminal_area_bg_style(crate::app::components::helpers::tokens_for_state(state)))]
         .spacing(term_vp.terminal_panel_inner_spacing())
         .height(iced::Length::Fill),
     )

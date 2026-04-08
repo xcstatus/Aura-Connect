@@ -19,9 +19,11 @@ pub const BTN_PADDING_H: f32 = 12.0;
 pub const BTN_PADDING_V: f32 = 8.0;
 
 /// 顶栏 / Tab 行高
-pub const TOP_BAR_HEIGHT: f32 = 32.0;
+pub const TOP_BAR_HEIGHT: f32 = 36.0;
+/// Tab 标签默认宽度
+pub const TAB_CHIP_WIDTH: f32 = 140.0;
 /// 底栏（状态行等）固定高度
-pub const BOTTOM_BAR_HEIGHT: f32 = 32.0;
+pub const BOTTOM_BAR_HEIGHT: f32 = 36.0;
 
 /// 侧栏参考宽度
 pub const SIDEBAR_WIDTH: f32 = 220.0;

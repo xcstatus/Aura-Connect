@@ -2,7 +2,7 @@ use iced::alignment::Alignment;
 use iced::Element;
 use iced::widget::{button, container, row, text};
 
-use crate::app::components::helpers::tokens_for_state;
+use crate::app::components::helpers::{terminal_area_bg_style, tokens_for_state};
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::terminal_viewport;
@@ -13,7 +13,7 @@ pub(crate) fn breadcrumb(state: &IcedState) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
     let tokens = tokens_for_state(state);
     let term_vp = terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal);
-    let is_connected = state.active_session_is_connected();
+    let _is_connected = state.active_session_is_connected();
 
     let cwd = std::env::current_dir()
         .ok()
@@ -39,5 +39,6 @@ pub(crate) fn breadcrumb(state: &IcedState) -> Element<'_, Message> {
     .padding(term_vp.breadcrumb_padding())
     .height(iced::Length::Fixed(term_vp.breadcrumb_block_h()))
     .align_y(Alignment::Center)
+    .style(terminal_area_bg_style(tokens))
     .into()
 }

@@ -18,13 +18,9 @@ use iced::Size;
 use iced::Task;
 use iced::event::Event;
 use iced::mouse;
-use iced::mouse::ScrollDelta;
-use iced::widget::Id;
-use iced::widget::operation::{AbsoluteOffset, scroll_by};
 
 use crate::backend::ssh_session::AsyncSession;
 
-use super::chrome::TAB_STRIP_SCROLLABLE_ID;
 use super::message::Message;
 use super::state::{IcedState, QuickConnectFlow, QuickConnectPanel, TabPane, ConnectionStage};
 use super::terminal_event::TerminalEvent;
@@ -135,14 +131,6 @@ pub(crate) fn complete_new_ssh_session_arc(
     if let Some(tab) = state.tabs.get_mut(state.active_tab) {
         tab.title = tab_title;
         tab.profile_id = profile_id;
-    }
-}
-
-/// 与内置 [`scrollable`] 类似：Lines 使用 x60 缩放；垂直分量映射为横向滚动，无需 Shift。
-fn tab_strip_wheel_to_offset_x(delta: ScrollDelta) -> f32 {
-    match delta {
-        ScrollDelta::Lines { x, y } => -(x + y) * 60.0,
-        ScrollDelta::Pixels { x, y } => -(x + y),
     }
 }
 
@@ -445,15 +433,9 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             }
             Task::none()
         }
-        Message::TabStripWheel(delta) => {
-            let dx = tab_strip_wheel_to_offset_x(delta);
-            if dx.abs() < f32::EPSILON {
-                return Task::none();
-            }
-            scroll_by(
-                Id::new(TAB_STRIP_SCROLLABLE_ID),
-                AbsoluteOffset { x: dx, y: 0.0 },
-            )
+        Message::TabStripWheel(_delta) => {
+            // 标签栏不再支持滚动，忽略
+            Task::none()
         }
         Message::TabSelected(i) => session::handle_tab_selected(state, i),
         Message::TabClose(i) => session::handle_tab_close(state, i),

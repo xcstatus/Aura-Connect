@@ -20,7 +20,7 @@ pub(crate) fn handle_add_tab(state: &mut IcedState) -> Task<Message> {
     state.tab_manager.add_tab();
     state.active_tab = state.tabs.len() - 1;
     // Start new tab width animation (expands from 0).
-    state.tab_anims.push(crate::app::state::TabAnimEntry::new(126.0, state.tick_count));
+    state.tab_anims.push(crate::app::state::TabAnimEntry::new(crate::app::chrome::TAB_CHIP_WIDTH, state.tick_count));
     state.model.status = "New tab: use Quick connect (⚡) to open a session".to_string();
     Task::none()
 }
