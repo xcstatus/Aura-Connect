@@ -423,7 +423,7 @@ pub(crate) fn handle_vault_unlock_complete(
                             transport: crate::session::TransportConfig::Ssh(ssh),
                             ..existing
                         };
-                        let _ = state.rt.block_on(state.model.session_manager.upsert_session(updated));
+                        let _ = state.rt.block_on(state.model.tab_manager.upsert_session(updated));
                     }
                 }
             }

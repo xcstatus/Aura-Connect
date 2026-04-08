@@ -1,17 +1,19 @@
 mod chrome;
 mod engine_adapter;
 mod message;
-mod session_manager;
+mod tab_manager;
 mod settings_modal;
 mod state;
 mod subscription;
 mod terminal_event;
 mod terminal_host;
-mod terminal_rich;
+mod terminal_widget;
 mod terminal_viewport;
 mod update;
 mod view;
 mod widgets;
+
+pub mod components;
 
 fn app_theme(_: &state::IcedState) -> iced::Theme {
     crate::theme::default_rustssh_iced_theme()

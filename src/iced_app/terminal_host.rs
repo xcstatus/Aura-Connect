@@ -29,7 +29,7 @@ impl TerminalHost {
         ) -> R,
     ) -> Option<R> {
         let tab = state.active_tab;
-        let session = state.session_manager.session_mut(tab)?;
+        let session = state.tab_manager.session_mut(tab)?;
         Some(f(session, &mut EngineAdapterMut::new(&mut state.tab_panes[tab].terminal)))
     }
 
@@ -137,7 +137,7 @@ impl TerminalHost {
         if pane.last_terminal_focus_sent == Some(eff) {
             return;
         }
-        if let Some(session) = state.session_manager.session_mut(tab) {
+        if let Some(session) = state.tab_manager.session_mut(tab) {
             let mut engine = EngineAdapterMut::new(&mut pane.terminal);
             let _ = Self::write_if_any(session, engine.encode_focus_event(eff));
         }
@@ -210,7 +210,7 @@ impl TerminalHost {
                     return Task::none();
                 }
                 // Don't allow selection on an empty/unconnected terminal pane.
-                if !state.session_manager.has_session(state.active_tab) {
+                if !state.tab_manager.has_session(state.active_tab) {
                     return Task::none();
                 }
                 state.last_cursor_pos = Some(p);
@@ -442,7 +442,7 @@ mod tests {
 
     fn attach_dummy_session(state: &mut IcedState) {
         state
-            .session_manager
+            .tab_manager
             .attach_session(state.active_tab, Box::new(DummySession {
                 writes: Vec::new(),
                 connected: true,

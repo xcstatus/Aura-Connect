@@ -1,9 +1,9 @@
 use iced::Task;
 use iced::{Point, Size};
 
-use crate::app_model::AppModel;
-use crate::iced_app::session_manager::SessionManager;
-use crate::iced_app::terminal_rich::RowWidgetCache;
+use crate::app_state::AppModel;
+use crate::iced_app::tab_manager::SessionManager;
+use crate::iced_app::terminal_widget::RowWidgetCache;
 use crate::settings::TerminalSettings;
 use crate::storage::StorageManager;
 use crate::terminal_core::TerminalController;
@@ -103,7 +103,7 @@ pub(crate) struct InteractiveAuthFlow {
 
 #[derive(Debug, Clone)]
 pub(crate) struct HostKeyPromptState {
-    pub info: crate::app_model::HostKeyErrorInfo,
+    pub info: crate::app_state::HostKeyErrorInfo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -182,7 +182,7 @@ impl Default for PrewarmStatus {
 #[derive(Debug, Clone)]
 pub(crate) struct ReconnectContext {
     /// 连接草案（包含 host, port, user, auth, password 等）。
-    pub draft: crate::app_model::ConnectionDraft,
+    pub draft: crate::app_state::ConnectionDraft,
     /// Vault 主密码（用于读取凭据）。
     pub vault_master_password: Option<secrecy::SecretString>,
     /// 会话配置 ID（若有）。
@@ -282,7 +282,7 @@ pub(crate) struct IcedState {
     /// Same length as `tabs`; `tab_panes[i]` is the runtime for `tabs[i]`.
     pub tab_panes: Vec<TabPane>,
     /// Unified SSH session registry: each tab may have an independent live session.
-    pub session_manager: SessionManager,
+    pub tab_manager: SessionManager,
     pub active_tab: usize,
     pub window_size: Size,
     /// 主窗口是否键盘焦点（用于 DEC 1004 与捕获勾选组合）。
@@ -301,7 +301,7 @@ pub(crate) struct IcedState {
     /// Connection progress stage shown in the quick-connect form while connecting.
     pub connection_stage: ConnectionStage,
     /// Quick connect: last stable error kind for UI branching (Failed/NeedAuthPassword).
-    pub quick_connect_error_kind: Option<crate::app_model::ConnectErrorKind>,
+    pub quick_connect_error_kind: Option<crate::app_state::ConnectErrorKind>,
     /// Raw password input while the inline password overlay is shown (decoupled from draft).
     pub inline_password_input: secrecy::SecretString,
     /// Keyboard-interactive auth flow state (when `quick_connect_flow == NeedAuthInteractive`).
@@ -383,7 +383,7 @@ impl IcedState {
 
     /// Whether the **active** tab has a live SSH session that reports connected.
     pub(crate) fn active_session_is_connected(&self) -> bool {
-        self.session_manager
+        self.tab_manager
             .get_session(self.active_tab)
             .is_some_and(|s| s.is_connected())
     }
@@ -835,7 +835,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
     let model = AppModel::load();
     let first_title = model.i18n.tr("iced.tab.new").to_string();
     let tab_panes = vec![TabPane::new(&model.settings.terminal)];
-    let session_manager = SessionManager::new(1); // one tab at boot
+    let tab_manager = SessionManager::new(1); // one tab at boot
     let vault_status = VaultStatus::compute(&model.settings, model.vault_master_password.is_some());
     let now = crate::settings::unix_time_ms();
     let dump_path = std::env::var("RUST_SSH_PERF_DUMP")
@@ -851,7 +851,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
                 profile_id: None,
             }],
             tab_panes,
-            session_manager,
+            tab_manager,
             active_tab: 0,
             window_size: Size::new(1280.0, 800.0),
             window_focused: true,

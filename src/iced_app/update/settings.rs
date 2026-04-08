@@ -170,7 +170,7 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
             let (cols, rows) =
                 terminal_viewport::grid_from_window_size_with_spec(window_size, &spec);
             let prev_rows = pane.terminal.grid_size().1;
-            if let Some(session) = state.session_manager.session_mut(i) {
+            if let Some(session) = state.tab_manager.session_mut(i) {
                 let _ = pane.terminal.resize_and_sync_pty(session, cols, rows);
             } else {
                 pane.terminal.resize(cols, rows);

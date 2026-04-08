@@ -143,7 +143,7 @@ fn pump_all_sessions(state: &mut IcedState, now: i64, bg_pump_every_ms: i64) {
     let active = state.active_tab;
 
     for (i, pane) in state.tab_panes.iter_mut().enumerate() {
-        let Some(session) = state.session_manager.session_mut(i) else {
+        let Some(session) = state.tab_manager.session_mut(i) else {
             continue;
         };
 

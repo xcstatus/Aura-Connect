@@ -1,4 +1,4 @@
-pub mod app_model;
+pub mod app_state;
 pub mod backend;
 pub mod connection_input;
 pub mod i18n;
@@ -8,7 +8,7 @@ pub mod prof;
 pub mod repository;
 pub mod security;
 pub mod session;
-pub mod session_manager;
+pub mod tab_manager;
 pub mod settings;
 pub mod storage;
 pub mod term_diag;

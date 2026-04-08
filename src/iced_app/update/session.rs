@@ -17,7 +17,7 @@ pub(crate) fn handle_add_tab(state: &mut IcedState) -> Task<Message> {
     state
         .tab_panes
         .push(TabPane::new(&state.model.settings.terminal));
-    state.session_manager.add_tab();
+    state.tab_manager.add_tab();
     state.active_tab = state.tabs.len() - 1;
     // Start new tab width animation (expands from 0).
     state.tab_anims.push(crate::iced_app::state::TabAnimEntry::new(126.0, state.tick_count));
@@ -38,7 +38,7 @@ pub(crate) fn handle_tab_selected(state: &mut IcedState, i: usize) -> Task<Messa
         super::super::terminal_host::TerminalHost::sync_focus_report_for_tab(state, old, false);
     }
 
-    state.session_manager.set_active_tab(i);
+    state.tab_manager.set_active_tab(i);
     state.active_tab = i;
 
     if let Some(pid) = state.tabs[i].profile_id.clone() {
@@ -63,7 +63,7 @@ pub(crate) fn handle_tab_close(state: &mut IcedState, i: usize) -> Task<Message>
     state.tabs.remove(i);
     state.tab_panes.remove(i);
     // Also remove from session manager (returns the dropped session, if any).
-    let _ = state.session_manager.remove_tab(i);
+    let _ = state.tab_manager.remove_tab(i);
 
     let len = state.tabs.len();
     if was_active {
@@ -71,7 +71,7 @@ pub(crate) fn handle_tab_close(state: &mut IcedState, i: usize) -> Task<Message>
     } else if i < state.active_tab {
         state.active_tab -= 1;
     }
-    state.session_manager.set_active_tab(state.active_tab);
+    state.tab_manager.set_active_tab(state.active_tab);
 
     if let Some(pid) = state.tabs[state.active_tab].profile_id.clone() {
         state.model.select_profile(pid);
@@ -304,7 +304,7 @@ pub(crate) fn handle_session_editor_save(state: &mut IcedState) -> Task<Message>
         }),
     };
 
-    let res = state.rt.block_on(state.model.session_manager.upsert_session(profile));
+    let res = state.rt.block_on(state.model.tab_manager.upsert_session(profile));
 
     state.model.status = match res {
         Ok(()) => "Session saved".to_string(),
@@ -400,7 +400,7 @@ pub(crate) fn handle_quick_connect_save_session(state: &mut IcedState) -> Task<M
         }),
     };
 
-    let res = state.rt.block_on(state.model.session_manager.upsert_session(profile));
+    let res = state.rt.block_on(state.model.tab_manager.upsert_session(profile));
     state.model.status = match res {
         Ok(()) => "Session saved".to_string(),
         Err(e) => format!("Save failed: {e}"),
@@ -438,7 +438,7 @@ pub(crate) fn handle_delete_session(state: &mut IcedState, id: String) -> Task<M
         state.model.vault_master_password.is_some(),
     );
 
-    let res = state.rt.block_on(state.model.session_manager.delete_session(&id));
+    let res = state.rt.block_on(state.model.tab_manager.delete_session(&id));
 
     state.model.status = match res {
         Ok(()) => vault_cleanup_err.unwrap_or_else(|| {
