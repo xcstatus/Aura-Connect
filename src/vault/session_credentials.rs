@@ -3,7 +3,7 @@ use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 
 use crate::settings::KdfMemoryLevel;
-use crate::storage::StorageManager;
+use crate::utils::StorageManager;
 use crate::vault::core::CredentialVault;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

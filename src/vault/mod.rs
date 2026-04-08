@@ -4,9 +4,11 @@ mod error;
 pub mod core;
 pub mod manager;
 pub mod session_credentials;
+pub mod utils;
 
 pub use error::VaultError;
 pub use manager::{VaultManager, VaultMeta};
+pub use utils::check_password_strength;
 
 /// Result type for vault unlock operations containing the verifier hash.
 #[derive(Debug, Clone)]

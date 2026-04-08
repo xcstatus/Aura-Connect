@@ -4,7 +4,7 @@
 
 use crate::backend::ssh_session::{BaseSshConnection, SshChannel};
 use crate::session::AuthMethod;
-use crate::app_state::ConnectErrorKind;
+use crate::app::ConnectErrorKind;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
