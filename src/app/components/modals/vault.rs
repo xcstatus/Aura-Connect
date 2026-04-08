@@ -4,7 +4,7 @@ use iced::widget::{button, column, container, row, text, text_input, Space};
 
 use secrecy::ExposeSecret;
 
-use crate::app::components::helpers::layered_scrim_style;
+use crate::app::components::helpers::{layered_scrim_style, tokens_for_state, top_bar_material_style};
 use crate::app::message::Message;
 use crate::app::state::{IcedState, VaultFlowMode};
 use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
@@ -15,8 +15,10 @@ pub(crate) fn vault_modal(state: &IcedState) -> Element<'_, Message> {
         return Space::new().into()
     };
 
+    let tokens = tokens_for_state(state);
+
     let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-        .style(|theme: &iced::Theme| layered_scrim_style(theme, 0));
+        .style(layered_scrim_style(tokens, 0));
 
     let title = match flow.mode {
         VaultFlowMode::Initialize => state.model.i18n.tr("iced.vault.title.initialize"),
@@ -32,7 +34,7 @@ pub(crate) fn vault_modal(state: &IcedState) -> Element<'_, Message> {
                 .on_press(Message::VaultClose)
                 .width(iced::Length::Fixed(28.0))
                 .height(iced::Length::Fixed(28.0))
-                .style(style_top_icon(14.0)),
+                .style(style_top_icon(tokens)),
         ]
         .align_y(Alignment::Center),
     ]
@@ -67,10 +69,10 @@ pub(crate) fn vault_modal(state: &IcedState) -> Element<'_, Message> {
         row![
             button(text(i18n.tr("iced.btn.confirm")).size(13))
                 .on_press(Message::VaultSubmit)
-                .style(style_chrome_primary(13.0)),
+                .style(style_chrome_primary(tokens)),
             button(text(i18n.tr("iced.btn.cancel")).size(13))
                 .on_press(Message::VaultClose)
-                .style(style_chrome_secondary(13.0)),
+                .style(style_chrome_secondary(tokens)),
         ]
         .spacing(8),
     );
@@ -78,7 +80,7 @@ pub(crate) fn vault_modal(state: &IcedState) -> Element<'_, Message> {
     let card = container(body)
         .width(iced::Length::Fixed(520.0))
         .padding(16)
-        .style(crate::app::chrome::top_bar_material_style);
+        .style(top_bar_material_style(tokens));
     let centered = container(card)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)

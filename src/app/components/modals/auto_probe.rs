@@ -2,7 +2,7 @@ use iced::alignment::Alignment;
 use iced::Element;
 use iced::widget::{button, column, container, row, text, Space};
 
-use crate::app::components::helpers::layered_scrim_style;
+use crate::app::components::helpers::{layered_scrim_style, tokens_for_state, top_bar_material_style};
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::{style_chrome_secondary, style_chrome_primary, style_top_icon};
@@ -13,8 +13,10 @@ pub(crate) fn auto_probe_consent_modal(state: &IcedState) -> Element<'_, Message
         return Space::new().into()
     };
 
+    let tokens = tokens_for_state(state);
+
     let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-        .style(|theme: &iced::Theme| layered_scrim_style(theme, 0));
+        .style(layered_scrim_style(tokens, 0));
 
     let body = column![
         row![
@@ -24,20 +26,20 @@ pub(crate) fn auto_probe_consent_modal(state: &IcedState) -> Element<'_, Message
                 .on_press(Message::AutoProbeConsentUsePassword)
                 .width(iced::Length::Fixed(28.0))
                 .height(iced::Length::Fixed(28.0))
-                .style(style_top_icon(14.0)),
+                .style(style_top_icon(tokens)),
         ]
         .align_y(Alignment::Center),
         text("将尝试使用系统 SSH Agent 或本机密钥进行认证。不会上传私钥，仅在本机使用。").size(12),
         row![
             button(text("允许（本次）").size(13))
                 .on_press(Message::AutoProbeConsentAllowOnce)
-                .style(style_chrome_secondary(13.0)),
+                .style(style_chrome_secondary(tokens)),
             button(text("始终允许").size(13))
                 .on_press(Message::AutoProbeConsentAlwaysAllow)
-                .style(style_chrome_primary(13.0)),
+                .style(style_chrome_primary(tokens)),
             button(text("改用密码").size(13))
                 .on_press(Message::AutoProbeConsentUsePassword)
-                .style(style_chrome_secondary(13.0)),
+                .style(style_chrome_secondary(tokens)),
         ]
         .spacing(8),
     ]
@@ -47,7 +49,7 @@ pub(crate) fn auto_probe_consent_modal(state: &IcedState) -> Element<'_, Message
     let card = container(body)
         .width(iced::Length::Fixed(560.0))
         .padding(16)
-        .style(crate::app::chrome::top_bar_material_style);
+        .style(top_bar_material_style(tokens));
     let centered = container(card)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)

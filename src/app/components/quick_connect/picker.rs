@@ -5,11 +5,10 @@ use iced::widget::{
 use iced::Element;
 use iced::Theme;
 
-use crate::app::chrome::top_bar_material_style;
+use crate::app::components::helpers::{top_bar_material_style, quick_connect_group_header_style, tokens_for_state};
 use crate::app::message::Message;
 use crate::app::state::IcedState;
-use crate::app::widgets::chrome_button::style_chrome_primary;
-use crate::app::widgets::chrome_button::style_chrome_secondary;
+use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary};
 
 use super::grouped_ssh_profiles;
 use crate::session::{SessionProfile, TransportConfig};
@@ -17,6 +16,7 @@ use crate::session::{SessionProfile, TransportConfig};
 /// Quick connect picker panel: shows recent connections, saved profiles, and search.
 pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
+    let tokens = tokens_for_state(state);
 
     let query = state.quick_connect_query.trim();
     let direct_parts = crate::app::connection::parse_direct_input(query);
@@ -37,7 +37,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
         .on_press(Message::QuickConnectDirectSubmit)
         .width(iced::Length::Fill)
         .padding([8, 12])
-        .style(style_chrome_primary(13.0))
+        .style(style_chrome_primary(tokens))
         .into()
     } else {
         iced::widget::Space::new().into()
@@ -88,7 +88,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
                 .on_press(Message::QuickConnectPickRecent(rec))
                 .width(iced::Length::Fill)
                 .padding([6, 10])
-                .style(style_chrome_secondary(13.0)),
+                .style(style_chrome_secondary(tokens)),
             );
         }
     }
@@ -102,7 +102,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
             .on_press(Message::QuickConnectNewConnection)
             .width(iced::Length::Fill)
             .padding([8, 12])
-            .style(style_chrome_primary(13.0)),
+            .style(style_chrome_primary(tokens)),
     );
 
     let q_lower = query.to_lowercase();
@@ -150,7 +150,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
                     bottom: 4.0,
                     left: 4.0,
                 })
-                .style(crate::app::components::helpers::quick_connect_group_header_style)
+                .style(quick_connect_group_header_style(tokens))
                 .width(iced::Length::Fill),
         );
         for p in sessions {
@@ -182,7 +182,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
                 .on_press(Message::ProfileConnect(prof))
                 .width(iced::Length::Fill)
                 .padding([6, 10])
-                .style(style_chrome_secondary(13.0)),
+                .style(style_chrome_secondary(tokens)),
             );
         }
     }
@@ -195,7 +195,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
                 .on_press(Message::QuickConnectDismiss)
                 .width(iced::Length::Fixed(28.0))
                 .height(iced::Length::Fixed(28.0))
-                .style(crate::app::widgets::chrome_button::style_top_icon(14.0)),
+                .style(crate::app::widgets::chrome_button::style_top_icon(tokens)),
         ]
         .align_y(Alignment::Center),
         text_input(
@@ -220,6 +220,6 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
     container(body)
         .width(iced::Length::Fill)
         .padding(16)
-        .style(top_bar_material_style)
+        .style(top_bar_material_style(tokens))
         .into()
 }

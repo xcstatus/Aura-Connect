@@ -4,6 +4,7 @@ use iced::theme::Base;
 use iced::widget::{Space, container, row};
 
 use super::state::IcedState;
+use crate::theme::DesignTokens;
 
 /// Extra insets when using a macOS unified (full-size content) title bar so the first row
 /// clears the traffic lights and title/toolbar band.
@@ -132,10 +133,13 @@ pub(crate) fn top_bar_material_style(theme: &Theme) -> container::Style {
     container::Style::default().background(tint).border(border)
 }
 
-/// App chrome behind the title row: solid so only the top bar reads as “glass”.
-pub(crate) fn main_chrome_style(theme: &Theme) -> container::Style {
-    let bg = theme.extended_palette().background.base.color;
-    container::Style::default().background(bg)
+/// App chrome behind the title row: solid so only the top bar reads as "glass".
+/// 使用 DesignTokens 获取颜色，支持主题切换。
+pub(crate) fn main_chrome_style(tokens: DesignTokens) -> impl Fn(&Theme) -> container::Style + 'static {
+    let bg = tokens.bg_primary;
+    move |_: &Theme| {
+        container::Style::default().background(bg)
+    }
 }
 
 #[cfg(target_os = "macos")]

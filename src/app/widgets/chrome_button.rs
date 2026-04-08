@@ -9,8 +9,9 @@ use iced::Theme;
 use iced::widget::button::{self, Status};
 
 use crate::theme::layout;
+use crate::theme::DesignTokens;
 
-/// 与主题一致的文字颜色（字号在 `text(..).size(px)` 上与对应 `style_*(px)` 保持一致即可）。
+/// 与主题一致的文字颜色（字号在 `text(..).size(..)` 上与对应 `style_*(px)` 保持一致即可）。
 #[derive(Debug, Clone, Copy)]
 pub struct ButtonLabel {
     pub color: Color,
@@ -64,11 +65,9 @@ pub struct ButtonStyleSpec {
 
 impl ButtonStyleSpec {
     /// 顶栏图标按钮：透明底、弱悬停、按下略深。
-    pub fn top_icon(theme: &Theme) -> Self {
-        let t = theme.extended_palette();
-        let text_color = t.background.base.text;
+    pub fn top_icon(tokens: DesignTokens) -> Self {
         Self {
-            label: ButtonLabel::new(text_color),
+            label: ButtonLabel::new(tokens.text_secondary),
             tint: ButtonTint {
                 idle: None,
                 hover_bg: None,
@@ -76,7 +75,7 @@ impl ButtonStyleSpec {
                 hover_blend: 0.12,
                 pressed_blend: 0.22,
                 focus_ring: Border {
-                    color: t.primary.weak.color,
+                    color: tokens.accent_hover,
                     width: 1.0,
                     ..Default::default()
                 },
@@ -87,19 +86,17 @@ impl ButtonStyleSpec {
     }
 
     /// 主内容区次要操作（描边弱、浅底）。
-    pub fn chrome_secondary(theme: &Theme) -> Self {
-        let t = theme.extended_palette();
-        let text_color = t.background.base.text;
+    pub fn chrome_secondary(tokens: DesignTokens) -> Self {
         Self {
-            label: ButtonLabel::new(text_color),
+            label: ButtonLabel::new(tokens.text_primary),
             tint: ButtonTint {
-                idle: Some(t.background.weak.color),
+                idle: Some(tokens.surface_1),
                 hover_bg: None,
                 pressed_bg: None,
                 hover_blend: 0.5,
                 pressed_blend: 0.72,
                 focus_ring: Border {
-                    color: t.primary.base.color,
+                    color: tokens.accent_base,
                     width: 1.0,
                     ..Default::default()
                 },
@@ -110,20 +107,17 @@ impl ButtonStyleSpec {
     }
 
     /// 主强调色（连接等）。
-    pub fn chrome_primary(theme: &Theme) -> Self {
-        let t = theme.extended_palette();
-        let pair = t.primary.base;
-        let hover = t.primary.strong.color;
+    pub fn chrome_primary(tokens: DesignTokens) -> Self {
         Self {
-            label: ButtonLabel::new(pair.text),
+            label: ButtonLabel::new(tokens.on_accent_label),
             tint: ButtonTint {
-                idle: Some(pair.color),
-                hover_bg: Some(hover),
-                pressed_bg: Some(pressed_from(hover)),
+                idle: Some(tokens.accent_base),
+                hover_bg: Some(tokens.accent_hover),
+                pressed_bg: Some(pressed_from(tokens.accent_hover)),
                 hover_blend: 0.0,
                 pressed_blend: 0.0,
                 focus_ring: Border {
-                    color: pair.color,
+                    color: tokens.accent_base,
                     width: 1.0,
                     ..Default::default()
                 },
@@ -134,10 +128,9 @@ impl ButtonStyleSpec {
     }
 
     /// 标签条内的文字按钮（透明底、极弱悬停，避免抢了顶部分隔线视觉）。
-    pub fn tab_strip(theme: &Theme) -> Self {
-        let t = theme.extended_palette();
+    pub fn tab_strip(tokens: DesignTokens) -> Self {
         Self {
-            label: ButtonLabel::new(t.background.base.text),
+            label: ButtonLabel::new(tokens.text_primary),
             tint: ButtonTint {
                 idle: None,
                 hover_bg: None,
@@ -152,46 +145,45 @@ impl ButtonStyleSpec {
     }
 }
 
-/// 顶栏 / 工具条图标钮（`⚡` `+` `⚙` 等）的 `.style(...)`。  
-/// `font_size` 仅作文档约定，须与 `text(..).size(..)` 一致。
-pub fn style_top_icon(_font_size: f32) -> impl Fn(&Theme, Status) -> button::Style {
-    move |theme, status| {
-        let spec = ButtonStyleSpec::top_icon(theme);
-        unified_button_style(theme, status, &spec)
+/// 顶栏 / 工具条图标钮（`⚡` `+` `⚙` 等）的 `.style(...)`。
+/// `tokens` 用于获取按钮样式颜色，确保与当前主题一致。
+pub fn style_top_icon(tokens: DesignTokens) -> impl Fn(&Theme, Status) -> button::Style + 'static {
+    let spec = ButtonStyleSpec::top_icon(tokens);
+    move |_theme, status| {
+        unified_button_style(status, &spec)
     }
 }
 
 /// 标签栏内 `.style(...)`。
-pub fn style_tab_strip(_font_size: f32) -> impl Fn(&Theme, Status) -> button::Style {
-    move |theme, status| {
-        let spec = ButtonStyleSpec::tab_strip(theme);
-        unified_button_style(theme, status, &spec)
+pub fn style_tab_strip(tokens: DesignTokens) -> impl Fn(&Theme, Status) -> button::Style + 'static {
+    let spec = ButtonStyleSpec::tab_strip(tokens);
+    move |_theme, status| {
+        unified_button_style(status, &spec)
     }
 }
 
 /// 主区次要按钮 `.style(...)`（断开、保存、面包屑等）。
-pub fn style_chrome_secondary(_font_size: f32) -> impl Fn(&Theme, Status) -> button::Style {
-    move |theme, status| {
-        let spec = ButtonStyleSpec::chrome_secondary(theme);
-        unified_button_style(theme, status, &spec)
+pub fn style_chrome_secondary(tokens: DesignTokens) -> impl Fn(&Theme, Status) -> button::Style + 'static {
+    let spec = ButtonStyleSpec::chrome_secondary(tokens);
+    move |_theme, status| {
+        unified_button_style(status, &spec)
     }
 }
 
 /// 主区主按钮 `.style(...)`（连接等）。
-pub fn style_chrome_primary(_font_size: f32) -> impl Fn(&Theme, Status) -> button::Style {
-    move |theme, status| {
-        let spec = ButtonStyleSpec::chrome_primary(theme);
-        unified_button_style(theme, status, &spec)
+pub fn style_chrome_primary(tokens: DesignTokens) -> impl Fn(&Theme, Status) -> button::Style + 'static {
+    let spec = ButtonStyleSpec::chrome_primary(tokens);
+    move |_theme, status| {
+        unified_button_style(status, &spec)
     }
 }
 
 /// 统一按钮 [`button::Style`]：悬停 / 按下 / 禁用。
+/// 使用闭包捕获的颜色，而非 tokens 引用。
 pub fn unified_button_style(
-    theme: &Theme,
     status: Status,
     spec: &ButtonStyleSpec,
 ) -> button::Style {
-    let t = theme.extended_palette();
     let base_text = spec.label.color;
 
     let border_none = || Border {
@@ -212,7 +204,7 @@ pub fn unified_button_style(
             } else {
                 rounded_border(
                     spec.border_radius,
-                    with_alpha(t.background.strong.color, 0.25),
+                    with_alpha(Color::from_rgb8(0x3a, 0x3a, 0x3c), 0.25),
                 )
             },
             ..Default::default()
@@ -245,14 +237,14 @@ pub fn unified_button_style(
             let hover = spec
                 .tint
                 .hover_bg
-                .unwrap_or_else(|| mix_surface(theme, base, spec.tint.hover_blend));
+                .unwrap_or_else(|| mix_surface(base, spec.tint.hover_blend));
             button::Style {
                 background: Some(Background::Color(hover)),
                 text_color: base_text,
                 border: if spec.borderless {
                     border_none()
                 } else {
-                    rounded_border(spec.border_radius, with_alpha(t.primary.weak.color, 0.35))
+                    rounded_border(spec.border_radius, with_alpha(Color::from_rgb8(0x33, 0xff, 0x99), 0.35))
                 },
                 ..Default::default()
             }
@@ -262,14 +254,14 @@ pub fn unified_button_style(
             let pressed = spec
                 .tint
                 .pressed_bg
-                .unwrap_or_else(|| mix_surface(theme, base, spec.tint.pressed_blend));
+                .unwrap_or_else(|| mix_surface(base, spec.tint.pressed_blend));
             button::Style {
                 background: Some(Background::Color(pressed)),
                 text_color: base_text,
                 border: if spec.borderless {
                     border_none()
                 } else {
-                    rounded_border(spec.border_radius, with_alpha(t.primary.strong.color, 0.55))
+                    rounded_border(spec.border_radius, with_alpha(Color::from_rgb8(0x00, 0xcc, 0x66), 0.55))
                 },
                 ..Default::default()
             }
@@ -298,9 +290,9 @@ fn pressed_from(c: Color) -> Color {
     }
 }
 
-fn mix_surface(theme: &Theme, base: Color, intensity: f32) -> Color {
-    let t = theme.extended_palette();
-    let surface = t.background.weak.color;
+/// 混色函数：基于 tokens.surface_1 进行混色。
+fn mix_surface(base: Color, intensity: f32) -> Color {
+    let surface = Color::from_rgb8(0x2c, 0x2c, 0x2e); // surface_1
     if base.a < 0.02 {
         return with_alpha(surface, intensity.clamp(0.0, 1.0));
     }

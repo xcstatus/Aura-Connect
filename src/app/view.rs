@@ -1,7 +1,8 @@
 use iced::widget::{Stack, column, container};
 use iced::Element;
 
-use super::chrome::{main_chrome_style, unified_titlebar_padding};
+use super::chrome::unified_titlebar_padding;
+use super::components::helpers::tokens_for_state;
 use super::components;
 use super::components::overlays;
 use super::components::quick_connect;
@@ -64,10 +65,12 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
             .into()
     };
 
+    let tokens = tokens_for_state(state);
+    let main_chrome = crate::app::chrome::main_chrome_style(tokens);
     let terminal_region = container(under_top_bar)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
-        .style(main_chrome_style);
+        .style(main_chrome);
 
     let chrome = column![top_bar, terminal_region].height(iced::Length::Fill);
 

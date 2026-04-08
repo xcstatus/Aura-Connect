@@ -4,8 +4,7 @@ use iced::widget::{button, column, container, row, text, text_input, Space};
 
 use secrecy::ExposeSecret;
 
-use crate::app::chrome::top_bar_material_style;
-use crate::app::components::helpers::layered_scrim_style;
+use crate::app::components::helpers::{layered_scrim_style, tokens_for_state, top_bar_material_style};
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::style_chrome_primary;
@@ -19,6 +18,7 @@ pub(crate) fn inline_password_overlay(state: &IcedState) -> Element<'_, Message>
         return Space::new().into();
     }
 
+    let tokens = tokens_for_state(state);
     let is_key = matches!(state.model.draft.auth, crate::session::AuthMethod::Key { .. });
     let label = if is_key {
         state.model.i18n.tr("iced.term.passphrase_placeholder")
@@ -27,7 +27,7 @@ pub(crate) fn inline_password_overlay(state: &IcedState) -> Element<'_, Message>
     };
 
     let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-        .style(|theme: &iced::Theme| layered_scrim_style(theme, 0));
+        .style(layered_scrim_style(tokens, 0));
 
     let input_form = container(
         column![
@@ -53,7 +53,7 @@ pub(crate) fn inline_password_overlay(state: &IcedState) -> Element<'_, Message>
                     .on_press(Message::QuickConnectInlinePasswordSubmit(
                         state.inline_password_input.expose_secret().to_string()
                     ))
-                    .style(style_chrome_primary(13.0)),
+                    .style(style_chrome_primary(tokens)),
             ]
             .align_y(Alignment::Center),
         ]
@@ -61,7 +61,7 @@ pub(crate) fn inline_password_overlay(state: &IcedState) -> Element<'_, Message>
         .width(iced::Length::Fixed(320.0)),
     )
     .padding(16)
-    .style(top_bar_material_style);
+    .style(top_bar_material_style(tokens));
 
     use iced::widget::Stack;
     Stack::with_children([scrim.into(), input_form.into()])

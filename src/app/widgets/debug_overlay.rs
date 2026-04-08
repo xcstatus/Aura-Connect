@@ -10,59 +10,25 @@ use iced::widget::Column;
 
 use crate::app::message::Message;
 use crate::app::state::IcedState;
+use crate::theme::{DebugTokens, DesignTokens, RustSshThemeId};
 
-/// Overlay style constants.
-///
-/// NOTE: Debug overlay intentionally uses fixed colors for clarity.
-/// These should remain high-contrast for readability across all themes.
-const OVERLAY_BG: iced::Color = iced::Color {
-    r: 0.08,
-    g: 0.08,
-    b: 0.12,
-    a: 0.88,
-};
 const OVERLAY_PAD: f32 = 12.0;
-
-/// Per-tab summary line.
-struct TabLine {
-    idx: usize,
-    pump: u64,
-    bytes: u64,
-    vt_ms: f64,
-    frame_ms: f64,
-}
-
-impl<'a> From<TabLine> for iced::Element<'a, Message> {
-    fn from(val: TabLine) -> Self {
-        // Colors tuned for debug readability across all themes
-        // (developer-facing, so high contrast is prioritized)
-        let color = if val.idx == 0 {
-            iced::Color::from_rgb(0.6, 0.9, 0.6) // First tab: green tint
-        } else {
-            iced::Color::from_rgb(0.7, 0.7, 0.8) // Other tabs: neutral gray
-        };
-        let color_inner = color;
-        text(format!(
-            "[{}] pump={} bytes={} vt={:.1}ms frame={:.1}ms",
-            val.idx,
-            val.pump,
-            fmt_bytes(val.bytes),
-            val.vt_ms,
-            val.frame_ms,
-        ))
-        .style(move |_| iced::widget::text::Style {
-            color: Some(color_inner),
-            ..Default::default()
-        })
-        .into()
-    }
-}
 
 /// Build the debug overlay content from current state.
 pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message> {
     let perf = &state.perf;
     let n = state.tab_panes.len();
     let focused = state.window_focused;
+
+    // 获取当前主题的 tokens
+    let theme_id = match state.model.settings.general.theme.as_str() {
+        "Light" => RustSshThemeId::Light,
+        "Warm" => RustSshThemeId::Warm,
+        "GitHub" => RustSshThemeId::GitHub,
+        _ => RustSshThemeId::Dark,
+    };
+    let tokens = DesignTokens::for_id(theme_id);
+    let debug = DebugTokens::from_design_tokens(&tokens);
 
     let slow_pct = if perf.ticks > 0 {
         perf.slow_ticks as f64 / perf.ticks as f64 * 100.0
@@ -104,68 +70,67 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
         0.0
     };
 
+    // 捕获 debug tokens 到闭包中（Copy trait 使其可以移动）
+    let debug_bg = debug.bg;
+    let debug_title = debug.text_title;
+    let debug_muted = debug.text_muted;
+    let debug_good = debug.text_good;
+    let debug_warn = debug.text_warn;
+    let debug_error = debug.text_error;
+    let debug_tab_first = debug.tab_first;
+    let debug_tab_other = debug.tab_other;
+
+    // 基于性能指标选择颜色
     let tick_line_color = if slow_pct > 10.0 {
-        iced::Color::from_rgb(0.95, 0.4, 0.4)
+        debug_error
     } else if slow_pct > 5.0 {
-        iced::Color::from_rgb(0.95, 0.75, 0.4)
+        debug_warn
     } else {
-        iced::Color::from_rgb(0.55, 0.9, 0.55)
+        debug_good
     };
 
     let perf_line_color = if empty_pct > 50.0 || slow_pct > 10.0 {
-        iced::Color::from_rgb(0.95, 0.75, 0.4)
+        debug_warn
     } else {
-        iced::Color::from_rgb(0.45, 0.45, 0.55)
+        debug_muted
     };
 
-    let title_color = iced::Color::from_rgb(0.9, 0.85, 0.6);
-    let muted_color = iced::Color::from_rgb(0.45, 0.45, 0.55);
-
-    let divider = || {
-        let c = muted_color;
-        text("────────────────────────────")
-            .style(move |_| iced::widget::text::Style {
-                color: Some(c),
-                ..Default::default()
-            })
-    };
-
+    // 构建每个 tab 的行
     let tab_lines: Vec<iced::Element<'_, Message>> = (0..n)
         .map(|i| {
             let pump_calls = (*perf.tab_pump_calls.get(i).unwrap_or(&0)).max(1) as f64;
             let vt_ns = *perf.tab_vt_ns.get(i).unwrap_or(&0) as f64;
             let frame_ns = *perf.tab_vt_frame_ns.get(i).unwrap_or(&0) as f64;
-            iced::Element::from(TabLine {
-                idx: i,
-                pump: *perf.tab_pump_calls.get(i).unwrap_or(&0),
-                bytes: *perf.tab_bytes_in.get(i).unwrap_or(&0),
-                vt_ms: vt_ns / 1_000_000.0 / pump_calls,
-                frame_ms: frame_ns / 1_000_000.0 / pump_calls,
+            let color = if i == 0 { debug_tab_first } else { debug_tab_other };
+
+            text(format!(
+                "[{}] pump={} bytes={} vt={:.1}ms frame={:.1}ms",
+                i,
+                *perf.tab_pump_calls.get(i).unwrap_or(&0),
+                fmt_bytes(*perf.tab_bytes_in.get(i).unwrap_or(&0)),
+                vt_ns / 1_000_000.0 / pump_calls,
+                frame_ns / 1_000_000.0 / pump_calls,
+            ))
+            .style(move |_| iced::widget::text::Style {
+                color: Some(color),
+                ..Default::default()
             })
+            .into()
         })
         .collect();
 
-    let hist_vals: Vec<String> = perf
-        .tick_histogram_ms()
-        .iter()
-        .map(|v| format!("{:.1}", v))
-        .collect();
+    let hist_vals: Vec<String> = perf.tick_histogram_ms().iter().map(|v| format!("{:.1}", v)).collect();
     let hist_text = text(hist_vals.join(" "))
         .size(10.0)
         .style(move |_| iced::widget::text::Style {
-            color: Some(iced::Color::from_rgb(0.45, 0.45, 0.55)),
+            color: Some(debug_muted),
             ..Default::default()
         });
 
-    let title_color_inner = title_color;
-    let tick_line_inner = tick_line_color;
-    let perf_line_inner = perf_line_color;
-    let muted_inner = muted_color;
-
     let mut col = Column::new()
         .push(
-            text("⚙ DebugOverlay").style(move |_| iced::widget::text::Style {
-                color: Some(title_color_inner),
+            text("DebugOverlay").style(move |_| iced::widget::text::Style {
+                color: Some(debug_title),
                 ..Default::default()
             }),
         )
@@ -176,7 +141,7 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
                 tick_rate, pump_rate, bytes_rate
             ))
             .style(move |_| iced::widget::text::Style {
-                color: Some(tick_line_inner),
+                color: Some(tick_line_color),
                 ..Default::default()
             }),
         )
@@ -187,7 +152,7 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
                 slow_pct, empty_pct, vt_ms, frame_ms
             ))
             .style(move |_| iced::widget::text::Style {
-                color: Some(perf_line_inner),
+                color: Some(perf_line_color),
                 ..Default::default()
             }),
         )
@@ -199,11 +164,16 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
         .push(Space::new())
         .push(text(format!("focus={}  tabs={}  overlay=ON", focused, n)))
         .push(Space::new())
-        .push(divider())
+        .push(
+            text("────────────────────────────").style(move |_| iced::widget::text::Style {
+                color: Some(debug_muted),
+                ..Default::default()
+            }),
+        )
         .push(Space::new())
         .push(
             text("Per-tab:").style(move |_| iced::widget::text::Style {
-                color: Some(title_color),
+                color: Some(debug_title),
                 ..Default::default()
             }),
         )
@@ -215,11 +185,16 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
 
     col = col
         .push(Space::new())
-        .push(divider())
+        .push(
+            text("────────────────────────────").style(move |_| iced::widget::text::Style {
+                color: Some(debug_muted),
+                ..Default::default()
+            }),
+        )
         .push(Space::new())
         .push(
             text("Tick history (ms):").style(move |_| iced::widget::text::Style {
-                color: Some(muted_inner),
+                color: Some(debug_muted),
                 ..Default::default()
             }),
         )
@@ -228,7 +203,7 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
         .push(Space::new())
         .push(
             text("Ctrl+Shift+D to toggle").style(move |_| iced::widget::text::Style {
-                color: Some(muted_color),
+                color: Some(debug_muted),
                 ..Default::default()
             }),
         );
@@ -236,8 +211,8 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
     Container::new(col)
         .padding(iced::Padding::from(OVERLAY_PAD))
         .max_width(500.0)
-        .style(|_| iced::widget::container::Style {
-            background: Some(iced::Background::Color(OVERLAY_BG)),
+        .style(move |_| iced::widget::container::Style {
+            background: Some(iced::Background::Color(debug_bg)),
             ..Default::default()
         })
         .into()

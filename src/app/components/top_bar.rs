@@ -6,24 +6,26 @@ use iced::{Element, Theme};
 
 use crate::app::chrome::{
     TAB_STRIP_SCROLLABLE_ID, TOP_BAR_EDGE_PAD, TOP_BAR_H, TOP_CONTROL_GROUP_W, TOP_ICON_BTN,
-    main_chrome_style, top_bar_material_style, top_bar_vertical_rule,
+    main_chrome_style, top_bar_vertical_rule,
 };
+use crate::app::components::helpers::{top_bar_material_style, tokens_for_state};
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::{style_tab_strip, style_top_icon};
 
 /// Build the top bar (tab strip + action buttons).
 pub(crate) fn top_bar(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
+    let tokens = tokens_for_state(state);
     let tabs_row = build_tab_strip(state, tick_ms);
-    let action_group = build_action_group(state);
-    let control_group = build_control_group(state);
+    let action_group = build_action_group(state, tokens);
+    let control_group = build_control_group(state, tokens);
 
-    let tab_scroll_core = build_tab_scroll_area(state, tabs_row);
+    let tab_scroll_core = build_tab_scroll_area(state, tabs_row, tokens);
     let tab_scroll_host = mouse_area(tab_scroll_core).on_scroll(Message::TabStripWheel);
 
     let scroll_control_gutter = container(Space::new().height(iced::Length::Fixed(TOP_BAR_H)))
         .width(crate::app::chrome::SCROLL_TO_CONTROL_GUTTER_W)
-        .style(top_bar_material_style);
+        .style(top_bar_material_style(tokens));
 
     let mut top_bar_row = row![].spacing(0).align_y(Alignment::Center);
     #[cfg(target_os = "macos")]
@@ -31,7 +33,7 @@ pub(crate) fn top_bar(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
         top_bar_row = top_bar_row.push(
             container(Space::new().height(iced::Length::Fixed(TOP_BAR_H)))
                 .width(crate::app::chrome::TRAFFIC_LIGHT_BAND_W)
-                .style(top_bar_material_style),
+                .style(top_bar_material_style(tokens)),
         );
     }
     top_bar_row = top_bar_row
@@ -47,6 +49,7 @@ pub(crate) fn top_bar(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
 }
 
 fn build_tab_strip(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
+    let tokens = tokens_for_state(state);
     let mut tabs_row = row![].spacing(4).align_y(Alignment::Center);
     for (i, tab) in state.tabs.iter().enumerate() {
         let tab_label = tab.title.clone();
@@ -54,12 +57,12 @@ fn build_tab_strip(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
         let select_btn = button(text(tab_label).size(11))
             .on_press(Message::TabSelected(i))
             .width(iced::Length::Fill)
-            .style(style_tab_strip(11.0));
+            .style(style_tab_strip(tokens));
         let close_slot: Element<'_, Message> = if state.tab_hover_index == Some(i) {
             button(text("×").size(12))
                 .on_press(Message::TabClose(i))
                 .width(iced::Length::Fixed(22.0))
-                .style(style_tab_strip(12.0))
+                .style(style_tab_strip(tokens))
                 .into()
         } else {
             Space::new()
@@ -73,10 +76,9 @@ fn build_tab_strip(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fixed(if i == state.active_tab { 2.0 } else { 0.0 })),
         )
-        .style(move |theme: &Theme| {
+        .style(move |_theme: &Theme| {
             if i == state.active_tab {
-                let c = theme.extended_palette().primary.base.color;
-                container::Style::default().background(c)
+                container::Style::default().background(tokens.accent_base)
             } else {
                 container::Style::default()
             }
@@ -103,18 +105,18 @@ fn build_tab_strip(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
     tabs_row.into()
 }
 
-fn build_action_group(state: &IcedState) -> Element<'_, Message> {
+fn build_action_group(state: &IcedState, tokens: crate::theme::DesignTokens) -> Element<'static, Message> {
     let i18n = &state.model.i18n;
     let btn_quick = button(text("⚡").size(14))
         .on_press(Message::TopQuickConnect)
         .width(iced::Length::Fixed(TOP_ICON_BTN))
         .height(iced::Length::Fixed(TOP_ICON_BTN))
-        .style(style_top_icon(TOP_ICON_BTN));
+        .style(style_top_icon(tokens));
     let btn_new = button(text("+").size(18))
         .on_press(Message::TopAddTab)
         .width(iced::Length::Fixed(TOP_ICON_BTN))
         .height(iced::Length::Fixed(TOP_ICON_BTN))
-        .style(style_top_icon(TOP_ICON_BTN));
+        .style(style_top_icon(tokens));
     let quick_tip = text(i18n.tr("iced.topbar.quick_connect")).size(12);
     let new_tip = text(i18n.tr("iced.topbar.new_tab")).size(12);
 
@@ -128,12 +130,12 @@ fn build_action_group(state: &IcedState) -> Element<'_, Message> {
     )
     .height(iced::Length::Fixed(TOP_BAR_H))
     .padding([0, 8])
-    .style(top_bar_material_style)
+    .style(top_bar_material_style(tokens))
     .align_y(Alignment::Center)
     .into()
 }
 
-fn build_tab_scroll_area<'a>(_state: &'a IcedState, tabs_row: Element<'a, Message>) -> Element<'a, Message> {
+fn build_tab_scroll_area<'a>(state: &'a IcedState, tabs_row: Element<'a, Message>, tokens: crate::theme::DesignTokens) -> Element<'a, Message> {
     let tabs_only_scroll = scrollable(
         row![tabs_row, top_bar_vertical_rule()].spacing(0).align_y(Alignment::Center),
     )
@@ -145,21 +147,21 @@ fn build_tab_scroll_area<'a>(_state: &'a IcedState, tabs_row: Element<'a, Messag
     container(tabs_only_scroll)
         .width(iced::Length::Fill)
         .height(iced::Length::Fixed(TOP_BAR_H))
-        .style(main_chrome_style)
+        .style(main_chrome_style(tokens))
         .into()
 }
 
-fn build_control_group(state: &IcedState) -> Element<'_, Message> {
+fn build_control_group(state: &IcedState, tokens: crate::theme::DesignTokens) -> Element<'static, Message> {
     let i18n = &state.model.i18n;
     let btn_settings = button(text("⚙").size(15))
         .on_press(Message::TopOpenSettings)
         .width(iced::Length::Fixed(TOP_ICON_BTN))
         .height(iced::Length::Fixed(TOP_ICON_BTN))
-        .style(style_top_icon(TOP_ICON_BTN));
+        .style(style_top_icon(tokens));
     let settings_tip = text(i18n.tr("iced.topbar.settings_center")).size(12);
     let settings_ctrl = tooltip(btn_settings, settings_tip, iced::widget::tooltip::Position::Bottom);
 
-    let win_controls: Element<'_, Message> = {
+    let win_controls: Element<'static, Message> = {
         #[cfg(not(target_os = "macos"))]
         {
             row![
@@ -167,17 +169,17 @@ fn build_control_group(state: &IcedState) -> Element<'_, Message> {
                     .on_press(Message::WinMinimize)
                     .width(iced::Length::Fixed(28.0))
                     .height(iced::Length::Fixed(26.0))
-                    .style(style_top_icon(12.0)),
+                    .style(style_top_icon(tokens)),
                 button(text("□").size(11))
                     .on_press(Message::WinToggleMaximize)
                     .width(iced::Length::Fixed(28.0))
                     .height(iced::Length::Fixed(26.0))
-                    .style(style_top_icon(11.0)),
+                    .style(style_top_icon(tokens)),
                 button(text("×").size(12))
                     .on_press(Message::WinClose)
                     .width(iced::Length::Fixed(28.0))
                     .height(iced::Length::Fixed(26.0))
-                    .style(style_top_icon(12.0)),
+                    .style(style_top_icon(tokens)),
             ]
             .spacing(2)
             .align_y(Alignment::Center)
@@ -197,6 +199,6 @@ fn build_control_group(state: &IcedState) -> Element<'_, Message> {
     .width(iced::Length::Fixed(TOP_CONTROL_GROUP_W))
     .height(iced::Length::Fixed(TOP_BAR_H))
     .padding([0, 0])
-    .style(top_bar_material_style)
+    .style(top_bar_material_style(tokens))
     .into()
 }

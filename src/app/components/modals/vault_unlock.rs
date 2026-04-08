@@ -2,10 +2,10 @@ use iced::alignment::Alignment;
 use iced::Element;
 use iced::widget::{button, column, container, row, text, text_input, Space};
 
-use crate::app::components::helpers::layered_scrim_style;
+use crate::app::components::helpers::{layered_scrim_style, tokens_for_state, top_bar_material_style};
 use crate::app::message::Message;
 use crate::app::state::IcedState;
-use crate::app::widgets::chrome_button::{style_chrome_primary, style_top_icon};
+use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
 
 /// Build the vault unlock modal.
 pub(crate) fn vault_unlock_modal(state: &IcedState) -> Element<'_, Message> {
@@ -13,8 +13,10 @@ pub(crate) fn vault_unlock_modal(state: &IcedState) -> Element<'_, Message> {
         return Space::new().into()
     };
 
+    let tokens = tokens_for_state(state);
+
     let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-        .style(|theme: &iced::Theme| layered_scrim_style(theme, 0));
+        .style(layered_scrim_style(tokens, 0));
 
     let title = if unlock.pending_save_credentials_profile_id.is_some() {
         state.model.i18n.tr("iced.vault_unlock.title_save_credentials")
@@ -32,7 +34,7 @@ pub(crate) fn vault_unlock_modal(state: &IcedState) -> Element<'_, Message> {
                 .on_press(Message::VaultUnlockClose)
                 .width(iced::Length::Fixed(28.0))
                 .height(iced::Length::Fixed(28.0))
-                .style(style_top_icon(14.0)),
+                .style(style_top_icon(tokens)),
         ]
         .align_y(Alignment::Center),
         text_input(state.model.i18n.tr("iced.vault_unlock.password_placeholder"), unlock.password.expose_secret())
@@ -54,10 +56,10 @@ pub(crate) fn vault_unlock_modal(state: &IcedState) -> Element<'_, Message> {
         row![
             button(text(i18n.tr("iced.vault_unlock.btn.confirm")).size(13))
                 .on_press(Message::VaultUnlockSubmit)
-                .style(style_chrome_primary(13.0)),
+                .style(style_chrome_primary(tokens)),
             button(text(i18n.tr("iced.vault_unlock.btn.cancel")).size(13))
                 .on_press(Message::VaultUnlockClose)
-                .style(crate::app::widgets::chrome_button::style_chrome_secondary(13.0)),
+                .style(style_chrome_secondary(tokens)),
         ]
         .spacing(8),
     );
@@ -65,7 +67,7 @@ pub(crate) fn vault_unlock_modal(state: &IcedState) -> Element<'_, Message> {
     let card = container(body)
         .width(iced::Length::Fixed(520.0))
         .padding(16)
-        .style(crate::app::chrome::top_bar_material_style);
+        .style(top_bar_material_style(tokens));
     let centered = container(card)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)

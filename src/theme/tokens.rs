@@ -215,9 +215,73 @@ impl DesignTokens {
         Color::from_rgba(self.bg_primary.r, self.bg_primary.g, self.bg_primary.b, alpha)
     }
 
+    /// 层级遮罩层颜色 - 根据弹窗层级调整透明度
+    /// level: 0 = 第一层弹窗, 1 = 嵌套弹窗, 以此类推
+    /// 每增加一层透明度增加 0.15，上限 0.75
+    pub fn layered_scrim(&self, level: usize) -> Color {
+        let base_alpha = 0.35_f32;
+        let alpha = (base_alpha + level as f32 * 0.15).min(0.75);
+        Color::from_rgba(self.bg_primary.r, self.bg_primary.g, self.bg_primary.b, alpha)
+    }
+
+    /// 层级遮罩层颜色（带动态透明度 + 层级调整）
+    pub fn layered_scrim_with_alpha(&self, alpha: f32, level: usize) -> Color {
+        let level_adjustment = level as f32 * 0.1;
+        let adjusted_alpha = (alpha - level_adjustment).max(0.2).min(0.85);
+        Color::from_rgba(self.bg_primary.r, self.bg_primary.g, self.bg_primary.b, adjusted_alpha)
+    }
+
     /// 终端默认单元格背景（深色，确保文字可见）
     pub fn terminal_default_bg(&self) -> Color {
         Color::from_rgb8(10, 10, 15)
+    }
+}
+
+/// DebugOverlay 专用色票
+///
+/// 基于 DesignTokens 生成，确保开发者工具与主题风格一致。
+/// 同时提供高对比度配色以保证调试信息的可读性。
+#[derive(Debug, Clone, Copy)]
+pub struct DebugTokens {
+    /// 面板背景
+    pub bg: Color,
+    /// 标题文本
+    pub text_title: Color,
+    /// 普通文本
+    pub text_normal: Color,
+    /// 次要/静音文本
+    pub text_muted: Color,
+    /// 良好状态（绿色）
+    pub text_good: Color,
+    /// 警告状态（黄色）
+    pub text_warn: Color,
+    /// 错误状态（红色）
+    pub text_error: Color,
+    /// 第一个标签页（高亮）
+    pub tab_first: Color,
+    /// 其他标签页
+    pub tab_other: Color,
+}
+
+impl DebugTokens {
+    /// 基于 DesignTokens 生成 DebugTokens
+    pub fn from_design_tokens(tokens: &DesignTokens) -> Self {
+        Self {
+            bg: Color::from_rgba(
+                tokens.bg_primary.r,
+                tokens.bg_primary.g,
+                tokens.bg_primary.b,
+                0.88,
+            ),
+            text_title: tokens.text_secondary,
+            text_normal: tokens.text_primary,
+            text_muted: tokens.text_disabled,
+            text_good: tokens.success,
+            text_warn: tokens.warning,
+            text_error: tokens.error,
+            tab_first: tokens.accent_base,
+            tab_other: tokens.text_secondary,
+        }
     }
 }
 

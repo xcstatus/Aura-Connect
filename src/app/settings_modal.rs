@@ -125,14 +125,27 @@ fn modal_card(state: &IcedState) -> Element<'_, Message> {
 }
 
 fn sidebar_item_style(active: bool, tokens: DesignTokens) -> container::Style {
+    let bg = if active { tokens.surface_2 } else { tokens.bg_secondary };
     let border_color = if active { tokens.accent_base } else { Color::TRANSPARENT };
     container::Style::default()
-        .background(if active { tokens.surface_2 } else { tokens.bg_secondary })
+        .background(bg)
         .border(Border {
             width: 3.0,
             color: border_color,
             radius: 4.0.into(),
         })
+}
+
+fn sidebar_item_style_clone(active: bool, bg: Color, accent: Color) -> impl Fn(&Theme) -> container::Style + 'static {
+    move |_theme: &Theme| {
+        container::Style::default()
+            .background(bg)
+            .border(Border {
+                width: if active { 3.0 } else { 0.0 },
+                color: if active { accent } else { Color::TRANSPARENT },
+                radius: 4.0.into(),
+            })
+    }
 }
 
 fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Message> {
@@ -145,6 +158,9 @@ fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mess
         (SettingsCategory::Backup, "iced.settings.cat.backup"),
     ];
     let accent_base = tokens.accent_base;
+    let bg_secondary = tokens.bg_secondary;
+    let surface_2 = tokens.surface_2;
+    let text_secondary = tokens.text_secondary;
     let mut col = column![]
         .spacing(4)
         .width(iced::Length::Fixed(layout::SETTINGS_SIDEBAR_WIDTH))
@@ -153,7 +169,10 @@ fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mess
     for (cat, key) in entries {
         let label = i18n.tr(key).to_string();
         let active = state.settings_category == cat;
-        let text_color = if active { accent_base } else { tokens.text_secondary };
+        let text_color = if active { accent_base } else { text_secondary };
+        let btn_style = style_tab_strip(tokens);
+        let item_bg = if active { surface_2 } else { bg_secondary };
+        let item_accent = if active { accent_base } else { Color::TRANSPARENT };
         let cell = button(
             container(text(label).size(13).style(move |_t: &Theme| text::Style {
                 color: Some(text_color),
@@ -163,23 +182,24 @@ fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mess
         )
         .on_press(Message::SettingsCategoryChanged(cat))
         .width(iced::Length::Fill)
-        .style(style_tab_strip(13.0));
+        .style(btn_style);
         col = col.push(
             container(cell)
-                .style(move |_theme: &Theme| sidebar_item_style(active, tokens)),
+                .style(sidebar_item_style_clone(active, item_bg, item_accent)),
         );
     }
     container(col)
         .width(iced::Length::Fixed(layout::SETTINGS_SIDEBAR_WIDTH))
         .height(iced::Length::Fill)
         .style(move |_t: &Theme| {
-            container::Style::default().background(tokens.bg_secondary)
+            container::Style::default().background(bg_secondary)
         })
         .into()
 }
 
 fn settings_header_row(i18n: &crate::i18n::I18n, tokens: DesignTokens) -> Element<'_, Message> {
     let text_primary = tokens.text_primary;
+    let btn_style = style_top_icon(tokens);
     container(
         row![
             text(i18n.tr("iced.settings.title")).size(16).style(move |_t: &Theme| text::Style {
@@ -190,7 +210,7 @@ fn settings_header_row(i18n: &crate::i18n::I18n, tokens: DesignTokens) -> Elemen
                 .on_press(Message::SettingsDismiss)
                 .width(iced::Length::Fixed(28.0))
                 .height(iced::Length::Fixed(28.0))
-                .style(style_top_icon(14.0)),
+                .style(btn_style),
         ]
         .align_y(Alignment::Center),
     )
@@ -252,7 +272,7 @@ fn settings_sub_tab_row(state: &IcedState, tokens: DesignTokens) -> Element<'_, 
             .on_press(Message::SettingsSubTabChanged(idx))
             .style(move |theme: &Theme, status: iced::widget::button::Status| {
                 // 所有 Tab 按钮都使用极简样式，选中态通过文字颜色区分
-                style_tab_strip(13.0)(theme, status)
+                style_tab_strip(tokens)(theme, status)
             });
         r = r.push(btn);
     }
@@ -464,7 +484,7 @@ fn terminal_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
                         .on_press(Message::SettingsFieldChanged(SettingsField::ColorScheme(
                             name.to_string(),
                         )))
-                        .style(style_chrome_secondary(12.0)),
+                        .style(style_chrome_secondary(tokens)),
                     ]
                     .align_y(Alignment::Center),
                 );
@@ -662,7 +682,7 @@ fn connection_protocol_page<'a>(
                 .width(iced::Length::Fill),
             button(text(i18n.tr("iced.settings.conn.new")))
                 .on_press(Message::OpenSessionEditor(None))
-                .style(style_chrome_primary(12.0)),
+                .style(style_chrome_primary(tokens)),
         ]
         .spacing(8)
         .align_y(Alignment::Center),
@@ -705,10 +725,10 @@ fn connection_protocol_page<'a>(
                         Space::new().width(iced::Length::Fill),
                         button(text(i18n.tr("iced.settings.conn.edit")))
                             .on_press(Message::OpenSessionEditor(Some(id.clone())))
-                            .style(style_chrome_secondary(11.0)),
+                            .style(style_chrome_secondary(tokens)),
                         button(text(i18n.tr("iced.settings.conn.delete")))
                             .on_press(Message::DeleteSessionProfile(id))
-                            .style(style_chrome_secondary(11.0)),
+                            .style(style_chrome_secondary(tokens)),
                     ]
                     .align_y(Alignment::Center),
                 );
@@ -798,7 +818,7 @@ fn security_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
                     i18n.tr("settings.security.master_password.init_action")
                 }))
                 .on_press(Message::VaultOpen)
-                .style(style_chrome_secondary(12.0)),
+                .style(style_chrome_secondary(tokens)),
                 text(i18n.tr("settings.security.biometrics.title")).size(16).style(move |_t: &Theme| text::Style {
                     color: Some(text_primary),
                 }),
@@ -915,7 +935,7 @@ fn restart_banner(state: &IcedState, tokens: DesignTokens) -> Element<'_, Messag
             Space::new().width(iced::Length::Fill),
             button(text(i18n.tr("iced.settings.restart.ok")))
                 .on_press(Message::SettingsRestartAcknowledged)
-                .style(style_chrome_primary(12.0)),
+                .style(style_chrome_primary(tokens)),
         ]
         .padding(12)
         .align_y(Alignment::Center),

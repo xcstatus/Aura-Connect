@@ -2,7 +2,7 @@ use iced::alignment::Alignment;
 use iced::Element;
 use iced::widget::{container, row, text, Space};
 
-use crate::app::chrome::top_bar_material_style;
+use crate::app::components::helpers::top_bar_material_style;
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 
@@ -31,13 +31,14 @@ pub(crate) fn inline_connecting_overlay(state: &IcedState) -> Element<'_, Messag
         _ => state.model.i18n.tr("iced.term.connecting"),
     };
 
+    let tokens = crate::app::components::helpers::tokens_for_state(state);
     let content = container(
         row![text("⟳").size(14), text(format!("{stage_label}{dots}")).size(12)]
             .spacing(6)
             .align_y(Alignment::Center),
     )
     .padding(8)
-    .style(top_bar_material_style);
+    .style(top_bar_material_style(tokens));
 
     use iced::widget::Stack;
     Stack::with_children([Space::new().into(), content.into()])

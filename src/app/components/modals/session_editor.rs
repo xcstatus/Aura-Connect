@@ -4,7 +4,7 @@ use iced::widget::{button, checkbox, column, container, pick_list, row, text, te
 
 use secrecy::ExposeSecret;
 
-use crate::app::components::helpers::layered_scrim_style;
+use crate::app::components::helpers::{layered_scrim_style, tokens_for_state, top_bar_material_style};
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
@@ -15,10 +15,11 @@ pub(crate) fn session_editor_modal(state: &IcedState) -> Element<'_, Message> {
         return Space::new().into()
     };
 
+    let tokens = tokens_for_state(state);
     let i18n = &state.model.i18n;
 
     let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-        .style(|theme: &iced::Theme| layered_scrim_style(theme, 0));
+        .style(layered_scrim_style(tokens, 0));
 
     let auth_options: Vec<crate::session::AuthMethod> = vec![
         crate::session::AuthMethod::Password,
@@ -35,7 +36,7 @@ pub(crate) fn session_editor_modal(state: &IcedState) -> Element<'_, Message> {
                 .on_press(Message::SessionEditorClose)
                 .width(iced::Length::Fixed(28.0))
                 .height(iced::Length::Fixed(28.0))
-                .style(style_top_icon(14.0)),
+                .style(style_top_icon(tokens)),
         ]
         .align_y(Alignment::Center),
         text_input(i18n.tr("iced.field.host"), &ed.host)
@@ -76,10 +77,10 @@ pub(crate) fn session_editor_modal(state: &IcedState) -> Element<'_, Message> {
     let actions = row![
         button(text(i18n.tr("iced.btn.save_settings")).size(13))
             .on_press(Message::SessionEditorSave)
-            .style(style_chrome_primary(13.0)),
+            .style(style_chrome_primary(tokens)),
         button(text(i18n.tr("iced.quick_connect.back")).size(13))
             .on_press(Message::SessionEditorClose)
-            .style(style_chrome_secondary(13.0)),
+            .style(style_chrome_secondary(tokens)),
     ]
     .spacing(8)
     .align_y(Alignment::Center);
@@ -88,7 +89,7 @@ pub(crate) fn session_editor_modal(state: &IcedState) -> Element<'_, Message> {
     let card = container(body)
         .width(iced::Length::Fixed(520.0))
         .padding(16)
-        .style(crate::app::chrome::top_bar_material_style);
+        .style(top_bar_material_style(tokens));
     let centered = container(card)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)

@@ -9,4 +9,4 @@ pub use animation::{anim_done, anim_t, anim_t_bidir, ease_in, ease_in_out, ease_
 pub use iced_bridge::{
     default_rustssh_iced_theme, iced_extended, iced_palette, rustssh_iced_theme,
 };
-pub use tokens::{DesignTokens, RustSshThemeId, TerminalAnsiTokens};
+pub use tokens::{DebugTokens, DesignTokens, RustSshThemeId, TerminalAnsiTokens};
