@@ -13,7 +13,7 @@ use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::{style_tab_strip, style_top_icon};
 
 /// Build the top bar (tab strip + action buttons).
-pub fn top_bar(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
+pub(crate) fn top_bar(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
     let tabs_row = build_tab_strip(state, tick_ms);
     let action_group = build_action_group(state);
     let control_group = build_control_group(state);
@@ -133,7 +133,7 @@ fn build_action_group(state: &IcedState) -> Element<'_, Message> {
     .into()
 }
 
-fn build_tab_scroll_area<'a>(state: &'a IcedState, tabs_row: Element<'a, Message>) -> Element<'a, Message> {
+fn build_tab_scroll_area<'a>(_state: &'a IcedState, tabs_row: Element<'a, Message>) -> Element<'a, Message> {
     let tabs_only_scroll = scrollable(
         row![tabs_row, top_bar_vertical_rule()].spacing(0).align_y(Alignment::Center),
     )

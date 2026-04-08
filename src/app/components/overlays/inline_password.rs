@@ -5,13 +5,13 @@ use iced::widget::{button, column, container, row, text, text_input, Space};
 use secrecy::ExposeSecret;
 
 use crate::app::chrome::top_bar_material_style;
-use crate::app::components::helpers::modal_scrim_style;
+use crate::app::components::helpers::layered_scrim_style;
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::style_chrome_primary;
 
 /// Terminal-inline overlay: shows a compact password/passphrase input form.
-pub fn inline_password_overlay(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn inline_password_overlay(state: &IcedState) -> Element<'_, Message> {
     let needs_inline_input = !state.quick_connect_open
         && matches!(state.quick_connect_flow, crate::app::state::QuickConnectFlow::NeedAuthPassword);
 
@@ -27,7 +27,7 @@ pub fn inline_password_overlay(state: &IcedState) -> Element<'_, Message> {
     };
 
     let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-        .style(modal_scrim_style);
+        .style(|theme: &iced::Theme| layered_scrim_style(theme, 0));
 
     let input_form = container(
         column![

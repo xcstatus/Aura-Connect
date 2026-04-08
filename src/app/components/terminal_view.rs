@@ -8,7 +8,7 @@ use crate::app::terminal_widget;
 use crate::app::terminal_viewport;
 
 /// Build the terminal panel (main content area).
-pub fn terminal_panel(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn terminal_panel(state: &IcedState) -> Element<'_, Message> {
     let term_vp = terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal);
     let cell_w_hit = terminal_viewport::terminal_scroll_cell_geometry(
         state.window_size,

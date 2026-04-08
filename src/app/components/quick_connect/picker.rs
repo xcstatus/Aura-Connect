@@ -15,7 +15,7 @@ use super::grouped_ssh_profiles;
 use crate::session::{SessionProfile, TransportConfig};
 
 /// Quick connect picker panel: shows recent connections, saved profiles, and search.
-pub fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
 
     let query = state.quick_connect_query.trim();

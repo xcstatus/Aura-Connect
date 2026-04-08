@@ -13,8 +13,8 @@ use crate::settings::KdfMemoryLevel;
 /// Vault KDF 参数（默认/安全模式）
 /// 统一在此处管理，所有密钥派生都应使用此参数集。
 pub const KDF_ARGON2_MEMORY_KIB: u32 = 65536;
-pub const KDF_ARGON2_T_cost: u32 = 3;
-pub const KDF_ARGON2_P_cost: u32 = 1;
+pub const KDF_ARGON2_T_COST: u32 = 3;
+pub const KDF_ARGON2_P_COST: u32 = 1;
 
 /// 根据内存级别构建 Argon2id 实例
 pub fn kdf_argon2id_for_level(level: KdfMemoryLevel) -> Argon2<'static> {
@@ -22,7 +22,7 @@ pub fn kdf_argon2id_for_level(level: KdfMemoryLevel) -> Argon2<'static> {
         KdfMemoryLevel::Balanced => (16384u32, 2u32),  // 16MiB, t=2
         KdfMemoryLevel::Security => (65536u32, 3u32),    // 64MiB, t=3
     };
-    let params = Params::new(mem_kib, t, KDF_ARGON2_P_cost, Some(32))
+    let params = Params::new(mem_kib, t, KDF_ARGON2_T_COST, Some(32))
         .expect("KDF params are hardcoded and should always be valid");
     Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params)
 }

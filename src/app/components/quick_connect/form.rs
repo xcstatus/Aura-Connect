@@ -13,7 +13,7 @@ use crate::app::widgets::chrome_button::style_chrome_primary;
 use crate::app::widgets::chrome_button::style_chrome_secondary;
 
 /// Quick connect new connection form: host/port, user, password, auth method, etc.
-pub fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
     let is_connected = state.active_session_is_connected();
     let flow = state.quick_connect_flow;

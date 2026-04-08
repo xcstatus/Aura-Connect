@@ -2,9 +2,9 @@ pub mod form;
 pub mod modal;
 pub mod picker;
 
-pub use form::quick_connect_new_form;
-pub use modal::{quick_connect_modal_stack, quick_connect_panel_content};
-pub use picker::quick_connect_picker;
+pub(crate) use form::quick_connect_new_form;
+pub(crate) use modal::{quick_connect_modal_stack, quick_connect_panel_content};
+pub(crate) use picker::quick_connect_picker;
 
 use crate::session::{SessionProfile, TransportConfig};
 

@@ -1,25 +1,22 @@
 use iced::alignment::Alignment;
 use iced::Element;
-use iced::widget::{button, column, container, mouse_area, row, text, text_input, Space};
+use iced::widget::{button, column, container, row, text, text_input, Space};
 
 use secrecy::ExposeSecret;
 
-use crate::app::components::helpers::modal_scrim_style;
+use crate::app::components::helpers::layered_scrim_style;
 use crate::app::message::Message;
 use crate::app::state::{IcedState, VaultFlowMode};
 use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
 
 /// Build the vault (password manager) initialization/change-password modal.
-pub fn vault_modal(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn vault_modal(state: &IcedState) -> Element<'_, Message> {
     let Some(flow) = state.vault_flow.as_ref() else {
         return Space::new().into()
     };
 
-    let scrim = mouse_area(
-        container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-            .style(modal_scrim_style),
-    )
-    .on_press(Message::VaultClose);
+    let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
+        .style(|theme: &iced::Theme| layered_scrim_style(theme, 0));
 
     let title = match flow.mode {
         VaultFlowMode::Initialize => state.model.i18n.tr("iced.vault.title.initialize"),

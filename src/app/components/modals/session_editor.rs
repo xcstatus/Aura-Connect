@@ -1,27 +1,24 @@
 use iced::alignment::Alignment;
 use iced::Element;
-use iced::widget::{button, checkbox, column, container, mouse_area, pick_list, row, text, text_input, Space};
+use iced::widget::{button, checkbox, column, container, pick_list, row, text, text_input, Space};
 
 use secrecy::ExposeSecret;
 
-use crate::app::components::helpers::modal_scrim_style;
+use crate::app::components::helpers::layered_scrim_style;
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
 
 /// Build the session editor modal for creating/editing SSH session profiles.
-pub fn session_editor_modal(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn session_editor_modal(state: &IcedState) -> Element<'_, Message> {
     let Some(ed) = state.session_editor.as_ref() else {
         return Space::new().into()
     };
 
     let i18n = &state.model.i18n;
 
-    let scrim = mouse_area(
-        container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-            .style(modal_scrim_style),
-    )
-    .on_press(Message::SessionEditorClose);
+    let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
+        .style(|theme: &iced::Theme| layered_scrim_style(theme, 0));
 
     let auth_options: Vec<crate::session::AuthMethod> = vec![
         crate::session::AuthMethod::Password,

@@ -9,7 +9,7 @@ use crate::app::message::Message;
 use crate::app::state::{IcedState, VaultStatus};
 
 /// Build the status bar at the bottom of the terminal area.
-pub fn status_bar(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn status_bar(state: &IcedState) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
     let engine = crate::app::engine_adapter::EngineAdapter::active(state);
     let term_scroll = engine.scroll();

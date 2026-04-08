@@ -113,3 +113,16 @@ pub const SETTINGS_CONTENT_PADDING: f32 = 24.0;
 pub const SETTINGS_ITEM_SPACING: f32 = 16.0;
 /// 设置中心标题与描述间距
 pub const SETTINGS_LABEL_DESC_SPACING: f32 = 4.0;
+
+// ============ 弹窗样式常量 ============
+
+/// 弹窗圆角半径
+pub const MODAL_RADIUS: f32 = 12.0;
+/// 弹窗阴影偏移 Y
+pub const MODAL_SHADOW_OFFSET_Y: f32 = 4.0;
+/// 弹窗阴影模糊半径
+pub const MODAL_SHADOW_BLUR: f32 = 16.0;
+/// 弹窗阴影透明度
+pub const MODAL_SHADOW_ALPHA: f32 = 0.25;
+/// 弹窗边框宽度
+pub const MODAL_BORDER_WIDTH: f32 = 1.0;

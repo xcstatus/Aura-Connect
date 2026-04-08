@@ -1,8 +1,8 @@
-use iced::widget::{container, mouse_area, Stack};
+use iced::widget::{container, Stack};
 use iced::Element;
 use iced::Length;
 
-use crate::app::components::helpers::modal_scrim_alpha;
+use crate::app::components::helpers::layered_scrim_alpha;
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 
@@ -10,14 +10,11 @@ use super::form::quick_connect_new_form;
 use super::picker::quick_connect_picker;
 
 /// Quick connect modal wrapper with animation.
-pub fn quick_connect_modal_stack(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn quick_connect_modal_stack(state: &IcedState) -> Element<'_, Message> {
     let tick_ms = state.tick_ms();
     let scrim_alpha = state.quick_connect_anim_alpha(tick_ms);
-    let scrim = mouse_area(
-        container(iced::widget::Space::new().width(Length::Fill).height(Length::Fill))
-            .style(modal_scrim_alpha(scrim_alpha)),
-    )
-    .on_press(Message::QuickConnectDismiss);
+    let scrim = container(iced::widget::Space::new().width(Length::Fill).height(Length::Fill))
+        .style(layered_scrim_alpha(scrim_alpha, 0));
 
     let offset_y = state.quick_connect_anim_offset(tick_ms);
     let anchored = container(
@@ -43,7 +40,7 @@ pub fn quick_connect_modal_stack(state: &IcedState) -> Element<'_, Message> {
 }
 
 /// Routes to picker or form based on current panel state.
-pub fn quick_connect_panel_content(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn quick_connect_panel_content(state: &IcedState) -> Element<'_, Message> {
     use crate::app::state::QuickConnectPanel;
 
     match state.quick_connect_panel {

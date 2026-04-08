@@ -8,7 +8,7 @@ use crate::app::state::IcedState;
 
 /// Terminal-inline overlay: shows animated connection progress when the quick-connect
 /// modal is closed and a connection is in progress.
-pub fn inline_connecting_overlay(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn inline_connecting_overlay(state: &IcedState) -> Element<'_, Message> {
     let is_connecting = !state.quick_connect_open
         && matches!(state.quick_connect_flow, crate::app::state::QuickConnectFlow::Connecting);
 

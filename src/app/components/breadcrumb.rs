@@ -8,7 +8,7 @@ use crate::app::terminal_viewport;
 use crate::app::widgets::chrome_button::style_chrome_secondary;
 
 /// Build the breadcrumb navigation bar.
-pub fn breadcrumb(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn breadcrumb(state: &IcedState) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
     let term_vp = terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal);
     let is_connected = state.active_session_is_connected();

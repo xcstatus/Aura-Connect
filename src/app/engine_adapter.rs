@@ -1,4 +1,4 @@
-use crate::terminal::controller::{EngineSnapshot, TerminalController, TerminalKey, TerminalModifiers, StyledFragment};
+use crate::terminal::controller::{EngineSnapshot, TerminalController, TerminalKey, TerminalModifiers};
 use crate::terminal::ScrollState;
 
 use super::state::IcedState;

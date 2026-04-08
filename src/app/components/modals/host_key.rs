@@ -1,14 +1,14 @@
 use iced::alignment::Alignment;
 use iced::Element;
-use iced::widget::{button, column, container, mouse_area, row, text, Space};
+use iced::widget::{button, column, container, row, text, Space};
 
-use crate::app::components::helpers::modal_scrim_style;
+use crate::app::components::helpers::layered_scrim_style;
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
 
 /// Build the host key confirmation prompt modal.
-pub fn host_key_prompt_modal(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn host_key_prompt_modal(state: &IcedState) -> Element<'_, Message> {
     let Some(p) = state.host_key_prompt.as_ref() else {
         return Space::new().into()
     };
@@ -16,11 +16,8 @@ pub fn host_key_prompt_modal(state: &IcedState) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
     let info = &p.info;
 
-    let scrim = mouse_area(
-        container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-            .style(modal_scrim_style),
-    )
-    .on_press(Message::HostKeyReject);
+    let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
+        .style(|theme: &iced::Theme| layered_scrim_style(theme, 0));
 
     let mut body = column![
         row![

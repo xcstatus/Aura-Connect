@@ -1,23 +1,20 @@
 use iced::alignment::Alignment;
 use iced::Element;
-use iced::widget::{button, column, container, mouse_area, row, text, text_input, Space};
+use iced::widget::{button, column, container, row, text, text_input, Space};
 
-use crate::app::components::helpers::modal_scrim_style;
+use crate::app::components::helpers::layered_scrim_style;
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::{style_chrome_primary, style_top_icon};
 
 /// Build the vault unlock modal.
-pub fn vault_unlock_modal(state: &IcedState) -> Element<'_, Message> {
+pub(crate) fn vault_unlock_modal(state: &IcedState) -> Element<'_, Message> {
     let Some(unlock) = state.vault_unlock.as_ref() else {
         return Space::new().into()
     };
 
-    let scrim = mouse_area(
-        container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-            .style(modal_scrim_style),
-    )
-    .on_press(Message::VaultUnlockClose);
+    let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
+        .style(|theme: &iced::Theme| layered_scrim_style(theme, 0));
 
     let title = if unlock.pending_save_credentials_profile_id.is_some() {
         state.model.i18n.tr("iced.vault_unlock.title_save_credentials")
