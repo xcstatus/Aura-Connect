@@ -11,7 +11,7 @@ use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::{style_tab_strip, style_top_icon};
 use crate::theme::icons::{icon_view_with, IconId, IconOptions};
-use crate::theme::layout::{TAB_CHIP_MIN_WIDTH, TAB_CHIP_WIDTH, TAB_CLOSE_HIT_W, TAB_LABEL_CLOSE_SPACING, TAB_CHIP_PAD_H};
+use crate::theme::layout::{TAB_CHIP_MIN_WIDTH, TAB_CHIP_WIDTH, TAB_CLOSE_HIT_W, TAB_CLOSE_ICON_W, TAB_LABEL_CLOSE_SPACING, TAB_CHIP_PAD_H};
 
 /// Build the top bar (tab strip + action buttons + control buttons).
 pub(crate) fn top_bar(state: &IcedState, _tick_ms: f32) -> Element<'_, Message> {
@@ -43,18 +43,12 @@ pub(crate) fn top_bar(state: &IcedState, _tick_ms: f32) -> Element<'_, Message> 
             .into()
     };
 
-    // 右侧区域：控制按钮组，固定在最右
-    let right_area: Element<'_, Message> = container(control_group)
-        .width(iced::Length::Shrink)
-        .height(iced::Length::Fixed(TOP_BAR_H))
-        .align_x(Alignment::End)
-        .into();
-
-    let top_bar_row = row![left_area, right_area].spacing(0).align_y(Alignment::Center);
+    // 顶栏：左侧区域 + 控制组，无 spacing，直接贴靠
+    let top_bar_row = row![left_area, control_group].spacing(0).align_y(Alignment::Center);
 
     container(top_bar_row)
         .height(iced::Length::Fixed(TOP_BAR_H))
-        .padding(iced::Padding::from([0.0, TOP_BAR_EDGE_PAD]))
+        .padding([0.0, TOP_BAR_EDGE_PAD])
         .style(top_bar_ambient_style(tokens))
         .into()
 }
@@ -88,18 +82,24 @@ fn build_tab_strip(state: &IcedState) -> Element<'_, Message> {
         let tab_label = tab.title.clone();
         let is_active = i == state.active_tab;
 
-        // 关闭按钮：仅当前标签显示，固定 24px 可交互区域
-        let show_close = is_active;
+        // 关闭按钮：悬停时显示，固定 24px 可交互区域
+        let is_hovered = Some(i) == state.tab_hover_index;
+        let show_close = is_hovered;
         let close_w = if show_close { TAB_CLOSE_HIT_W } else { 0.0 };
         let label_w = (target_chip_w - TAB_CHIP_PAD_H * 2.0 - close_w - TAB_LABEL_CLOSE_SPACING).max(0.0);
 
-        let select_btn = button(
-            text(tab_label).size(11),
+        let select_btn = container(
+            button(
+                text(tab_label).size(11),
+            )
+            .on_press(Message::TabScrollTo(i))
+            .width(iced::Length::Fixed(label_w))
+            .height(iced::Length::Fill)
+            .style(style_tab_strip(tokens)),
         )
-        .on_press(Message::TabScrollTo(i))
-        .width(iced::Length::Fixed(label_w))
+        .width(iced::Length::Fill)
         .height(iced::Length::Fill)
-        .style(style_tab_strip(tokens));
+        .align_y(Alignment::Center);
 
         let close_btn: Element<'_, Message> = if show_close {
             icon_tab_close_button(tokens, i, TAB_CLOSE_HIT_W)
@@ -157,7 +157,7 @@ fn build_tab_strip(state: &IcedState) -> Element<'_, Message> {
             .on_exit(Message::TabChipHover(None));
 
         tabs_row = tabs_row.push(chip);
-        total_tabs_w += target_chip_w + 8.0; // +8 补偿 spacing
+        total_tabs_w += target_chip_w;
     }
 
     // 根据是否溢出决定布局方式
@@ -168,14 +168,44 @@ fn build_tab_strip(state: &IcedState) -> Element<'_, Message> {
             .width(iced::Length::Fixed(total_tabs_w))
             .into()
     } else {
-        // 溢出：scrollable 包裹，隐藏滚动条，宽度填满
-        scrollable(tabs_row)
+        // 溢出：计算溢出数量
+        let min_chips = (available_w / TAB_CHIP_MIN_WIDTH).floor() as usize;
+        let overflow_count = tabs_count.saturating_sub(min_chips);
+
+        // 溢出徽章
+        let overflow_badge: Element<'_, Message> = if overflow_count > 0 {
+            let badge = button(
+                text(format!("+{}", overflow_count))
+                    .size(11)
+                    .color(tokens.text_secondary),
+            )
+            .on_press(Message::TabOverflowToggle)
+            .width(iced::Length::Fixed(32.0))
+            .height(iced::Length::Fixed(24.0))
+            .style(style_top_icon(tokens));
+
+            container(badge)
+                .width(iced::Length::Shrink)
+                .height(iced::Length::Fixed(TOP_BAR_H))
+                .align_y(Alignment::Center)
+                .into()
+        } else {
+            Space::new().width(iced::Length::Fixed(0.0)).into()
+        };
+
+        // scrollable 包裹标签，隐藏滚动条
+        let scrollable_tabs = scrollable(tabs_row)
             .direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::hidden()))
             .width(iced::Length::Fill)
             .height(iced::Length::Fixed(TOP_BAR_H))
             .on_scroll(|viewport| {
                 Message::TabScrollTick(viewport.absolute_offset().x)
-            })
+            });
+
+        // 标签 + 徽章并排
+        row![scrollable_tabs, overflow_badge]
+            .spacing(0)
+            .align_y(Alignment::Center)
             .into()
     }
 }
@@ -318,18 +348,18 @@ fn build_control_group(state: &IcedState, tokens: crate::theme::DesignTokens) ->
 // ============================================================================
 
 /// 创建标签页关闭图标按钮
-fn icon_tab_close_button(tokens: crate::theme::DesignTokens, tab_index: usize, size: f32) -> Element<'static, Message> {
+fn icon_tab_close_button(tokens: crate::theme::DesignTokens, tab_index: usize, hit_w: f32) -> Element<'static, Message> {
     let close_icon = icon_view_with(
         IconOptions::new(IconId::Close)
-            .with_size(12)
+            .with_size(TAB_CLOSE_ICON_W as u32)
             .with_color(tokens.text_secondary),
         Message::TabClose(tab_index),
     );
     button(close_icon)
         .on_press(Message::TabClose(tab_index))
-        .width(iced::Length::Fixed(size))
-        .height(iced::Length::Fixed(size))
-        .padding(iced::Padding { top: 0.0, right: 3.0, bottom: 0.0, left: 0.0 }) // 距右侧 3px
-        .style(style_tab_strip(tokens))
+        .width(iced::Length::Fixed(hit_w))
+        .height(iced::Length::Fixed(hit_w))
+        .padding(if hit_w > TAB_CLOSE_ICON_W { (hit_w-TAB_CLOSE_ICON_W)/2.0 } else { 0.0 }  )
+        .style(style_top_icon(tokens))
         .into()
 }
