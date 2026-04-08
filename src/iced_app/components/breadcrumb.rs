@@ -1,13 +1,11 @@
 use iced::alignment::Alignment;
 use iced::Element;
-use iced::widget::{button, column, container, row, text, Space};
-
-use crate::session::SessionProfile;
+use iced::widget::{button, container, row, text};
 
 use crate::iced_app::message::Message;
 use crate::iced_app::state::IcedState;
 use crate::iced_app::terminal_viewport;
-use crate::iced_app::widgets::chrome_button::{style_chrome_secondary, style_chrome_primary};
+use crate::iced_app::widgets::chrome_button::style_chrome_secondary;
 
 /// Build the breadcrumb navigation bar.
 pub fn breadcrumb(state: &IcedState) -> Element<'_, Message> {

@@ -1,6 +1,6 @@
 use iced::alignment::Alignment;
 use iced::widget::{
-    button, column, container, pick_list, row, scrollable, text, text_input, Space,
+    button, column, container, row, scrollable, text, text_input,
 };
 use iced::Element;
 use iced::Theme;

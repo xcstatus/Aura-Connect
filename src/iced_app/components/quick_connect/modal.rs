@@ -1,5 +1,4 @@
-use iced::alignment::Alignment;
-use iced::widget::{container, mouse_area, row, text, Space, Stack};
+use iced::widget::{container, mouse_area, Stack};
 use iced::Element;
 use iced::Length;
 

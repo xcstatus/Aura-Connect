@@ -1,6 +1,6 @@
 use iced::alignment::Alignment;
 use iced::Element;
-use iced::widget::{column, container, row, text};
+use iced::widget::{container, row, text};
 
 use crate::theme::layout::BOTTOM_BAR_HEIGHT;
 

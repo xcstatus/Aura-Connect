@@ -1,4 +1,4 @@
-use iced::{Color, Element, Theme};
+use iced::{Color, Theme};
 use iced::widget::container;
 
 /// Modal scrim style with fixed alpha.

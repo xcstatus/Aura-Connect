@@ -1,4 +1,3 @@
-use iced::alignment::Alignment;
 use iced::Element;
 use iced::widget::{column, container};
 
