@@ -5,10 +5,10 @@ use std::collections::BTreeMap;
 use iced::alignment::Alignment;
 use iced::widget::scrollable::{Direction as ScrollDirection, Scrollbar};
 use iced::widget::{
-    Space, Stack, button, checkbox, column, container, mouse_area, pick_list, radio, row,
+    Space, Stack, button, checkbox, column, container, pick_list, radio, row,
     scrollable, slider, text, text_input,
 };
-use iced::{Border, Element, Theme};
+use iced::{Border, Color, Element, Theme};
 
 use crate::session::{ProtocolType, SessionProfile, TransportConfig};
 use crate::settings::HostKeyPolicy;
@@ -17,7 +17,7 @@ use crate::theme::{DesignTokens, RustSshThemeId};
 
 use super::message::{Message, SettingsCategory, SettingsField};
 use super::state::IcedState;
-use super::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
+use super::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_tab_strip, style_top_icon};
 
 fn settings_tokens(state: &IcedState) -> DesignTokens {
     let theme_id = match state.model.settings.general.theme.as_str() {
@@ -47,18 +47,12 @@ pub(crate) fn clamp_sub_tab(category: SettingsCategory, sub: usize) -> usize {
 pub(crate) fn modal_stack(state: &IcedState) -> Element<'_, Message> {
     let tokens = settings_tokens(state);
 
-    let scrim = mouse_area(
-        container(
-            Space::new()
-                .width(iced::Length::Fill)
-                .height(iced::Length::Fill),
-        )
+    // 遮罩层不再拦截点击事件，用户点击模态框外部区域不会关闭设置中心
+    // ESC 键关闭功能在其他地方处理
+    let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
         .style(move |_t: &Theme| {
-            container::Style::default()
-                .background(tokens.scrim())
-        }),
-    )
-    .on_press(Message::SettingsDismiss);
+            container::Style::default().background(tokens.scrim())
+        });
 
     let mw = (state.window_size.width * layout::SETTINGS_MODAL_WIDTH_RATIO)
         .clamp(layout::SETTINGS_MODAL_MIN_WIDTH, layout::SETTINGS_MODAL_MAX_WIDTH);
@@ -131,11 +125,14 @@ fn modal_card(state: &IcedState) -> Element<'_, Message> {
 }
 
 fn sidebar_item_style(active: bool, tokens: DesignTokens) -> container::Style {
-    if active {
-        container::Style::default().background(tokens.surface_2)
-    } else {
-        container::Style::default().background(tokens.bg_secondary)
-    }
+    let border_color = if active { tokens.accent_base } else { Color::TRANSPARENT };
+    container::Style::default()
+        .background(if active { tokens.surface_2 } else { tokens.bg_secondary })
+        .border(Border {
+            width: 3.0,
+            color: border_color,
+            radius: 4.0.into(),
+        })
 }
 
 fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Message> {
@@ -147,6 +144,7 @@ fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mess
         (SettingsCategory::Security, "iced.settings.cat.security"),
         (SettingsCategory::Backup, "iced.settings.cat.backup"),
     ];
+    let accent_base = tokens.accent_base;
     let mut col = column![]
         .spacing(4)
         .width(iced::Length::Fixed(layout::SETTINGS_SIDEBAR_WIDTH))
@@ -155,7 +153,7 @@ fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mess
     for (cat, key) in entries {
         let label = i18n.tr(key).to_string();
         let active = state.settings_category == cat;
-        let text_color = if active { tokens.text_primary } else { tokens.text_secondary };
+        let text_color = if active { accent_base } else { tokens.text_secondary };
         let cell = button(
             container(text(label).size(13).style(move |_t: &Theme| text::Style {
                 color: Some(text_color),
@@ -165,7 +163,7 @@ fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mess
         )
         .on_press(Message::SettingsCategoryChanged(cat))
         .width(iced::Length::Fill)
-        .style(style_chrome_secondary(13.0));
+        .style(style_tab_strip(13.0));
         col = col.push(
             container(cell)
                 .style(move |_theme: &Theme| sidebar_item_style(active, tokens)),
@@ -253,11 +251,8 @@ fn settings_sub_tab_row(state: &IcedState, tokens: DesignTokens) -> Element<'_, 
         )
             .on_press(Message::SettingsSubTabChanged(idx))
             .style(move |theme: &Theme, status: iced::widget::button::Status| {
-                if active {
-                    style_chrome_primary(13.0)(theme, status)
-                } else {
-                    style_chrome_secondary(13.0)(theme, status)
-                }
+                // 所有 Tab 按钮都使用极简样式，选中态通过文字颜色区分
+                style_tab_strip(13.0)(theme, status)
             });
         r = r.push(btn);
     }
