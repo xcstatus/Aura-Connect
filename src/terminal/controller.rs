@@ -502,8 +502,9 @@ impl TerminalController {
                 *g = g.saturating_add(1);
             }
         }
-        let dirty = self.styled_dirty_rows_tmp.clone();
+        let dirty = std::mem::take(&mut self.styled_dirty_rows_tmp);
         self.rebuild_dirty_styled_fragments(&dirty);
+        self.styled_dirty_rows_tmp = dirty;
         Ok(n)
     }
 
@@ -532,8 +533,9 @@ impl TerminalController {
                 *g = g.saturating_add(1);
             }
         }
-        let dirty = self.styled_dirty_rows_tmp.clone();
+        let dirty = std::mem::take(&mut self.styled_dirty_rows_tmp);
         self.rebuild_dirty_styled_fragments(&dirty);
+        self.styled_dirty_rows_tmp = dirty;
     }
 
     pub fn inject_local_lines(&mut self, lines: &[&str]) {
@@ -606,8 +608,9 @@ impl TerminalController {
                 *g = g.saturating_add(1);
             }
         }
-        let dirty = self.styled_dirty_rows_tmp.clone();
+        let dirty = std::mem::take(&mut self.styled_dirty_rows_tmp);
         self.rebuild_dirty_styled_fragments(&dirty);
+        self.styled_dirty_rows_tmp = dirty;
     }
 
     pub fn on_key(
