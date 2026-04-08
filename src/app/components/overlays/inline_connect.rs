@@ -5,6 +5,7 @@ use iced::widget::{container, row, text, Space};
 use crate::app::components::helpers::top_bar_material_style;
 use crate::app::message::Message;
 use crate::app::state::IcedState;
+use crate::theme::icons::{icon_view, IconId, IconOptions};
 
 /// Terminal-inline overlay: shows animated connection progress when the quick-connect
 /// modal is closed and a connection is in progress.
@@ -32,8 +33,13 @@ pub(crate) fn inline_connecting_overlay(state: &IcedState) -> Element<'_, Messag
     };
 
     let tokens = crate::app::components::helpers::tokens_for_state(state);
+    let reload_icon: Element<'static, Message> = icon_view(
+        IconOptions::new(IconId::Reload)
+            .with_size(14)
+            .with_color(tokens.text_secondary)
+    ).map(|_| unreachable!("icon has no message"));
     let content = container(
-        row![text("⟳").size(14), text(format!("{stage_label}{dots}")).size(12)]
+        row![reload_icon, text(format!("{stage_label}{dots}")).size(12)]
             .spacing(6)
             .align_y(Alignment::Center),
     )

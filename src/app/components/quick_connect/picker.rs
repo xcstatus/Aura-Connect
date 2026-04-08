@@ -8,7 +8,8 @@ use iced::Theme;
 use crate::app::components::helpers::{top_bar_material_style, quick_connect_group_header_style, tokens_for_state};
 use crate::app::message::Message;
 use crate::app::state::IcedState;
-use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary};
+use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
+use crate::theme::icons::{icon_view_with, IconId, IconOptions};
 
 use super::grouped_ssh_profiles;
 use crate::session::{SessionProfile, TransportConfig};
@@ -191,11 +192,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
         row![
             text(i18n.tr("iced.topbar.quick_connect")).size(16),
             iced::widget::Space::new().width(iced::Length::Fill),
-            button(text("×").size(14))
-                .on_press(Message::QuickConnectDismiss)
-                .width(iced::Length::Fixed(28.0))
-                .height(iced::Length::Fixed(28.0))
-                .style(crate::app::widgets::chrome_button::style_top_icon(tokens)),
+            icon_close_button(tokens),
         ]
         .align_y(Alignment::Center),
         text_input(
@@ -221,5 +218,25 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
         .width(iced::Length::Fill)
         .padding(16)
         .style(top_bar_material_style(tokens))
+        .into()
+}
+
+// ============================================================================
+// 辅助函数
+// ============================================================================
+
+/// 创建关闭图标按钮
+fn icon_close_button(tokens: crate::theme::DesignTokens) -> Element<'static, Message> {
+    let close_icon = icon_view_with(
+        IconOptions::new(IconId::Close)
+            .with_size(14)
+            .with_color(tokens.text_secondary),
+        Message::QuickConnectDismiss,
+    );
+    button(close_icon)
+        .on_press(Message::QuickConnectDismiss)
+        .width(iced::Length::Fixed(28.0))
+        .height(iced::Length::Fixed(28.0))
+        .style(style_top_icon(tokens))
         .into()
 }

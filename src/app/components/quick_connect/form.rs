@@ -15,6 +15,7 @@ use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::style_chrome_primary;
 use crate::app::widgets::chrome_button::style_chrome_secondary;
+use crate::theme::icons::{icon_view, icon_view_with, IconId, IconOptions, IconState};
 
 /// Quick connect new connection form: host/port, user, password, auth method, etc.
 /// Uses consistent i18n keys with the session editor (session_form.*)
@@ -137,16 +138,24 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
             }
             _ => state.model.i18n.tr("iced.term.connecting"),
         };
-        Some(
+        Some({
+            let icon: Element<'static, Message> = icon_view(
+                IconOptions::new(IconId::Reload)
+                    .with_size(14)
+                    .with_color(tokens.text_secondary)
+            ).map(|_| unreachable!("icon has no message"));
             container(
-                row![text("⟳").size(14), text(format!("{stage_label}{dots}")).size(12)]
-                    .spacing(6)
-                    .align_y(Alignment::Center),
+                row![
+                    icon,
+                    text(format!("{stage_label}{dots}")).size(12)
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
             )
             .padding(10)
             .style(top_bar_material_style(tokens.clone()))
-            .into(),
-        )
+            .into()
+        })
     } else {
         None
     };
@@ -292,11 +301,7 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
                 .style(style_chrome_secondary(tokens.clone())),
             text(i18n.tr("session_form.title_new")).size(16),
             iced::widget::Space::new().width(iced::Length::Fill),
-            button(text("×").size(14))
-                .on_press(Message::QuickConnectDismiss)
-                .width(iced::Length::Fixed(28.0))
-                .height(iced::Length::Fixed(28.0))
-                .style(crate::app::widgets::chrome_button::style_top_icon(tokens.clone())),
+            icon_close_button(tokens.clone()),
         ]
         .spacing(8)
         .align_y(Alignment::Center)
@@ -349,5 +354,25 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
         .width(iced::Length::Fill)
         .padding(16)
         .style(top_bar_material_style(tokens.clone()))
+        .into()
+}
+
+// ============================================================================
+// 辅助函数
+// ============================================================================
+
+/// 创建关闭图标按钮
+fn icon_close_button(tokens: crate::theme::DesignTokens) -> Element<'static, Message> {
+    let close_icon = icon_view_with(
+        IconOptions::new(IconId::Close)
+            .with_size(14)
+            .with_color(tokens.text_secondary),
+        Message::QuickConnectDismiss,
+    );
+    button(close_icon)
+        .on_press(Message::QuickConnectDismiss)
+        .width(iced::Length::Fixed(28.0))
+        .height(iced::Length::Fixed(28.0))
+        .style(crate::app::widgets::chrome_button::style_top_icon(tokens))
         .into()
 }

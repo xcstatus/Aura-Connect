@@ -14,6 +14,7 @@ use crate::session::{ProtocolType, SessionProfile, TransportConfig};
 use crate::settings::HostKeyPolicy;
 use crate::theme::layout;
 use crate::theme::{DesignTokens, RustSshThemeId};
+use crate::theme::icons::{icon_view_with, IconId, IconOptions};
 
 use super::message::{Message, SettingsCategory, SettingsField};
 use super::state::IcedState;
@@ -206,11 +207,7 @@ fn settings_header_row(i18n: &crate::i18n::I18n, tokens: DesignTokens) -> Elemen
                 color: Some(text_primary),
             }),
             Space::new().width(iced::Length::Fill),
-            button(text("×").size(14))
-                .on_press(Message::SettingsDismiss)
-                .width(iced::Length::Fixed(28.0))
-                .height(iced::Length::Fixed(28.0))
-                .style(btn_style),
+            icon_close_button(tokens, btn_style),
         ]
         .align_y(Alignment::Center),
     )
@@ -951,4 +948,27 @@ fn restart_banner(state: &IcedState, tokens: DesignTokens) -> Element<'_, Messag
             ))
     })
     .into()
+}
+
+// ============================================================================
+// 辅助函数
+// ============================================================================
+
+/// 创建关闭图标按钮
+fn icon_close_button(
+    tokens: DesignTokens,
+    btn_style: impl Fn(&Theme, button::Status) -> button::Style + 'static,
+) -> Element<'static, Message> {
+    let close_icon = icon_view_with(
+        IconOptions::new(IconId::Close)
+            .with_size(14)
+            .with_color(tokens.text_secondary),
+        Message::SettingsDismiss,
+    );
+    button(close_icon)
+        .on_press(Message::SettingsDismiss)
+        .width(iced::Length::Fixed(28.0))
+        .height(iced::Length::Fixed(28.0))
+        .style(btn_style)
+        .into()
 }

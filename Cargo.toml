@@ -23,7 +23,7 @@ anyhow = "1.0.102"
 argon2 = "0.5.3"
 async-trait = "0.1.86"
 directories = "6.0.0"
-iced = { version = "0.14.0", features = ["wgpu", "tokio", "image"] }
+iced = { version = "0.14.0", features = ["wgpu", "tokio", "image", "svg"] }
 bytemuck = { version = "1.25.0", features = ["derive"] }
 image = "0.25.10"
 log = "0.4.29"

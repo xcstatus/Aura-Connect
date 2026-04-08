@@ -6,6 +6,7 @@ use crate::app::components::helpers::{layered_scrim_style, tokens_for_state, top
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::{style_chrome_secondary, style_chrome_primary, style_top_icon};
+use crate::theme::icons::{icon_view_with, IconId, IconOptions};
 
 /// Build the auto-probe consent modal.
 pub(crate) fn auto_probe_consent_modal(state: &IcedState) -> Element<'_, Message> {
@@ -22,11 +23,7 @@ pub(crate) fn auto_probe_consent_modal(state: &IcedState) -> Element<'_, Message
         row![
             text("首次自动探测提示").size(16),
             Space::new().width(iced::Length::Fill),
-            button(text("×").size(14))
-                .on_press(Message::AutoProbeConsentUsePassword)
-                .width(iced::Length::Fixed(28.0))
-                .height(iced::Length::Fixed(28.0))
-                .style(style_top_icon(tokens)),
+            icon_close_button(tokens),
         ]
         .align_y(Alignment::Center),
         text("将尝试使用系统 SSH Agent 或本机密钥进行认证。不会上传私钥，仅在本机使用。").size(12),
@@ -60,5 +57,25 @@ pub(crate) fn auto_probe_consent_modal(state: &IcedState) -> Element<'_, Message
     Stack::with_children([scrim.into(), centered.into()])
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
+        .into()
+}
+
+// ============================================================================
+// 辅助函数
+// ============================================================================
+
+/// 创建关闭图标按钮
+fn icon_close_button(tokens: crate::theme::DesignTokens) -> Element<'static, Message> {
+    let close_icon = icon_view_with(
+        IconOptions::new(IconId::Close)
+            .with_size(14)
+            .with_color(tokens.text_secondary),
+        Message::AutoProbeConsentUsePassword,
+    );
+    button(close_icon)
+        .on_press(Message::AutoProbeConsentUsePassword)
+        .width(iced::Length::Fixed(28.0))
+        .height(iced::Length::Fixed(28.0))
+        .style(style_top_icon(tokens))
         .into()
 }
