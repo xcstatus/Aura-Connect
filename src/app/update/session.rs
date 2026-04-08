@@ -88,6 +88,24 @@ pub(crate) fn handle_tab_chip_hover(state: &mut IcedState, ix: Option<usize>) ->
     Task::none()
 }
 
+/// Handle TabScrollTo message: select tab and scroll it into view.
+pub(crate) fn handle_tab_scroll_to(state: &mut IcedState, i: usize) -> Task<Message> {
+    use crate::app::chrome::tab_strip_width;
+    if i >= state.tabs.len() {
+        return Task::none();
+    }
+    state.active_tab = i;
+    let available_w = tab_strip_width(state.window_size.width);
+    state.scroll_to_tab(i, available_w);
+    Task::none()
+}
+
+/// Handle TabOverflowToggle message.
+pub(crate) fn handle_tab_overflow_toggle(state: &mut IcedState) -> Task<Message> {
+    state.tab_overflow_open = !state.tab_overflow_open;
+    Task::none()
+}
+
 /// Handle OpenSessionEditor message.
 pub(crate) fn handle_open_session_editor(
     state: &mut IcedState,

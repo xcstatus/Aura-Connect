@@ -128,3 +128,16 @@ pub const MODAL_SHADOW_BLUR: f32 = 16.0;
 pub const MODAL_SHADOW_ALPHA: f32 = 0.25;
 /// 弹窗边框宽度
 pub const MODAL_BORDER_WIDTH: f32 = 1.0;
+
+// ============ 标签栏布局常量 ============
+
+/// 标签页关闭按钮图标视觉宽度
+pub const TAB_CLOSE_ICON_W: f32 = 22.0;
+/// 标签页关闭按钮可交互区域宽度
+pub const TAB_CLOSE_HIT_W: f32 = 24.0;
+/// 标签文字与关闭按钮间距
+pub const TAB_LABEL_CLOSE_SPACING: f32 = 3.0;
+/// 标签左右 padding（chip 内层）
+pub const TAB_CHIP_PAD_H: f32 = 4.0;
+/// 标签页最小宽度（含关闭按钮 + padding + 间距）
+pub const TAB_CHIP_MIN_WIDTH: f32 = TAB_CLOSE_HIT_W + TAB_CHIP_PAD_H * 2.0 + TAB_LABEL_CLOSE_SPACING; // ≈ 35px

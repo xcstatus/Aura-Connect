@@ -355,6 +355,12 @@ pub(crate) struct IcedState {
 
     /// Tab 宽度动画状态（index-aligned with tabs）。
     pub tab_anims: Vec<TabAnimEntry>,
+    /// 标签栏横向滚动偏移（像素）。
+    pub tab_scroll_offset: f32,
+    /// 滚动动画目标偏移（None = 无动画进行中）。
+    pub tab_scroll_target: Option<f32>,
+    /// 溢出菜单是否展开。
+    pub tab_overflow_open: bool,
     /// Quick connect 弹窗动画状态。
     pub quick_connect_anim: ModalAnimState,
     /// Settings 弹窗动画状态。
@@ -386,6 +392,39 @@ impl IcedState {
         self.tab_manager
             .get_session(self.active_tab)
             .is_some_and(|s| s.is_connected())
+    }
+
+    /// 计算指定 tab 的 chip 宽度（与 build_tab_strip 中的逻辑保持一致）。
+    fn chip_width_for_index(&self, _i: usize, available_w: f32) -> f32 {
+        use crate::theme::layout::{TAB_CHIP_WIDTH, TAB_CHIP_MIN_WIDTH};
+        let count = self.tabs.len();
+        if count == 0 {
+            return TAB_CHIP_MIN_WIDTH;
+        }
+        let avg = (available_w / count as f32).max(TAB_CHIP_MIN_WIDTH);
+        TAB_CHIP_WIDTH.min(avg)
+    }
+
+    /// 计算标签栏滚动目标：使 tab_index 可见（尽量左对齐）。
+    /// 当标签已在视口内时，不设置滚动目标。
+    pub(crate) fn scroll_to_tab(&mut self, tab_index: usize, available_w: f32) {
+        if tab_index >= self.tabs.len() {
+            return;
+        }
+        // 计算目标标签的起始位置（累计前面的 chips）
+        let mut tab_start = 0.0;
+        for j in 0..tab_index {
+            tab_start += self.chip_width_for_index(j, available_w) + 8.0;
+        }
+        let tab_end = tab_start + self.chip_width_for_index(tab_index, available_w);
+        let viewport_start = self.tab_scroll_offset;
+        let viewport_end = viewport_start + available_w;
+        if tab_start < viewport_start {
+            self.tab_scroll_target = Some(tab_start);
+        } else if tab_end > viewport_end {
+            self.tab_scroll_target = Some(tab_end - available_w);
+        }
+        // else: 已在视口内，无需滚动
     }
 
     /// Estimated tick interval in ms for use in animation interpolation.
@@ -925,6 +964,9 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             settings_anim: ModalAnimState::default(),
             scrollbar_hovered: false,
             scrollbar_hover_enter_tick: None,
+            tab_scroll_offset: 0.0,
+            tab_scroll_target: None,
+            tab_overflow_open: false,
         },
         Task::none(),
     )

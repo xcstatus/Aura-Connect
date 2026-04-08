@@ -433,8 +433,14 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             }
             Task::none()
         }
+        Message::TabScrollTick(offset) => {
+            state.tab_scroll_offset = offset;
+            Task::none()
+        }
+        Message::TabScrollTo(i) => session::handle_tab_scroll_to(state, i),
+        Message::TabOverflowToggle => session::handle_tab_overflow_toggle(state),
         Message::TabStripWheel(_delta) => {
-            // 标签栏不再支持滚动，忽略
+            // 标签栏横向滚动已由 scrollable 接管，忽略此消息
             Task::none()
         }
         Message::TabSelected(i) => session::handle_tab_selected(state, i),

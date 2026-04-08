@@ -74,8 +74,25 @@ pub(crate) fn handle_tick(state: &mut IcedState) -> Task<Message> {
 
     handle_perf_log(state);
 
+    // 滚动动画插值
+    handle_tab_scroll_animation(state);
+
     // 合并两个 Task
     reconnect_task.chain(prewarm_task)
+}
+
+/// Handle tab scroll animation: ease current offset toward target.
+fn handle_tab_scroll_animation(state: &mut IcedState) {
+    if let Some(target) = state.tab_scroll_target {
+        let diff = target - state.tab_scroll_offset;
+        if diff.abs() < 1.0 {
+            state.tab_scroll_offset = target;
+            state.tab_scroll_target = None;
+        } else {
+            // 缓动：每次向目标移动 20%
+            state.tab_scroll_offset += diff * 0.2;
+        }
+    }
 }
 
 /// Handle reconnect timer: checks if it's time to trigger a reconnect tick.

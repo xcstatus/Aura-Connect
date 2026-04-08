@@ -1,39 +1,56 @@
 use iced::alignment::Alignment;
-use iced::widget::{button, column, container, mouse_area, row, text, tooltip, Space};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, text, tooltip, Space};
 use iced::{Element, Theme};
 
 use crate::app::chrome::{
     TOP_BAR_EDGE_PAD, TOP_BAR_H, TOP_CONTROL_GROUP_W, TOP_ICON_BTN,
-    TRAFFIC_LIGHT_BAND_W, TRAFFIC_LIGHT_DIAMETER,    tab_strip_width,
+    TRAFFIC_LIGHT_BAND_W, TRAFFIC_LIGHT_DIAMETER, tab_strip_width,
 };
-use crate::app::components::helpers::{tokens_for_state};
+use crate::app::components::helpers::tokens_for_state;
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::{style_tab_strip, style_top_icon};
 use crate::theme::icons::{icon_view_with, IconId, IconOptions};
+use crate::theme::layout::{TAB_CHIP_MIN_WIDTH, TAB_CHIP_WIDTH, TAB_CLOSE_HIT_W, TAB_LABEL_CLOSE_SPACING, TAB_CHIP_PAD_H};
 
 /// Build the top bar (tab strip + action buttons + control buttons).
-pub(crate) fn top_bar(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
+pub(crate) fn top_bar(state: &IcedState, _tick_ms: f32) -> Element<'_, Message> {
     let tokens = tokens_for_state(state);
-    let tabs_row = build_tab_strip(state, tick_ms);
+    let tabs_row = build_tab_strip(state);
     let action_group = build_action_group(state, tokens);
     let control_group = build_control_group(state, tokens);
 
-    let mut top_bar_row = row![].spacing(0).align_y(Alignment::Center);
+    // 左侧区域：traffic_light + 标签栏 + 操作按钮组
+    let left_area: Element<'_, Message> = {
+        let mut left_row = row![];
 
-    #[cfg(target_os = "macos")]
-    {
-        top_bar_row = top_bar_row.push(
-            container(Space::new().height(iced::Length::Fixed(TRAFFIC_LIGHT_DIAMETER)))
-                .width(iced::Length::Fixed(TRAFFIC_LIGHT_BAND_W))
-                .style(top_bar_ambient_style(tokens)),
-        );
-    }
+        #[cfg(target_os = "macos")]
+        {
+            left_row = left_row.push(
+                container(Space::new().height(iced::Length::Fixed(TRAFFIC_LIGHT_DIAMETER)))
+                    .width(iced::Length::Fixed(TRAFFIC_LIGHT_BAND_W))
+                    .style(top_bar_ambient_style(tokens)),
+            );
+        }
 
-    top_bar_row = top_bar_row
-        .push(tabs_row)
-        .push(action_group)
-        .push(control_group);
+        left_row = left_row
+            .push(tabs_row)
+            .push(action_group);
+
+        container(left_row)
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fixed(TOP_BAR_H))
+            .into()
+    };
+
+    // 右侧区域：控制按钮组，固定在最右
+    let right_area: Element<'_, Message> = container(control_group)
+        .width(iced::Length::Shrink)
+        .height(iced::Length::Fixed(TOP_BAR_H))
+        .align_x(Alignment::End)
+        .into();
+
+    let top_bar_row = row![left_area, right_area].spacing(0).align_y(Alignment::Center);
 
     container(top_bar_row)
         .height(iced::Length::Fixed(TOP_BAR_H))
@@ -50,32 +67,42 @@ fn top_bar_ambient_style(tokens: crate::theme::DesignTokens) -> impl Fn(&Theme) 
     }
 }
 
-fn build_tab_strip(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
+fn build_tab_strip(state: &IcedState) -> Element<'_, Message> {
     let tokens = tokens_for_state(state);
-    let mut tabs_row = row![].spacing(0).align_y(Alignment::Center);
+    let available_w = tab_strip_width(state.window_size.width);
+    let tabs_count = state.tabs.len();
 
-    let mut total_tabs_w = 0.0f32;
+    // 计算每个 chip 的目标宽度
+    let avg_chip_w = if tabs_count > 0 {
+        (available_w / tabs_count as f32).max(TAB_CHIP_MIN_WIDTH)
+    } else {
+        TAB_CHIP_WIDTH
+    };
+    let target_chip_w = TAB_CHIP_WIDTH.min(avg_chip_w);
+
+    // 构建标签行，同时累加总宽度
+    let mut tabs_row = row![].spacing(0).align_y(Alignment::Center);
+    let mut total_tabs_w = 0.0;
 
     for (i, tab) in state.tabs.iter().enumerate() {
         let tab_label = tab.title.clone();
-        let tab_w = state.tab_animated_width(i, tick_ms);
         let is_active = i == state.active_tab;
 
-        // 关闭按钮：仅当前标签显示（始终可见）
+        // 关闭按钮：仅当前标签显示，固定 24px 可交互区域
         let show_close = is_active;
-        let close_w = if show_close { 30.0 } else { 0.0 };
-        let label_w = (tab_w - close_w - 3.0).max(16.0);
+        let close_w = if show_close { TAB_CLOSE_HIT_W } else { 0.0 };
+        let label_w = (target_chip_w - TAB_CHIP_PAD_H * 2.0 - close_w - TAB_LABEL_CLOSE_SPACING).max(0.0);
 
         let select_btn = button(
             text(tab_label).size(11),
         )
-        .on_press(Message::TabSelected(i))
+        .on_press(Message::TabScrollTo(i))
         .width(iced::Length::Fixed(label_w))
         .height(iced::Length::Fill)
         .style(style_tab_strip(tokens));
 
         let close_btn: Element<'_, Message> = if show_close {
-            icon_tab_close_button(tokens, i, 30.0)
+            icon_tab_close_button(tokens, i, TAB_CLOSE_HIT_W)
         } else {
             Space::new()
                 .width(iced::Length::Fixed(close_w))
@@ -120,8 +147,8 @@ fn build_tab_strip(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
             ]
             .spacing(0),
         )
-        .padding([0.0, 4.0])
-        .width(iced::Length::Fill)
+        .padding([0.0, TAB_CHIP_PAD_H])
+        .width(iced::Length::Fixed(target_chip_w))
         .height(iced::Length::Fixed(TOP_BAR_H))
         .style(chip_bg_style);
 
@@ -130,21 +157,25 @@ fn build_tab_strip(state: &IcedState, tick_ms: f32) -> Element<'_, Message> {
             .on_exit(Message::TabChipHover(None));
 
         tabs_row = tabs_row.push(chip);
-        total_tabs_w += tab_w + 8.0; // +8 补偿 padding
+        total_tabs_w += target_chip_w + 8.0; // +8 补偿 spacing
     }
 
-    // 标签栏宽度：未达最大可用宽度时自适应，总宽度否则填满
-    let available_w = tab_strip_width(state.window_size.width);
-    let tabs_row_container = container(tabs_row)
-        .height(iced::Length::Fixed(TOP_BAR_H));
-
-    if total_tabs_w < available_w {
-        tabs_row_container
+    // 根据是否溢出决定布局方式
+    if total_tabs_w <= available_w {
+        // 未溢出：标签栏宽度 = 动态总宽度，不压缩，不使用 scrollable
+        container(tabs_row)
+            .height(iced::Length::Fixed(TOP_BAR_H))
             .width(iced::Length::Fixed(total_tabs_w))
             .into()
     } else {
-        tabs_row_container
+        // 溢出：scrollable 包裹，隐藏滚动条，宽度填满
+        scrollable(tabs_row)
+            .direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::hidden()))
             .width(iced::Length::Fill)
+            .height(iced::Length::Fixed(TOP_BAR_H))
+            .on_scroll(|viewport| {
+                Message::TabScrollTick(viewport.absolute_offset().x)
+            })
             .into()
     }
 }

@@ -121,6 +121,12 @@ pub(crate) enum Message {
     TabChipHover(Option<usize>),
     /// 滚动条区域 hover：用于透明度动画过渡。
     ScrollbarHover(bool),
+    /// 标签栏横向滚动回调：传递 scrollable 的当前水平偏移。
+    TabScrollTick(f32),
+    /// 滚动到指定标签索引（同时选中标签）。
+    TabScrollTo(usize),
+    /// 切换溢出菜单显隐。
+    TabOverflowToggle,
     /// 标签栏区域：垂直滚轮映射为横向滚动（无需 Shift）。
     TabStripWheel(iced::mouse::ScrollDelta),
     #[cfg(not(target_os = "macos"))]
@@ -247,6 +253,9 @@ impl std::fmt::Debug for Message {
             Message::TabClose(i) => write!(f, "Message::TabClose({})", i),
             Message::TabChipHover(i) => write!(f, "Message::TabChipHover({:?})", i),
             Message::ScrollbarHover(v) => write!(f, "Message::ScrollbarHover({})", v),
+            Message::TabScrollTick(v) => write!(f, "Message::TabScrollTick({:.1})", v),
+            Message::TabScrollTo(i) => write!(f, "Message::TabScrollTo({})", i),
+            Message::TabOverflowToggle => write!(f, "Message::TabOverflowToggle"),
             Message::TabStripWheel(_) => write!(f, "Message::TabStripWheel(...)"),
             #[cfg(not(target_os = "macos"))]
             Message::WinClose => write!(f, "Message::WinClose"),
