@@ -139,8 +139,7 @@ impl client::Handler for Client {
             None => {
                 // 未知主机 → 根据策略决定
                 match self.host_key_policy {
-                    crate::settings::HostKeyPolicy::Strict
-                    | crate::settings::HostKeyPolicy::Reject => {
+                    crate::settings::HostKeyPolicy::Strict => {
                         Err(anyhow::anyhow!(SshConnectError::HostKeyUnknown {
                             host,
                             port,
