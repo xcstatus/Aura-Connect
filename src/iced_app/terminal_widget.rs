@@ -142,6 +142,7 @@ fn fixed_terminal_row<'a>(
 }
 
 /// Selection highlight: full cell fill (span-level bg only wraps glyphs and leaves gaps between cells).
+/// 使用蓝色系以与终端标准（GitHub/GitLab 等）保持一致；可按需替换为 token.accent_base。
 const SELECTION_CELL_FILL: Color =
     Color::from_rgba(60.0 / 255.0, 120.0 / 255.0, 200.0 / 255.0, 0.45);
 

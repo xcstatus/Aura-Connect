@@ -156,6 +156,8 @@ pub trait AsyncSession: Send + Sync {
     fn write_stream(&mut self, data: &[u8]) -> Result<()>;
     fn resize_pty(&mut self, cols: u16, rows: u16) -> Result<()>;
     fn is_connected(&self) -> bool;
+    /// 获取 shell/命令的退出状态（如果已收到）。
+    fn exit_status(&self) -> Option<u32>;
 }
 
 pub enum SessionCmd {
@@ -163,39 +165,15 @@ pub enum SessionCmd {
     Resize(u16, u16),
 }
 
-pub struct SshSession {
-    handle: Option<client::Handle<Client>>,
-    data_rx: Option<Arc<tokio::sync::Mutex<mpsc::Receiver<Vec<u8>>>>>,
-    cmd_tx: Option<mpsc::UnboundedSender<SessionCmd>>,
-    read_buffer: Vec<u8>,
-    /// Task handle for the data pump loop - enables abort on drop.
-    pump_task: Option<tokio::task::JoinHandle<()>>,
-}
+pub struct SshSession {}
 
 impl SshSession {
     pub fn new() -> Self {
-        Self {
-            handle: None,
-            data_rx: None,
-            cmd_tx: None,
-            read_buffer: Vec::new(),
-            pump_task: None,
-        }
-    }
-
-    /// 从已认证的 handle 创建 SshSession（用于多路复用）
-    pub async fn from_authenticated_handle(
-        handle: client::Handle<Client>,
-        cols: u16,
-        rows: u16,
-    ) -> Result<Self> {
-        let mut session = Self::new();
-        session.install_authenticated_handle(handle, cols, rows).await?;
-        Ok(session)
+        Self {}
     }
 
     pub async fn connect_with_auth(
-        &mut self,
+        &self,
         host: &str,
         port: u16,
         user: &str,
@@ -204,7 +182,7 @@ impl SshSession {
         private_key_path: &str,
         passphrase: &str,
         known_hosts: &[crate::settings::KnownHostRecord],
-    ) -> Result<()> {
+    ) -> Result<Arc<SshChannel>> {
         let config = Arc::new(client::Config::default());
         let mut handle =
             connect_russh_prefer_ipv4(config, host, port, known_hosts.to_vec()).await?;
@@ -302,85 +280,19 @@ impl SshSession {
             anyhow::bail!(SshConnectError::AuthFailed);
         }
 
-        self.install_authenticated_handle(handle, 80, 24).await?;
-        Ok(())
-    }
-
-    async fn install_authenticated_handle(&mut self, handle: client::Handle<Client>, cols: u16, rows: u16) -> Result<()> {
-        // 创建有界缓冲信道（背压控制 8192 包），防止由于前端 UI 卡顿或猫大文件导致内存暴增
-        let (tx, rx) = mpsc::channel(8192);
-        let mut channel = handle.channel_open_session().await?;
-        channel
-            .request_pty(true, "xterm-256color", cols as u32, rows as u32, 0, 0, &[])
-            .await?;
-        channel.request_shell(true).await?;
-
-        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<SessionCmd>();
-
-        self.handle = Some(handle);
-        self.data_rx = Some(Arc::new(tokio::sync::Mutex::new(rx)));
-        self.cmd_tx = Some(cmd_tx);
-
-        // 启动数据收发处理循环 (UI <-> SSH)
-        // 增加 Keep-Alive 心跳间隔轮询: 每30秒发送一次 ping 以防被防火墙剔除
-        let mut keep_alive_interval = tokio::time::interval(std::time::Duration::from_secs(30));
-        let handle = tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    _ = keep_alive_interval.tick() => {
-                        // russh 0.45 机制下可以在此处拓展全局的 connection ping
-                    }
-                    cmd = cmd_rx.recv() => {
-                        match cmd {
-                            Some(SessionCmd::Data(data)) => {
-                                log::debug!(
-                                    "[SessionCmd] 发送至服务端 SSH: {} bytes",
-                                    data.len()
-                                );
-                                let _ = channel.data(&data[..]).await;
-                            }
-                            Some(SessionCmd::Resize(c, r)) => { let _ = channel.window_change(c as u32, r as u32, 0, 0).await; }
-                            None => break,
-                        }
-                    }
-                    msg = channel.wait() => {
-                        match msg {
-                            Some(russh::ChannelMsg::Data { data }) => {
-                                log::debug!(
-                                    "[ChannelMsg] 收到服务端数据 (Data): {} bytes",
-                                    data.len()
-                                );
-                                // 遇到背压时等待，避免 OOM 崩溃
-                                let _ = tx.send(data.to_vec()).await;
-                            }
-                            Some(russh::ChannelMsg::ExtendedData { data, .. }) => {
-                                log::debug!(
-                                    "[ChannelMsg] 收到服务端扩展数据 (ExtendedData): {} bytes",
-                                    data.len()
-                                );
-                                let _ = tx.send(data.to_vec()).await;
-                            }
-                            Some(russh::ChannelMsg::Close) | Some(russh::ChannelMsg::Eof) | None => {
-                                break;
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-        });
-        self.pump_task = Some(handle);
-
-        Ok(())
+        // 创建 BaseSshConnection 并打开第一个 channel
+        let base = BaseSshConnection::from_handle(handle);
+        let channel = base.open_channel(80, 24).await?;
+        Ok(Arc::new(channel))
     }
 
     pub async fn connect(
-        &mut self,
+        &self,
         host: &str,
         port: u16,
         user: &str,
         password: &str,
-    ) -> Result<()> {
+    ) -> Result<Arc<SshChannel>> {
         self.connect_with_auth(
             host,
             port,
@@ -394,23 +306,100 @@ impl SshSession {
         .await
     }
 
-    /// 断开 SSH 连接并清理后台任务
-    pub fn disconnect(&mut self) {
-        // 中止后台数据泵任务
-        if let Some(handle) = self.pump_task.take() {
-            handle.abort();
-        }
-        // 清理 SSH 句柄和通道
-        self.handle = None;
-        self.data_rx = None;
-        self.cmd_tx = None;
-        self.read_buffer.clear();
-    }
-}
+    /// 连接并返回 BaseSshConnection（不含 channel），用于连接池多路复用。
+    pub async fn connect_base(
+        &self,
+        host: &str,
+        port: u16,
+        user: &str,
+        auth: crate::session::AuthMethod,
+        password: &str,
+        private_key_path: &str,
+        passphrase: &str,
+        known_hosts: &[crate::settings::KnownHostRecord],
+    ) -> anyhow::Result<Arc<BaseSshConnection>> {
+        let config = Arc::new(client::Config::default());
+        let mut handle =
+            connect_russh_prefer_ipv4(config, host, port, known_hosts.to_vec()).await?;
 
-impl Drop for SshSession {
-    fn drop(&mut self) {
-        self.disconnect();
+        let authed = match auth {
+            crate::session::AuthMethod::Password => {
+                handle.authenticate_password(user, password).await?
+            }
+            crate::session::AuthMethod::Key { .. } => {
+                let p = private_key_path.trim();
+                if p.is_empty() {
+                    anyhow::bail!(SshConnectError::KeyPathEmpty);
+                }
+                let kp = match russh_keys::load_secret_key(
+                    std::path::Path::new(p),
+                    (!passphrase.trim().is_empty()).then_some(passphrase),
+                ) {
+                    Ok(k) => k,
+                    Err(e) => {
+                        return Err(e.into());
+                    }
+                };
+                handle.authenticate_publickey(user, Arc::new(kp)).await?
+            }
+            crate::session::AuthMethod::Interactive => {
+                let mut resp = handle
+                    .authenticate_keyboard_interactive_start(user, None::<String>)
+                    .await?;
+                loop {
+                    match resp {
+                        russh::client::KeyboardInteractiveAuthResponse::Success => break true,
+                        russh::client::KeyboardInteractiveAuthResponse::Failure => break false,
+                        russh::client::KeyboardInteractiveAuthResponse::InfoRequest {
+                            prompts,
+                            ..
+                        } => {
+                            let answers = prompts
+                                .iter()
+                                .map(|_p| password.to_string())
+                                .collect::<Vec<_>>();
+                            resp = handle
+                                .authenticate_keyboard_interactive_respond(answers)
+                                .await?;
+                        }
+                    }
+                }
+            }
+            crate::session::AuthMethod::Agent => {
+                let mut agent = russh_keys::agent::client::AgentClient::connect_env()
+                    .await
+                    .map_err(|_e| anyhow::anyhow!(SshConnectError::AgentUnavailable))?;
+                let identities = agent
+                    .request_identities()
+                    .await
+                    .map_err(|_e| anyhow::anyhow!(SshConnectError::AgentUnavailable))?;
+                if identities.is_empty() {
+                    anyhow::bail!(SshConnectError::AgentUnavailable);
+                }
+                let mut ok = false;
+                for pk in identities {
+                    let (a, r) = handle.authenticate_future(user, pk, agent).await;
+                    agent = a;
+                    match r {
+                        Ok(true) => {
+                            ok = true;
+                            break;
+                        }
+                        Ok(false) => {}
+                        Err(_e) => {
+                            anyhow::bail!(SshConnectError::AgentUnavailable);
+                        }
+                    }
+                }
+                ok
+            }
+        };
+
+        if !authed {
+            anyhow::bail!(SshConnectError::AuthFailed);
+        }
+
+        Ok(BaseSshConnection::from_handle(handle))
     }
 }
 
@@ -474,10 +463,10 @@ impl InteractiveAuthSession {
         Ok((self, map_kbd_resp(resp)))
     }
 
-    pub async fn finish_into_session(self, cols: u16, rows: u16) -> Result<SshSession> {
-        let mut s = SshSession::new();
-        s.install_authenticated_handle(self.handle, cols, rows).await?;
-        Ok(s)
+    pub async fn finish_into_session(self, cols: u16, rows: u16) -> Result<SshChannel> {
+        let base = BaseSshConnection::from_handle(self.handle);
+        let channel = base.open_channel(cols, rows).await?;
+        Ok(channel)
     }
 }
 
@@ -503,102 +492,50 @@ fn map_kbd_resp(resp: russh::client::KeyboardInteractiveAuthResponse) -> Keyboar
     }
 }
 
-impl AsyncSession for SshSession {
-    fn read_stream(&mut self, buffer: &mut [u8]) -> Result<usize> {
-        // 首先从现有缓冲区提取数据
-        if !self.read_buffer.is_empty() {
-            let len = std::cmp::min(buffer.len(), self.read_buffer.len());
-            buffer[..len].copy_from_slice(&self.read_buffer[..len]);
-            self.read_buffer.drain(..len);
-            return Ok(len);
-        }
-
-        // 尝试从异步通道接收新数据
-        if let Some(ref rx_arc) = self.data_rx {
-            if let Ok(mut rx) = rx_arc.try_lock() {
-                match rx.try_recv() {
-                    Ok(data) => {
-                        log::debug!(
-                            "[AsyncSession] 将缓冲区的 {} 字节数据推送给 UI 渲染层",
-                            data.len()
-                        );
-                        let len = std::cmp::min(buffer.len(), data.len());
-                        buffer[..len].copy_from_slice(&data[..len]);
-                        if data.len() > len {
-                            self.read_buffer.extend_from_slice(&data[len..]);
-                        }
-                        return Ok(len);
-                    }
-                    Err(mpsc::error::TryRecvError::Empty)
-                    | Err(mpsc::error::TryRecvError::Disconnected) => return Ok(0),
-                }
-            }
-        }
-        Ok(0)
-    }
-
-    fn write_stream(&mut self, data: &[u8]) -> Result<()> {
-        if let Some(ref tx) = self.cmd_tx {
-            let _ = tx.send(SessionCmd::Data(data.to_vec()));
-        }
-        Ok(())
-    }
-
-    fn resize_pty(&mut self, cols: u16, rows: u16) -> Result<()> {
-        if let Some(ref tx) = self.cmd_tx {
-            let _ = tx.send(SessionCmd::Resize(cols, rows));
-        }
-        Ok(())
-    }
-
-    fn is_connected(&self) -> bool {
-        self.handle.is_some() && self.cmd_tx.is_some()
-    }
-}
-
 // ============================================================================
-// 多路复用支持：SharedSshConnection 和 ChannelHandle
+// 多路复用支持：BaseSshConnection 和 SshChannel
 // ============================================================================
 
-/// 单个 Channel 的状态
-struct ChannelState {
-    /// 数据接收器
-    data_rx: mpsc::Receiver<Vec<u8>>,
-    /// 命令发送器
+/// 单个 Channel 的运行状态（用 Arc 共享，使 SshChannel 可直接访问）
+struct ChannelEntry {
+    /// 数据接收器：pump 循环通过此发送数据给上层（SshChannel 通过此读取）
+    data_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<Vec<u8>>>>,
+    /// 命令发送器：上层通过此发送数据给 pump 循环
     cmd_tx: mpsc::UnboundedSender<SessionCmd>,
-    /// Pump 任务句柄
-    pump_handle: tokio::task::JoinHandle<()>,
 }
 
-/// 共享 SSH 连接：管理已认证的 SSH 连接，支持多路复用多个 PTY channel。
+/// 共享 SSH 连接（Base）：管理已认证的 `client::Handle`，支持多路复用多个 PTY channel。
 ///
-/// 多个标签页可以通过同一个 SharedSshConnection 创建不同的 channel，
-/// 从而复用同一个 TCP 连接和 SSH 握手，大幅降低多会话场景的开销。
-pub struct SharedSshConnection {
-    /// russh 客户端句柄（用 Arc 共享）
+/// 每个 channel 拥有独立的 pump 循环，通过 `Arc<client::Handle>>` 共享底层连接。
+/// pump 循环负责监听 channel 事件（Data / ExtendedData / Close）和命令（Data / Resize）。
+pub struct BaseSshConnection {
+    /// 共享的 russh 客户端句柄
     handle: Arc<client::Handle<Client>>,
-    /// 活跃的 channel 映射
-    channels: RwLock<HashMap<ChannelId, ChannelState>>,
+    /// 活跃 channel 映射：channel_id → 通道状态
+    channels: RwLock<HashMap<ChannelId, ChannelEntry>>,
+    /// 每个 channel pump 任务的句柄
+    pump_handles: RwLock<HashMap<ChannelId, tokio::task::JoinHandle<()>>>,
     /// 引用计数
     ref_count: AtomicUsize,
 }
 
-impl SharedSshConnection {
-    /// 从已认证的 handle 创建共享连接
+impl BaseSshConnection {
+    /// 从已认证的 handle 创建 BaseSshConnection
     pub(crate) fn from_handle(handle: client::Handle<Client>) -> Arc<Self> {
         Arc::new(Self {
             handle: Arc::new(handle),
             channels: RwLock::new(HashMap::new()),
+            pump_handles: RwLock::new(HashMap::new()),
             ref_count: AtomicUsize::new(0),
         })
     }
 
-    /// 在此连接上打开一个新的 PTY channel
+    /// 在此连接上打开一个新的 PTY channel，返回 `SshChannel`
     pub async fn open_channel(
         self: &Arc<Self>,
         cols: u16,
         rows: u16,
-    ) -> Result<ChannelHandle> {
+    ) -> Result<SshChannel> {
         let channel = self.handle.channel_open_session().await?;
         channel
             .request_pty(true, "xterm-256color", cols as u32, rows as u32, 0, 0, &[])
@@ -607,22 +544,31 @@ impl SharedSshConnection {
 
         let channel_id = channel.id();
 
-        // 创建数据缓冲有界 channel（背压控制）
-        let (tx, rx) = mpsc::channel(8192);
+        // 创建数据缓冲有界 channel（背压控制 8192 包）
+        let (data_tx, data_rx) = mpsc::channel(8192);
+        let data_rx = Arc::new(tokio::sync::Mutex::new(data_rx));
         let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<SessionCmd>();
 
-        // 保存 channel_id 供 pump 任务使用
-        let channel_id_clone = channel_id;
+        // 克隆 exit_status Arc 供 pump 任务使用（pump 和 SshChannel 各持有一个）
+        let exit_status_arc = Arc::new(std::sync::Mutex::new(None));
+        let exit_status_for_pump = exit_status_arc.clone();
+        // SshChannel 持有独立的 exit_status Arc（pump 和 SshChannel 不共享 Mutex）
 
-        // 启动 pump 任务：此任务拥有 channel
+        // 在进入 async move 前先克隆需要的值
+        let channel_id_val = channel_id;
+        let base_conn_for_pump: Arc<BaseSshConnection> = Arc::clone(self);
+
+        // 启动独立 pump 任务：拥有 channel，监听事件和命令
         let pump_handle = tokio::spawn(async move {
             let mut channel = channel;
+            let channel_id_clone = channel_id_val;
+            let base_conn = base_conn_for_pump;
             let mut keep_alive = tokio::time::interval(std::time::Duration::from_secs(30));
 
             loop {
                 tokio::select! {
                     _ = keep_alive.tick() => {
-                        // keep-alive tick
+                        // keep-alive tick（预留扩展）
                     }
                     cmd = cmd_rx.recv() => {
                         match cmd {
@@ -640,14 +586,33 @@ impl SharedSshConnection {
                     msg = channel.wait() => {
                         match msg {
                             Some(russh::ChannelMsg::Data { data }) => {
-                                if tx.send(data.to_vec()).await.is_err() {
+                                if data_tx.send(data.to_vec()).await.is_err() {
+                                    // 接收端已断开，channel 可以关闭
                                     break;
                                 }
                             }
                             Some(russh::ChannelMsg::ExtendedData { data, .. }) => {
-                                if tx.send(data.to_vec()).await.is_err() {
+                                if data_tx.send(data.to_vec()).await.is_err() {
                                     break;
                                 }
+                            }
+                            // 退出码：ExitStatus
+                            Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                                log::info!(
+                                    "[BaseSshConnection] Channel {:?} exit_status: {}",
+                                    channel_id_clone, exit_status
+                                );
+                                let mut status = exit_status_for_pump.lock().unwrap();
+                                *status = Some(exit_status);
+                            }
+                            // 退出码：ExitSignal
+                            Some(russh::ChannelMsg::ExitSignal { .. }) => {
+                                log::info!(
+                                    "[BaseSshConnection] Channel {:?} exit_signal received",
+                                    channel_id_clone
+                                );
+                                let mut status = exit_status_for_pump.lock().unwrap();
+                                *status = Some(255); // 信号通常映射为 255
                             }
                             Some(russh::ChannelMsg::Close) | Some(russh::ChannelMsg::Eof) | None => {
                                 break;
@@ -657,78 +622,118 @@ impl SharedSshConnection {
                     }
                 }
             }
-            log::info!("[SharedSshConnection] Channel {:?} pump loop ended", channel_id_clone);
+            log::info!(
+                "[BaseSshConnection] Channel {:?} pump loop ended",
+                channel_id_clone
+            );
+            // channel 关闭时清理
+            base_conn.remove_channel(channel_id_clone).await;
         });
 
         // 保存 channel 状态
-        let state = ChannelState {
-            data_rx: rx,
+        let entry = ChannelEntry {
+            data_rx,
             cmd_tx,
-            pump_handle,
         };
 
         {
             let mut channels = self.channels.write().await;
-            channels.insert(channel_id, state);
+            channels.insert(channel_id, entry);
+        }
+        {
+            let mut handles = self.pump_handles.write().await;
+            handles.insert(channel_id, pump_handle);
         }
         self.ref_count.fetch_add(1, Ordering::SeqCst);
 
-        log::info!("[SharedSshConnection] Opened channel {:?}, total channels: {}", channel_id, self.channels.read().await.len());
+        log::info!(
+            "[BaseSshConnection] Opened channel {:?}, total channels: {}",
+            channel_id,
+            self.channels.read().await.len()
+        );
 
-        Ok(ChannelHandle {
+        Ok(SshChannel {
             conn: self.clone(),
             channel_id,
             read_buffer: Vec::new(),
+            handle_ref_count: Arc::new(AtomicUsize::new(1)),
+            exit_status: exit_status_arc,
         })
     }
 
+    /// 内部：移除 channel 并停止 pump 任务
+    async fn remove_channel(&self, channel_id: ChannelId) {
+        let had_entry = {
+            let mut channels = self.channels.write().await;
+            channels.remove(&channel_id)
+        };
+
+        if had_entry.is_some() {
+            if let Some(h) = self.pump_handles.write().await.remove(&channel_id) {
+                h.abort();
+            }
+            self.ref_count.fetch_sub(1, Ordering::SeqCst);
+            log::info!(
+                "[BaseSshConnection] Removed channel {:?}, remaining: {}",
+                channel_id,
+                self.channels.read().await.len()
+            );
+        }
+    }
+
     /// 从 channel 读取数据（非阻塞）
-    pub async fn read_channel(&self, channel_id: ChannelId, buffer: &mut [u8]) -> Result<usize> {
-        let mut channels = self.channels.write().await;
-        if let Some(state) = channels.get_mut(&channel_id) {
-            match state.data_rx.try_recv() {
-                Ok(data) => {
-                    let len = std::cmp::min(buffer.len(), data.len());
-                    buffer[..len].copy_from_slice(&data[..len]);
-                    if data.len() > len {
-                        // 超出的数据需要缓存起来
-                        // 这里简化处理，实际应该用 Mutex 保护
+    pub async fn read_channel(
+        &self,
+        channel_id: ChannelId,
+        buffer: &mut [u8],
+    ) -> Result<usize> {
+        let channels = self.channels.read().await;
+        match channels.get(&channel_id) {
+            Some(entry) => {
+                let mut rx = entry.data_rx.lock().await;
+                match rx.try_recv() {
+                    Ok(data) => {
+                        let len = std::cmp::min(buffer.len(), data.len());
+                        buffer[..len].copy_from_slice(&data[..len]);
+                        if data.len() > len {
+                            // TODO: 缓存超出的数据
+                        }
+                        Ok(len)
                     }
-                    return Ok(len);
-                }
-                Err(mpsc::error::TryRecvError::Empty) => Ok(0),
-                Err(mpsc::error::TryRecvError::Disconnected) => {
-                    channels.remove(&channel_id);
-                    Ok(0)
+                    Err(mpsc::error::TryRecvError::Empty) => Ok(0),
+                    Err(mpsc::error::TryRecvError::Disconnected) => Ok(0),
                 }
             }
-        } else {
-            Ok(0)
+            None => Ok(0),
         }
     }
 
     /// 向 channel 写入数据
-    pub async fn write_channel(&self, channel_id: ChannelId, data: &[u8]) -> Result<()> {
-        let channels = self.channels.read().await;
-        if let Some(state) = channels.get(&channel_id) {
-            let _ = state.cmd_tx.send(SessionCmd::Data(data.to_vec()));
+    pub fn write_channel(&self, channel_id: ChannelId, data: &[u8]) {
+        if let Some(ch) = self.channels.try_read().ok() {
+            if let Some(entry) = ch.get(&channel_id) {
+                let _ = entry.cmd_tx.send(SessionCmd::Data(data.to_vec()));
+            }
         }
-        Ok(())
     }
 
     /// 调整 PTY 大小
-    pub async fn resize_channel(&self, channel_id: ChannelId, cols: u16, rows: u16) -> Result<()> {
-        let channels = self.channels.read().await;
-        if let Some(state) = channels.get(&channel_id) {
-            let _ = state.cmd_tx.send(SessionCmd::Resize(cols, rows));
+    pub fn resize_channel(&self, channel_id: ChannelId, cols: u16, rows: u16) {
+        if let Some(ch) = self.channels.try_read().ok() {
+            if let Some(entry) = ch.get(&channel_id) {
+                let _ = entry.cmd_tx.send(SessionCmd::Resize(cols, rows));
+            }
         }
-        Ok(())
     }
 
     /// 检查 channel 是否存在
-    pub async fn has_channel(&self, channel_id: ChannelId) -> bool {
-        let channels = self.channels.read().await;
-        channels.contains_key(&channel_id)
+    pub fn has_channel(&self, channel_id: ChannelId) -> bool {
+        self.channels.try_read().map(|c| c.contains_key(&channel_id)).unwrap_or(false)
+    }
+
+    /// 获取活跃 channel 数量
+    pub fn channel_count(&self) -> usize {
+        self.channels.try_read().map(|c| c.len()).unwrap_or(0)
     }
 
     /// 获取引用计数
@@ -736,104 +741,130 @@ impl SharedSshConnection {
         self.ref_count.load(Ordering::SeqCst)
     }
 
-    /// 获取活跃 channel 数量
-    pub async fn channel_count(&self) -> usize {
-        self.channels.read().await.len()
-    }
-
-    /// 关闭指定 channel
-    pub async fn close_channel(&self, channel_id: ChannelId) {
-        if let Some(state) = self.channels.write().await.remove(&channel_id) {
-            state.pump_handle.abort();
-            let _ = state.cmd_tx.send(SessionCmd::Data(Vec::new()));
-        }
-        self.ref_count.fetch_sub(1, Ordering::SeqCst);
-        log::info!("[SharedSshConnection] Closed channel {:?}, remaining: {}", channel_id, self.channel_count().await);
-    }
-
-    /// 关闭连接
+    /// 关闭连接（关闭所有 channel）
     pub async fn close(self: &Arc<Self>) {
-        log::info!("[SharedSshConnection] Closing all channels");
+        log::info!("[BaseSshConnection] Closing all channels");
         let channel_ids: Vec<ChannelId> = self.channels.read().await.keys().copied().collect();
         for id in channel_ids {
-            self.close_channel(id).await;
+            self.remove_channel(id).await;
         }
-        drop(self.handle.clone());
     }
 }
 
-impl Clone for SharedSshConnection {
+impl Clone for BaseSshConnection {
     fn clone(&self) -> Self {
         self.ref_count.fetch_add(1, Ordering::SeqCst);
         Self {
             handle: self.handle.clone(),
             channels: RwLock::new(HashMap::new()),
+            pump_handles: RwLock::new(HashMap::new()),
             ref_count: AtomicUsize::new(self.ref_count.load(Ordering::SeqCst)),
         }
     }
 }
 
-/// PTY channel 句柄：绑定到特定的 channel_id
-pub struct ChannelHandle {
-    conn: Arc<SharedSshConnection>,
+/// SSH PTY Channel：绑定到 `BaseSshConnection` 的特定 channel_id，实现 `AsyncSession`。
+///
+/// 每个标签页对应一个 `SshChannel`，多个 `SshChannel` 共享同一个 `BaseSshConnection`。
+pub struct SshChannel {
+    /// 底层的共享 SSH 连接
+    conn: Arc<BaseSshConnection>,
+    /// 此 channel 的唯一标识
     channel_id: ChannelId,
-    /// 本地读取缓冲区
+    /// 本地读取缓冲区（处理 buffer 不够大的情况）
     read_buffer: Vec<u8>,
+    /// 独立引用计数（仅 SshChannel 句柄的计数，用于安全 clone）
+    handle_ref_count: Arc<AtomicUsize>,
+    /// 退出状态（shell/命令的退出码）
+    exit_status: Arc<std::sync::Mutex<Option<u32>>>,
 }
 
-impl ChannelHandle {
-    /// 读取数据
-    pub async fn read(&mut self, buffer: &mut [u8]) -> Result<usize> {
-        // 先检查本地缓冲区
-        if !self.read_buffer.is_empty() {
-            let len = std::cmp::min(buffer.len(), self.read_buffer.len());
-            buffer[..len].copy_from_slice(&self.read_buffer[..len]);
-            self.read_buffer.drain(..len);
-            return Ok(len);
+impl Clone for SshChannel {
+    fn clone(&self) -> Self {
+        // 增加句柄引用计数
+        self.handle_ref_count.fetch_add(1, Ordering::SeqCst);
+        // 增加 BaseSshConnection 的引用计数（安全 clone）
+        self.conn.ref_count.fetch_add(1, Ordering::SeqCst);
+        Self {
+            conn: self.conn.clone(),
+            channel_id: self.channel_id,
+            read_buffer: Vec::new(),
+            handle_ref_count: self.handle_ref_count.clone(),
+            exit_status: self.exit_status.clone(),
+        }
+    }
+}
+
+impl Drop for SshChannel {
+    fn drop(&mut self) {
+        let handle_refs = self.handle_ref_count.fetch_sub(1, Ordering::SeqCst);
+        let conn_refs = self.conn.ref_count.fetch_sub(1, Ordering::SeqCst);
+
+        log::info!(
+            "[SshChannel] Dropped channel {:?} (handles: {}, conn_refs: {})",
+            self.channel_id,
+            handle_refs,
+            conn_refs,
+        );
+
+        // 只有最后一个句柄才关闭 channel（防止重复 remove_channel）
+        if handle_refs <= 1 {
+            let conn = self.conn.clone();
+            let channel_id = self.channel_id;
+            tokio::spawn(async move {
+                conn.remove_channel(channel_id).await;
+            });
         }
 
-        // 从连接读取
-        let len = self.conn.read_channel(self.channel_id, buffer).await?;
-        if len > buffer.len() {
-            self.read_buffer.extend_from_slice(&buffer[len..]);
+        // BaseSshConnection 引用计数 <= 1 时关闭整个连接
+        if conn_refs <= 1 {
+            let conn = self.conn.clone();
+            tokio::spawn(async move {
+                conn.close().await;
+            });
         }
-        Ok(len)
     }
+}
 
-    /// 写入数据
-    pub async fn write(&self, data: &[u8]) -> Result<()> {
-        self.conn.write_channel(self.channel_id, data).await
-    }
-
-    /// 调整 PTY 大小
-    pub async fn resize(&self, cols: u16, rows: u16) -> Result<()> {
-        self.conn.resize_channel(self.channel_id, cols, rows).await
-    }
-
+impl SshChannel {
     /// 获取 channel ID
     pub fn channel_id(&self) -> ChannelId {
         self.channel_id
     }
 }
 
-impl Drop for ChannelHandle {
-    fn drop(&mut self) {
-        let refs = self.conn.ref_count.fetch_sub(1, Ordering::SeqCst);
-        log::info!("[ChannelHandle] Dropped channel {:?}, shared conn refs: {}", self.channel_id, refs);
-
-        if refs <= 1 {
-            // 最后一个引用，关闭连接
-            let conn = self.conn.clone();
-            tokio::spawn(async move {
-                conn.close().await;
-            });
-        } else {
-            // 只关闭 channel
-            let conn = self.conn.clone();
-            let channel_id = self.channel_id;
-            tokio::spawn(async move {
-                conn.close_channel(channel_id).await;
-            });
+impl AsyncSession for SshChannel {
+    fn read_stream(&mut self, buffer: &mut [u8]) -> Result<usize> {
+        // 优先从本地缓冲区读取（不 drain，用 swap 保持类型安全）
+        if !self.read_buffer.is_empty() {
+            let len = std::cmp::min(buffer.len(), self.read_buffer.len());
+            buffer[..len].copy_from_slice(&self.read_buffer[..len]);
+            // 清空缓冲区（用 Vec::new 替代 drain，保持 Sync）
+            self.read_buffer = Vec::new();
+            return Ok(len);
         }
+
+        // 从连接异步读取
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(self.conn.read_channel(self.channel_id, buffer))
+    }
+
+    fn write_stream(&mut self, data: &[u8]) -> Result<()> {
+        self.conn.write_channel(self.channel_id, data);
+        Ok(())
+    }
+
+    fn resize_pty(&mut self, cols: u16, rows: u16) -> Result<()> {
+        self.conn.resize_channel(self.channel_id, cols, rows);
+        Ok(())
+    }
+
+    fn is_connected(&self) -> bool {
+        self.conn.has_channel(self.channel_id)
+    }
+
+    fn exit_status(&self) -> Option<u32> {
+        *self.exit_status.lock().unwrap()
     }
 }
+

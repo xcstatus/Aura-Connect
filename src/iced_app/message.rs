@@ -56,10 +56,10 @@ pub(crate) enum SettingsField {
 }
 
 /// Type alias for connect result error info (error kind + optional host key error details).
-pub type ConnectResultError = (crate::app_model::ConnectErrorKind, Option<crate::app_model::HostKeyErrorInfo>);
+pub type ConnectResultError = (crate::app_state::ConnectErrorKind, Option<crate::app_state::HostKeyErrorInfo>);
 
 /// Wrapped session type for async connection result.
-pub type ConnectSession = std::sync::Arc<Box<dyn crate::backend::ssh_session::AsyncSession>>;
+pub type ConnectSession = std::sync::Arc<crate::backend::ssh_session::SshChannel>;
 
 /// Message type - manually implement Debug since AsyncSession doesn't implement it.
 #[derive(Clone)]
@@ -182,7 +182,7 @@ pub(crate) enum Message {
     /// 自动重连倒计时更新（每秒触发一次）
     ReconnectTick,
     /// 自动重连结果（异步任务回调）
-    ReconnectResult(Result<std::sync::Arc<Box<dyn crate::backend::ssh_session::AsyncSession>>, (crate::app_model::ConnectErrorKind, Option<crate::app_model::HostKeyErrorInfo>)>),
+    ReconnectResult(Result<std::sync::Arc<crate::backend::ssh_session::SshChannel>, (crate::app_state::ConnectErrorKind, Option<crate::app_state::HostKeyErrorInfo>)>),
     /// 用户手动取消重连
     ReconnectCancel,
     /// 重启后恢复会话弹窗：确认恢复
@@ -196,7 +196,7 @@ pub(crate) enum Message {
     /// 预热 tick（每 500ms 检查）
     PrewarmTick,
     /// 预热结果回调
-    PrewarmResult(Result<std::sync::Arc<Box<dyn crate::backend::ssh_session::AsyncSession>>, (crate::app_model::ConnectErrorKind, Option<crate::app_model::HostKeyErrorInfo>)>),
+    PrewarmResult(Result<std::sync::Arc<crate::backend::ssh_session::SshChannel>, (crate::app_state::ConnectErrorKind, Option<crate::app_state::HostKeyErrorInfo>)>),
 }
 
 impl std::fmt::Debug for Message {

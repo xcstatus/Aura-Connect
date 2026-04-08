@@ -59,7 +59,7 @@ pub(crate) fn sync_terminal_grid_to_session(state: &mut IcedState) {
         terminal_viewport::grid_from_window_size_with_spec(window_size, &spec)
     };
     let prev_rows = pane.terminal.grid_size().1;
-    if let Some(session) = state.session_manager.session_mut(state.active_tab) {
+    if let Some(session) = state.tab_manager.session_mut(state.active_tab) {
         let _ = pane.terminal.resize_and_sync_pty(session, cols, rows);
     } else {
         pane.terminal.resize(cols, rows);
@@ -71,7 +71,7 @@ pub(crate) fn sync_terminal_grid_to_session(state: &mut IcedState) {
 
 pub(crate) fn disconnect_active_tab_session(state: &mut IcedState) {
     state
-        .session_manager
+        .tab_manager
         .detach_session(state.active_tab);
     state.active_pane_mut().terminal.clear_pty_resize_anchor();
     state.model.status = "Disconnected".to_string();
@@ -89,8 +89,38 @@ pub(crate) fn complete_new_ssh_session(
 ) {
     // Attach session to the active tab (replaces any existing session on that tab).
     state
-        .session_manager
+        .tab_manager
         .attach_session(state.active_tab, session, connection_key);
+
+    // Resize PTY to current window size (active tab already has the new session attached).
+    sync_terminal_grid_to_session(state);
+
+    state.active_pane_mut().last_terminal_focus_sent = None;
+    TerminalHost::sync_focus_report(state);
+    state.model.status = "Connected".to_string();
+    state.model.record_recent_connection(recent);
+    state.quick_connect_open = false;
+    state.settings_modal_open = false;
+    state.quick_connect_panel = QuickConnectPanel::Picker;
+    if let Some(tab) = state.tabs.get_mut(state.active_tab) {
+        tab.title = tab_title;
+        tab.profile_id = profile_id;
+    }
+}
+
+/// Overload that accepts Arc<SshChannel> directly (used by connection pool for multiplexing).
+pub(crate) fn complete_new_ssh_session_arc(
+    state: &mut IcedState,
+    session: std::sync::Arc<crate::backend::ssh_session::SshChannel>,
+    recent: crate::settings::RecentConnectionRecord,
+    tab_title: String,
+    profile_id: Option<String>,
+    connection_key: Option<crate::backend::shared_ssh_session::ConnectionKey>,
+) {
+    // Attach session to the active tab (replaces any existing session on that tab).
+    state
+        .tab_manager
+        .attach_session_arc(state.active_tab, session, connection_key);
 
     // Resize PTY to current window size (active tab already has the new session attached).
     sync_terminal_grid_to_session(state);
@@ -320,7 +350,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
                 return Task::none();
             };
             state.model.selected_session_id = None;
-            state.model.draft.source = crate::app_model::DraftSource::DirectInput;
+            state.model.draft.source = crate::app_state::DraftSource::DirectInput;
             state.model.draft.profile_id = None;
             state.model.draft.recent = None;
             state.model.draft.edited = false;
@@ -350,7 +380,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.model.draft.port = rec.port.to_string();
             state.model.draft.user = rec.user.clone();
             state.model.draft.password = secrecy::SecretString::from(String::new());
-            state.model.draft.source = crate::app_model::DraftSource::Recent;
+            state.model.draft.source = crate::app_state::DraftSource::Recent;
             state.model.draft.profile_id = rec.profile_id.clone();
             state.model.draft.recent = Some(rec.clone());
             state.model.draft.edited = false;
@@ -537,12 +567,8 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
         Message::ConnectPressed => connection::handle_connect(state),
         Message::ConnectResult(result) => {
             match result {
-                Ok(session) => {
-                    // Unwrap the Arc - we know there's only one reference
-                    let session: Box<dyn crate::backend::ssh_session::AsyncSession> =
-                        std::sync::Arc::into_inner(session)
-                            .unwrap();
-                    connection::handle_connect_success(state, session);
+                Ok(session_arc) => {
+                    connection::handle_connect_success_arc(state, session_arc);
                 }
                 Err((kind, host_key_error)) => {
                     // Transfer host_key_error from temp_model back to state
