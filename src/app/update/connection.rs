@@ -89,9 +89,10 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
 
     let port: u16 = port_str.parse().unwrap_or(22);
     let known_hosts = state.model.settings.security.known_hosts.clone();
+    let host_key_policy = state.model.settings.security.host_key_policy;
 
     let sess = match state.rt.block_on(
-        crate::backend::ssh_session::InteractiveAuthSession::connect(&host, port, &user_str, &known_hosts)
+        crate::backend::ssh_session::InteractiveAuthSession::connect(&host, port, &user_str, &known_hosts, host_key_policy)
     ) {
         Ok(s) => s,
         Err(_e) => {
@@ -173,6 +174,7 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
     let draft = state.model.draft.clone();
     let settings = state.model.settings.clone();
     let merged_known_hosts = merge_known_hosts(&settings, &state.runtime_known_hosts);
+    let host_key_policy = settings.security.host_key_policy;
     let shared_manager = state.tab_manager.shared_manager.clone();
     let cols = 80u16;
     let rows = 24u16;
@@ -197,6 +199,7 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
                 || {
                     let draft = draft.clone();
                     let merged_known_hosts = merged_known_hosts.clone();
+                    let host_key_policy = host_key_policy;
                     Box::pin(async move {
                         let session = crate::backend::ssh_session::SshSession::new();
                         session
@@ -209,6 +212,7 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
                                 &draft.private_key_path.trim(),
                                 &draft.passphrase.expose_secret(),
                                 &merged_known_hosts,
+                                host_key_policy,
                             )
                             .await
                             .map_err(|e| crate::app::model::AppModel::classify_connect_error(&e))

@@ -324,6 +324,7 @@ impl AppModel {
                 self.draft.private_key_path.trim(),
                 self.draft.passphrase.expose_secret(),
                 &self.settings.security.known_hosts,
+                self.settings.security.host_key_policy,
             )
             .await
         {

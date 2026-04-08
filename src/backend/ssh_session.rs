@@ -67,6 +67,7 @@ async fn connect_russh_prefer_ipv4(
     host: &str,
     port: u16,
     known_hosts: Vec<crate::settings::KnownHostRecord>,
+    host_key_policy: crate::settings::HostKeyPolicy,
 ) -> Result<client::Handle<Client>> {
     let addrs = resolve_ssh_addrs(host, port).await?;
     let mut last_err: Option<anyhow::Error> = None;
@@ -81,6 +82,7 @@ async fn connect_russh_prefer_ipv4(
             host: host.to_string(),
             port,
             known_hosts: known_hosts.clone(),
+            host_key_policy,
         };
         match client::connect(config.clone(), addr, handler).await {
             Ok(handle) => return Ok(handle),
@@ -99,6 +101,7 @@ struct Client {
     host: String,
     port: u16,
     known_hosts: Vec<crate::settings::KnownHostRecord>,
+    host_key_policy: crate::settings::HostKeyPolicy,
 }
 
 #[async_trait]
@@ -113,28 +116,54 @@ impl client::Handler for Client {
         let fp = server_public_key.fingerprint();
         let host = self.host.clone();
         let port = self.port;
-        if let Some(rec) = self
-            .known_hosts
-            .iter()
-            .find(|r| r.host == host && r.port == port)
-        {
-            if rec.fingerprint == fp {
-                return Ok(true);
+
+        // 查找 known_hosts 中是否有该主机的记录
+        let known_record = self.known_hosts.iter()
+            .find(|r| r.host == host && r.port == port);
+
+        match known_record {
+            Some(rec) if rec.fingerprint == fp => {
+                // 已知主机且指纹匹配 → 始终允许
+                Ok(true)
             }
-            return Err(anyhow::anyhow!(SshConnectError::HostKeyMismatch {
-                host,
-                port,
-                algo,
-                old_fingerprint: rec.fingerprint.clone(),
-                new_fingerprint: fp,
-            }));
+            Some(rec) => {
+                // 已知主机但指纹不匹配 → 始终拒绝（安全策略）
+                Err(anyhow::anyhow!(SshConnectError::HostKeyMismatch {
+                    host,
+                    port,
+                    algo,
+                    old_fingerprint: rec.fingerprint.clone(),
+                    new_fingerprint: fp,
+                }))
+            }
+            None => {
+                // 未知主机 → 根据策略决定
+                match self.host_key_policy {
+                    crate::settings::HostKeyPolicy::Strict
+                    | crate::settings::HostKeyPolicy::Reject => {
+                        Err(anyhow::anyhow!(SshConnectError::HostKeyUnknown {
+                            host,
+                            port,
+                            algo,
+                            fingerprint: fp,
+                        }))
+                    }
+                    crate::settings::HostKeyPolicy::AcceptNew => {
+                        // 自动接受新主机
+                        Ok(true)
+                    }
+                    crate::settings::HostKeyPolicy::Ask => {
+                        // 未知主机 → 报错让 UI 层弹窗确认
+                        Err(anyhow::anyhow!(SshConnectError::HostKeyUnknown {
+                            host,
+                            port,
+                            algo,
+                            fingerprint: fp,
+                        }))
+                    }
+                }
+            }
         }
-        Err(anyhow::anyhow!(SshConnectError::HostKeyUnknown {
-            host,
-            port,
-            algo,
-            fingerprint: fp,
-        }))
     }
 
     async fn data(
@@ -182,10 +211,17 @@ impl SshSession {
         private_key_path: &str,
         passphrase: &str,
         known_hosts: &[crate::settings::KnownHostRecord],
+        host_key_policy: crate::settings::HostKeyPolicy,
     ) -> Result<Arc<SshChannel>> {
         let config = Arc::new(client::Config::default());
-        let mut handle =
-            connect_russh_prefer_ipv4(config, host, port, known_hosts.to_vec()).await?;
+        let mut handle = connect_russh_prefer_ipv4(
+            config,
+            host,
+            port,
+            known_hosts.to_vec(),
+            host_key_policy,
+        )
+        .await?;
 
         let authed = match auth {
             crate::session::AuthMethod::Password => {
@@ -302,6 +338,7 @@ impl SshSession {
             "",
             "",
             &[],
+            crate::settings::HostKeyPolicy::Strict,
         )
         .await
     }
@@ -317,10 +354,17 @@ impl SshSession {
         private_key_path: &str,
         passphrase: &str,
         known_hosts: &[crate::settings::KnownHostRecord],
+        host_key_policy: crate::settings::HostKeyPolicy,
     ) -> anyhow::Result<Arc<BaseSshConnection>> {
         let config = Arc::new(client::Config::default());
-        let mut handle =
-            connect_russh_prefer_ipv4(config, host, port, known_hosts.to_vec()).await?;
+        let mut handle = connect_russh_prefer_ipv4(
+            config,
+            host,
+            port,
+            known_hosts.to_vec(),
+            host_key_policy,
+        )
+        .await?;
 
         let authed = match auth {
             crate::session::AuthMethod::Password => {
@@ -435,9 +479,17 @@ impl InteractiveAuthSession {
         port: u16,
         user: &str,
         known_hosts: &[crate::settings::KnownHostRecord],
+        host_key_policy: crate::settings::HostKeyPolicy,
     ) -> Result<Self> {
         let config = Arc::new(client::Config::default());
-        let handle = connect_russh_prefer_ipv4(config, host, port, known_hosts.to_vec()).await?;
+        let handle = connect_russh_prefer_ipv4(
+            config,
+            host,
+            port,
+            known_hosts.to_vec(),
+            host_key_policy,
+        )
+        .await?;
         Ok(Self {
             handle,
             user: user.to_string(),

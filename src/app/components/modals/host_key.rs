@@ -60,6 +60,7 @@ pub(crate) fn host_key_prompt_modal(state: &IcedState) -> Element<'_, Message> {
                 crate::settings::HostKeyPolicy::Strict => i18n.tr("settings.security.hosts.policy.strict"),
                 crate::settings::HostKeyPolicy::Ask => i18n.tr("settings.security.hosts.policy.ask"),
                 crate::settings::HostKeyPolicy::AcceptNew => i18n.tr("settings.security.hosts.policy.accept_new"),
+                crate::settings::HostKeyPolicy::Reject => i18n.tr("settings.security.hosts.policy.strict"),
             })
             .size(12),
         )
