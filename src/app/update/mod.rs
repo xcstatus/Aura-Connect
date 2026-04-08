@@ -421,6 +421,17 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
         Message::SessionEditorClearPasswordToggled(v) => {
             session::handle_session_editor_clear_password(state, v)
         }
+        Message::SessionEditorNameChanged(v) => session::handle_session_editor_name(state, v),
+        Message::SessionEditorGroupChanged(v) => session::handle_session_editor_group(state, v),
+        Message::SessionEditorPrivateKeyPathChanged(v) => {
+            session::handle_session_editor_private_key_path(state, v)
+        }
+        Message::SessionEditorPassphraseChanged(v) => {
+            session::handle_session_editor_passphrase(state, v)
+        }
+        Message::SessionEditorTestConnection => {
+            session::handle_session_editor_test_connection(state)
+        }
         Message::SessionEditorSave => session::handle_session_editor_save(state),
 
         // --- Tabs ---

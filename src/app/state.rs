@@ -778,6 +778,8 @@ impl VaultFlowState {
 #[derive(Debug, Clone)]
 pub(crate) struct SessionEditorState {
     pub profile_id: Option<String>,
+    pub name: String,
+    pub group_id: Option<String>,
     pub host: String,
     pub port: String,
     pub user: String,
@@ -790,6 +792,31 @@ pub(crate) struct SessionEditorState {
     /// Explicitly clear saved password (must not be inferred from empty input).
     pub clear_saved_password: bool,
     pub error: Option<String>,
+
+    // 私钥相关字段
+    pub private_key_path: String,
+    pub passphrase: SecretString,
+
+    // 测试连接状态
+    pub test_connecting: bool,
+
+    // 高级设置
+    pub keep_alive_interval: u32,
+    pub connection_timeout: u32,
+    pub proxy_type: ProxyType,
+    pub proxy_host: String,
+    pub proxy_port: String,
+    pub heartbeat_enabled: bool,
+    pub heartbeat_interval: u32,
+}
+
+/// 代理类型枚举。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum ProxyType {
+    #[default]
+    None,
+    Socks5,
+    Http,
 }
 
 #[derive(Debug, Clone)]

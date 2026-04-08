@@ -3,7 +3,7 @@ use iced::Task;
 use secrecy::{ExposeSecret, SecretString};
 
 use super::super::message::Message;
-use super::super::state::{IcedState, IcedTab, SessionEditorState, TabPane, VaultStatus};
+use super::super::state::{IcedState, IcedTab, ProxyType, SessionEditorState, TabPane, VaultStatus};
 
 /// Handle TopAddTab message.
 pub(crate) fn handle_add_tab(state: &mut IcedState) -> Task<Message> {
@@ -95,6 +95,8 @@ pub(crate) fn handle_open_session_editor(
 ) -> Task<Message> {
     let mut st = SessionEditorState {
         profile_id: profile_id.clone(),
+        name: String::new(),
+        group_id: None,
         host: String::new(),
         port: "22".to_string(),
         user: String::new(),
@@ -104,10 +106,22 @@ pub(crate) fn handle_open_session_editor(
         password_dirty: false,
         clear_saved_password: false,
         error: None,
+        private_key_path: String::new(),
+        passphrase: SecretString::new("".into()),
+        test_connecting: false,
+        keep_alive_interval: 60,
+        connection_timeout: 10,
+        proxy_type: ProxyType::None,
+        proxy_host: String::new(),
+        proxy_port: String::new(),
+        heartbeat_enabled: false,
+        heartbeat_interval: 30,
     };
 
     if let Some(pid) = profile_id {
         if let Some(p) = state.model.profiles().iter().find(|p| p.id == pid) {
+            st.name = p.name.clone();
+            st.group_id = p.group_id.clone();
             if let crate::session::TransportConfig::Ssh(ssh) = &p.transport {
                 st.host = ssh.host.clone();
                 st.port = ssh.port.to_string();
@@ -185,6 +199,67 @@ pub(crate) fn handle_session_editor_clear_password(
     if let Some(ed) = state.session_editor.as_mut() {
         ed.clear_saved_password = v;
         ed.error = None;
+    }
+    Task::none()
+}
+
+/// Handle SessionEditorNameChanged message.
+pub(crate) fn handle_session_editor_name(state: &mut IcedState, v: String) -> Task<Message> {
+    if let Some(ed) = state.session_editor.as_mut() {
+        ed.name = v;
+        ed.error = None;
+    }
+    Task::none()
+}
+
+/// Handle SessionEditorGroupChanged message.
+pub(crate) fn handle_session_editor_group(
+    state: &mut IcedState,
+    v: Option<String>,
+) -> Task<Message> {
+    if let Some(ed) = state.session_editor.as_mut() {
+        ed.group_id = v;
+        ed.error = None;
+    }
+    Task::none()
+}
+
+/// Handle SessionEditorPrivateKeyPathChanged message.
+pub(crate) fn handle_session_editor_private_key_path(
+    state: &mut IcedState,
+    v: String,
+) -> Task<Message> {
+    if let Some(ed) = state.session_editor.as_mut() {
+        ed.private_key_path = v;
+        ed.error = None;
+    }
+    Task::none()
+}
+
+/// Handle SessionEditorPassphraseChanged message.
+pub(crate) fn handle_session_editor_passphrase(
+    state: &mut IcedState,
+    v: String,
+) -> Task<Message> {
+    if let Some(ed) = state.session_editor.as_mut() {
+        ed.passphrase = SecretString::from(v);
+        ed.error = None;
+    }
+    Task::none()
+}
+
+/// Handle SessionEditorTestConnection message.
+pub(crate) fn handle_session_editor_test_connection(
+    state: &mut IcedState,
+) -> Task<Message> {
+    let Some(ed) = state.session_editor.as_ref() else {
+        return Task::none();
+    };
+
+    // TODO: 实现测试连接逻辑
+    // 目前只是设置测试连接状态
+    if let Some(ed) = state.session_editor.as_mut() {
+        ed.test_connecting = true;
     }
     Task::none()
 }
@@ -292,7 +367,12 @@ pub(crate) fn handle_session_editor_save(state: &mut IcedState) -> Task<Message>
 
     let profile = crate::session::SessionProfile {
         id: id.clone(),
-        name: format!("{}@{}", user, host),
+        name: if ed.name.is_empty() {
+            format!("{}@{}", user, host)
+        } else {
+            ed.name.clone()
+        },
+        group_id: ed.group_id.clone(),
         folder: existing_folder,
         color_tag: None,
         transport: crate::session::TransportConfig::Ssh(crate::session::SshConfig {
@@ -389,6 +469,7 @@ pub(crate) fn handle_quick_connect_save_session(state: &mut IcedState) -> Task<M
     let profile = crate::session::SessionProfile {
         id: profile_id.clone(),
         name: format!("{}@{}", user, host),
+        group_id: None,
         folder: None,
         color_tag: None,
         transport: crate::session::TransportConfig::Ssh(crate::session::SshConfig {
@@ -396,7 +477,7 @@ pub(crate) fn handle_quick_connect_save_session(state: &mut IcedState) -> Task<M
             port,
             user,
             auth,
-            credential_id: if needs_vault { Some(profile_id) } else { None },
+            credential_id: if needs_vault { Some(profile_id.clone()) } else { None },
         }),
     };
 

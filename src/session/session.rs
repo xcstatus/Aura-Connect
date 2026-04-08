@@ -85,6 +85,7 @@ impl std::fmt::Display for AuthMethod {
 pub struct SessionProfile {
     pub id: String,
     pub name: String,
+    pub group_id: Option<String>,
     pub folder: Option<String>,
     pub color_tag: Option<[u8; 3]>,
     pub transport: TransportConfig,

@@ -1,3 +1,7 @@
+//! 快速连接表单组件
+//! 支持连接流程、错误状态和交互式认证
+//! 表单字段使用 session_form.* i18n keys，与设置中心的会话编辑器保持一致
+
 use iced::alignment::Alignment;
 use iced::widget::{
     button, column, container, pick_list, row, text, text_input,
@@ -13,6 +17,7 @@ use crate::app::widgets::chrome_button::style_chrome_primary;
 use crate::app::widgets::chrome_button::style_chrome_secondary;
 
 /// Quick connect new connection form: host/port, user, password, auth method, etc.
+/// Uses consistent i18n keys with the session editor (session_form.*)
 pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> {
     let i18n = &state.model.i18n;
     let tokens = tokens_for_state(state);
@@ -22,12 +27,12 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
     let stage = state.connection_stage;
     let is_connecting = matches!(flow, crate::app::state::QuickConnectFlow::Connecting);
 
-    // Form inputs
+    // Form inputs - 使用 session_form.* i18n keys
     let host_row = row![
-        text_input(i18n.tr("iced.field.host"), &state.model.draft.host)
+        text_input(i18n.tr("session_form.field.host"), &state.model.draft.host)
             .on_input(Message::HostChanged)
             .width(iced::Length::FillPortion(3)),
-        text_input(i18n.tr("iced.field.port"), &state.model.draft.port)
+        text_input(i18n.tr("session_form.field.port"), &state.model.draft.port)
             .on_input(Message::PortChanged)
             .width(iced::Length::FillPortion(1)),
     ]
@@ -35,11 +40,11 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
     .align_y(Alignment::Center);
 
     let user_row = row![
-        text_input(i18n.tr("iced.field.user"), &state.model.draft.user)
+        text_input(i18n.tr("session_form.field.user"), &state.model.draft.user)
             .on_input(Message::UserChanged)
             .width(iced::Length::FillPortion(1)),
         text_input(
-            i18n.tr("iced.field.password"),
+            i18n.tr("session_form.field.password"),
             state.model.draft.password.expose_secret(),
         )
         .secure(true)
@@ -75,7 +80,7 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
                     .user_message(),
             ))
             .padding(10)
-            .style(top_bar_material_style(tokens))
+            .style(top_bar_material_style(tokens.clone()))
             .into(),
         ),
         crate::app::state::QuickConnectFlow::NeedAuthPassword => {
@@ -89,12 +94,12 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
             } else {
                 "SSH  需要密码认证。".to_string()
             };
-            Some(container(text(msg)).padding(10).style(top_bar_material_style(tokens)).into())
+            Some(container(text(msg)).padding(10).style(top_bar_material_style(tokens.clone())).into())
         }
         crate::app::state::QuickConnectFlow::AuthLocked => Some(
             container(text("SSH  密码多次错误，已中断本次连接。请编辑后重试或切换认证方式。"))
                 .padding(10)
-                .style(top_bar_material_style(tokens))
+                .style(top_bar_material_style(tokens.clone()))
                 .into(),
         ),
         crate::app::state::QuickConnectFlow::Failed => Some(
@@ -104,7 +109,7 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
                     .user_message(),
             ))
             .padding(10)
-            .style(top_bar_material_style(tokens))
+            .style(top_bar_material_style(tokens.clone()))
             .into(),
         ),
         _ => None,
@@ -139,25 +144,25 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
                     .align_y(Alignment::Center),
             )
             .padding(10)
-            .style(top_bar_material_style(tokens))
+            .style(top_bar_material_style(tokens.clone()))
             .into(),
         )
     } else {
         None
     };
 
-    // Key auth fields
+    // Key auth fields - 使用 session_form.* i18n keys
     let key_row: Option<Element<'_, Message>> = if matches!(
         state.model.draft.auth,
         crate::session::AuthMethod::Key { .. }
     ) {
         Some(
             column![
-                text_input("Private key path", &state.model.draft.private_key_path)
+                text_input(i18n.tr("session_form.field.private_key"), &state.model.draft.private_key_path)
                     .on_input(Message::QuickConnectKeyPathChanged)
                     .width(iced::Length::Fill),
                 text_input(
-                    "Passphrase (optional)",
+                    i18n.tr("session_form.field.passphrase"),
                     state.model.draft.passphrase.expose_secret(),
                 )
                 .secure(true)
@@ -202,12 +207,12 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
             col = col.push(
                 row![button(text("提交").size(13))
                     .on_press(Message::QuickConnectInteractiveSubmit)
-                    .style(style_chrome_primary(tokens)),]
+                    .style(style_chrome_primary(tokens.clone())),]
                 .spacing(8),
             );
             container(col)
                 .padding(12)
-                .style(top_bar_material_style(tokens))
+                .style(top_bar_material_style(tokens.clone()))
                 .width(iced::Length::Fill)
                 .into()
         })
@@ -256,16 +261,16 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
                 ))
                 .then_some(Message::ConnectPressed),
             )
-            .style(style_chrome_primary(tokens)),
+            .style(style_chrome_primary(tokens.clone())),
         button(text(i18n.tr("iced.btn.disconnect")).size(13))
             .on_press_maybe(is_connected.then_some(Message::DisconnectPressed))
-            .style(style_chrome_secondary(tokens)),
+            .style(style_chrome_secondary(tokens.clone())),
         button(text(i18n.tr("iced.btn.save_session")).size(13))
             .on_press(Message::QuickConnectSaveSession)
-            .style(style_chrome_secondary(tokens)),
+            .style(style_chrome_secondary(tokens.clone())),
         button(text(i18n.tr("iced.btn.save_settings")).size(13))
             .on_press(Message::SaveSettings)
-            .style(style_chrome_secondary(tokens)),
+            .style(style_chrome_secondary(tokens.clone())),
     ]
     .spacing(8)
     .align_y(Alignment::Center);
@@ -284,14 +289,14 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
         row![
             button(text(i18n.tr("iced.quick_connect.back")).size(12))
                 .on_press(Message::QuickConnectBackToList)
-                .style(style_chrome_secondary(tokens)),
-            text(i18n.tr("iced.quick_connect.new_title")).size(16),
+                .style(style_chrome_secondary(tokens.clone())),
+            text(i18n.tr("session_form.title_new")).size(16),
             iced::widget::Space::new().width(iced::Length::Fill),
             button(text("×").size(14))
                 .on_press(Message::QuickConnectDismiss)
                 .width(iced::Length::Fixed(28.0))
                 .height(iced::Length::Fixed(28.0))
-                .style(crate::app::widgets::chrome_button::style_top_icon(tokens)),
+                .style(crate::app::widgets::chrome_button::style_top_icon(tokens.clone())),
         ]
         .spacing(8)
         .align_y(Alignment::Center)
@@ -327,7 +332,7 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
         Some(
             button(text(i18n.tr("iced.btn.switch_auth")).size(13))
                 .on_press(Message::QuickConnectSwitchAuth)
-                .style(style_chrome_secondary(tokens))
+                .style(style_chrome_secondary(tokens.clone()))
                 .into(),
         )
     } else {
@@ -343,6 +348,6 @@ pub(crate) fn quick_connect_new_form(state: &IcedState) -> Element<'_, Message> 
     container(body)
         .width(iced::Length::Fill)
         .padding(16)
-        .style(top_bar_material_style(tokens))
+        .style(top_bar_material_style(tokens.clone()))
         .into()
 }

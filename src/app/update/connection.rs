@@ -344,6 +344,7 @@ pub(crate) fn handle_connect_success(state: &mut IcedState, session: Box<dyn Asy
                 id: id.clone(),
                 // 优先使用 host 作为默认名称（用户可在会话编辑器中修改）
                 name: host.clone(),
+                group_id: None,
                 folder: None,
                 color_tag: None,
                 transport: crate::session::TransportConfig::Ssh(crate::session::SshConfig {
@@ -445,6 +446,7 @@ pub(crate) fn handle_connect_success_arc(
             crate::session::SessionProfile {
                 id: id.clone(),
                 name: host.clone(),
+                group_id: None,
                 folder: None,
                 color_tag: None,
                 transport: crate::session::TransportConfig::Ssh(crate::session::SshConfig {
@@ -1126,6 +1128,7 @@ pub(crate) fn handle_restore_session_confirm(state: &mut IcedState) -> Task<Mess
             crate::session::SessionProfile {
                 id: record.profile_id.unwrap_or_default(),
                 name: record.label.clone(),
+                group_id: None,
                 folder: None,
                 color_tag: None,
                 transport: crate::session::TransportConfig::Ssh(crate::session::SshConfig {
