@@ -1,6 +1,6 @@
 use iced::alignment::Alignment;
 use iced::widget::{button, column, container, mouse_area, row, scrollable, text, tooltip, Space};
-use iced::{Element, Theme};
+use iced::{Element, Theme, Padding};
 
 use crate::app::chrome::{
     TOP_BAR_EDGE_PAD, TOP_BAR_H, TOP_CONTROL_GROUP_W, TOP_ICON_BTN,
@@ -48,7 +48,7 @@ pub(crate) fn top_bar(state: &IcedState, _tick_ms: f32) -> Element<'_, Message> 
 
     container(top_bar_row)
         .height(iced::Length::Fixed(TOP_BAR_H))
-        .padding([0.0, TOP_BAR_EDGE_PAD])
+        .padding(Padding::ZERO.left(TOP_BAR_EDGE_PAD))
         .style(top_bar_ambient_style(tokens))
         .into()
 }
@@ -74,9 +74,8 @@ fn build_tab_strip(state: &IcedState) -> Element<'_, Message> {
     };
     let target_chip_w = TAB_CHIP_WIDTH.min(avg_chip_w);
 
-    // 构建标签行，同时累加总宽度
+    // 构建标签行
     let mut tabs_row = row![].spacing(0).align_y(Alignment::Center);
-    let mut total_tabs_w = 0.0;
 
     for (i, tab) in state.tabs.iter().enumerate() {
         let tab_label = tab.title.clone();
@@ -157,57 +156,48 @@ fn build_tab_strip(state: &IcedState) -> Element<'_, Message> {
             .on_exit(Message::TabChipHover(None));
 
         tabs_row = tabs_row.push(chip);
-        total_tabs_w += target_chip_w;
     }
 
-    // 根据是否溢出决定布局方式
-    if total_tabs_w <= available_w {
-        // 未溢出：标签栏宽度 = 动态总宽度，不压缩，不使用 scrollable
-        container(tabs_row)
+    // 溢出：计算溢出数量
+    let min_chips = (available_w / TAB_CHIP_MIN_WIDTH).floor() as usize;
+    let overflow_count = tabs_count.saturating_sub(min_chips);
+
+    // 溢出徽章
+    let overflow_badge: Element<'_, Message> = if overflow_count > 0 {
+        let badge = button(
+            text(format!("+{}", overflow_count))
+                .size(11)
+                .color(tokens.text_secondary)
+                .align_y(Alignment::Center),
+        )
+        .on_press(Message::TabOverflowToggle)
+        .width(iced::Length::Fixed(TOP_ICON_BTN))
+        .height(iced::Length::Fixed(TOP_ICON_BTN))
+        .style(style_top_icon(tokens));
+
+        container(badge)
+            .width(iced::Length::Shrink)
             .height(iced::Length::Fixed(TOP_BAR_H))
-            .width(iced::Length::Fixed(total_tabs_w))
-            .into()
-    } else {
-        // 溢出：计算溢出数量
-        let min_chips = (available_w / TAB_CHIP_MIN_WIDTH).floor() as usize;
-        let overflow_count = tabs_count.saturating_sub(min_chips);
-
-        // 溢出徽章
-        let overflow_badge: Element<'_, Message> = if overflow_count > 0 {
-            let badge = button(
-                text(format!("+{}", overflow_count))
-                    .size(11)
-                    .color(tokens.text_secondary),
-            )
-            .on_press(Message::TabOverflowToggle)
-            .width(iced::Length::Fixed(32.0))
-            .height(iced::Length::Fixed(24.0))
-            .style(style_top_icon(tokens));
-
-            container(badge)
-                .width(iced::Length::Shrink)
-                .height(iced::Length::Fixed(TOP_BAR_H))
-                .align_y(Alignment::Center)
-                .into()
-        } else {
-            Space::new().width(iced::Length::Fixed(0.0)).into()
-        };
-
-        // scrollable 包裹标签，隐藏滚动条
-        let scrollable_tabs = scrollable(tabs_row)
-            .direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::hidden()))
-            .width(iced::Length::Fill)
-            .height(iced::Length::Fixed(TOP_BAR_H))
-            .on_scroll(|viewport| {
-                Message::TabScrollTick(viewport.absolute_offset().x)
-            });
-
-        // 标签 + 徽章并排
-        row![scrollable_tabs, overflow_badge]
-            .spacing(0)
             .align_y(Alignment::Center)
             .into()
-    }
+    } else {
+        Space::new().width(iced::Length::Fixed(TOP_ICON_BTN)).into()
+    };
+
+    // 使用 scrollable 包裹标签，隐藏滚动条，始终顶满剩余宽度
+    let scrollable_tabs = scrollable(tabs_row)
+        .direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::hidden()))
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fixed(TOP_BAR_H))
+        .on_scroll(|viewport| {
+            Message::TabScrollTick(viewport.absolute_offset().x)
+        });
+
+    // 标签 + 徽章并排
+    row![scrollable_tabs, overflow_badge]
+        .spacing(0)
+        .align_y(Alignment::Center)
+        .into()
 }
 
 fn build_action_group(state: &IcedState, tokens: crate::theme::DesignTokens) -> Element<'static, Message> {
@@ -241,13 +231,12 @@ fn build_action_group(state: &IcedState, tokens: crate::theme::DesignTokens) -> 
 
     let quick_tip = text(i18n.tr("iced.topbar.quick_connect")).size(12);
     let new_tip = text(i18n.tr("iced.topbar.new_tab")).size(12);
-
+    use iced::Color;
     container(
         row![
             tooltip(btn_quick, quick_tip, iced::widget::tooltip::Position::Bottom),
             tooltip(btn_new, new_tip, iced::widget::tooltip::Position::Bottom),
         ]
-        .spacing(6)
         .align_y(Alignment::Center),
     )
     .height(iced::Length::Fixed(TOP_BAR_H))
@@ -331,11 +320,15 @@ fn build_control_group(state: &IcedState, tokens: crate::theme::DesignTokens) ->
         }
     };
 
-    container(
-        row![settings_ctrl, win_controls]
-            .spacing(4)
-            .align_y(Alignment::Center),
-    )
+    let control_row = row![settings_ctrl, win_controls]
+        .align_y(Alignment::Center);
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        control_row.spacing(4)
+    }
+
+    container(control_row)
     .width(iced::Length::Fixed(TOP_CONTROL_GROUP_W))
     .height(iced::Length::Fixed(TOP_BAR_H))
     .padding([0, 0])
