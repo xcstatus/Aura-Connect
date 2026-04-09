@@ -191,7 +191,6 @@ pub enum HostKeyPolicy {
     Strict,
     Ask,
     AcceptNew,
-    Reject,
 }
 
 impl Default for GeneralSettings {
@@ -233,7 +232,7 @@ impl Default for SecuritySettings {
             lock_on_sleep: true,
             idle_timeout_mins: 15,
             use_biometrics: false,
-            host_key_policy: HostKeyPolicy::Ask,
+            host_key_policy: HostKeyPolicy::Strict,
             known_hosts: Vec::new(),
             auto_probe_consent: AutoProbeConsent::default(),
             vault: None,

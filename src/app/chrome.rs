@@ -27,10 +27,10 @@ pub(crate) const TOP_ICON_BTN: f32 = 36.0;
 #[cfg(target_os = "macos")]
 pub(crate) const TOP_CONTROL_GROUP_W: f32 = 36.0;
 #[cfg(not(target_os = "macos"))]
-pub(crate) const TOP_CONTROL_GROUP_W: f32 = 36.0 * 3.0 + 6.0;
+pub(crate) const TOP_CONTROL_GROUP_W: f32 = 36.0 * 3.0 + 4.0;
 
-/// 操作组宽度：2个按钮 36px + 间距
-pub(crate) const TAB_ACTION_GROUP_W: f32 = 36.0 * 2.0 + 6.0;
+/// 操作组宽度：2个按钮 36px
+pub(crate) const TAB_ACTION_GROUP_W: f32 = 36.0 * 2.0;
 
 /// `container(top_bar_row).padding([0, x])` 左右各 inset
 pub(crate) const TOP_BAR_EDGE_PAD: f32 = 12.0;
@@ -49,7 +49,7 @@ pub(crate) fn tab_strip_width(window_width: f32) -> f32 {
         return 0.0;
     }
     let chrome_w = window_width;
-    let row_inner = chrome_w - TOP_BAR_EDGE_PAD * 2.0;
+    let row_inner = chrome_w; //- TOP_BAR_EDGE_PAD * 2.0;
     let w = row_inner
         - TRAFFIC_LIGHT_BAND_W
         - TAB_ACTION_GROUP_W

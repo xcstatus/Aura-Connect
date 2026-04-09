@@ -22,7 +22,7 @@ pub(crate) fn top_bar(state: &IcedState, _tick_ms: f32) -> Element<'_, Message> 
 
     // 左侧区域：traffic_light + 标签栏 + 操作按钮组
     let left_area: Element<'_, Message> = {
-        let mut left_row = row![];
+        let mut left_row = row![].spacing(0);
 
         #[cfg(target_os = "macos")]
         {
@@ -34,8 +34,7 @@ pub(crate) fn top_bar(state: &IcedState, _tick_ms: f32) -> Element<'_, Message> 
         }
 
         left_row = left_row
-            .push(tabs_row)
-            .push(action_group);
+            .push(tabs_row);
 
         container(left_row)
             .width(iced::Length::Fill)
@@ -44,11 +43,11 @@ pub(crate) fn top_bar(state: &IcedState, _tick_ms: f32) -> Element<'_, Message> 
     };
 
     // 顶栏：左侧区域 + 控制组，无 spacing，直接贴靠
-    let top_bar_row = row![left_area, control_group].spacing(0).align_y(Alignment::Center);
+    let top_bar_row = row![left_area, action_group, control_group].spacing(0).align_y(Alignment::Center);
 
     container(top_bar_row)
         .height(iced::Length::Fixed(TOP_BAR_H))
-        .padding(Padding::ZERO.left(TOP_BAR_EDGE_PAD))
+        .padding(0)
         .style(top_bar_ambient_style(tokens))
         .into()
 }
@@ -146,7 +145,7 @@ fn build_tab_strip(state: &IcedState) -> Element<'_, Message> {
             ]
             .spacing(0),
         )
-        .padding([0.0, TAB_CHIP_PAD_H])
+        .padding(0)
         .width(iced::Length::Fixed(target_chip_w))
         .height(iced::Length::Fixed(TOP_BAR_H))
         .style(chip_bg_style);
@@ -158,44 +157,42 @@ fn build_tab_strip(state: &IcedState) -> Element<'_, Message> {
         tabs_row = tabs_row.push(chip);
     }
 
-    // 溢出：计算溢出数量
+    // 计算溢出数量
     let min_chips = (available_w / TAB_CHIP_MIN_WIDTH).floor() as usize;
     let overflow_count = tabs_count.saturating_sub(min_chips);
 
-    // 溢出徽章
-    let overflow_badge: Element<'_, Message> = if overflow_count > 0 {
-        let badge = button(
-            text(format!("+{}", overflow_count))
-                .size(11)
-                .color(tokens.text_secondary)
-                .align_y(Alignment::Center),
-        )
-        .on_press(Message::TabOverflowToggle)
-        .width(iced::Length::Fixed(TOP_ICON_BTN))
-        .height(iced::Length::Fixed(TOP_ICON_BTN))
-        .style(style_top_icon(tokens));
-
-        container(badge)
-            .width(iced::Length::Shrink)
-            .height(iced::Length::Fixed(TOP_BAR_H))
-            .align_y(Alignment::Center)
-            .into()
-    } else {
-        Space::new().width(iced::Length::Fixed(TOP_ICON_BTN)).into()
-    };
-
-    // 使用 scrollable 包裹标签，隐藏滚动条，始终顶满剩余宽度
+    // 标签滚动区
     let scrollable_tabs = scrollable(tabs_row)
         .direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::hidden()))
         .width(iced::Length::Fill)
         .height(iced::Length::Fixed(TOP_BAR_H))
-        .on_scroll(|viewport| {
-            Message::TabScrollTick(viewport.absolute_offset().x)
-        });
+        .on_scroll(|viewport| Message::TabScrollTick(viewport.absolute_offset().x));
 
-    // 标签 + 徽章并排
-    row![scrollable_tabs, overflow_badge]
-        .spacing(0)
+    // 动态构建行：无徽章时不添加徽章元素
+    let mut final_row = row![scrollable_tabs].spacing(0).align_y(Alignment::Center);
+    if overflow_count > 0 {
+        let badge = build_overflow_badge(overflow_count, tokens);
+        final_row = final_row.push(badge);
+    }
+
+    final_row.into()
+}
+
+fn build_overflow_badge(overflow_count: usize, tokens: crate::theme::DesignTokens) -> Element<'static, Message> {
+    let badge = button(
+        text(format!("+{}", overflow_count))
+            .size(11)
+            .color(tokens.text_secondary)
+            .align_y(Alignment::Center),
+    )
+    .on_press(Message::TabOverflowToggle)
+    .width(iced::Length::Fixed(TOP_ICON_BTN))
+    .height(iced::Length::Fixed(TOP_ICON_BTN))
+    .style(style_top_icon(tokens));
+
+    container(badge)
+        .width(iced::Length::Shrink)
+        .height(iced::Length::Fixed(TOP_BAR_H))
         .align_y(Alignment::Center)
         .into()
 }
