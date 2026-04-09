@@ -858,11 +858,21 @@ impl Drop for SshChannel {
             conn_refs,
         );
 
+        // 获取当前 tokio runtime handle
+        // 在 shutdown 阶段可能没有 runtime 上下文，此时跳过清理（OS 会自动释放资源）
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            log::warn!(
+                "[SshChannel] No tokio runtime in drop context, cleanup skipped for channel {:?}",
+                self.channel_id
+            );
+            return;
+        };
+
         // 只有最后一个句柄才关闭 channel（防止重复 remove_channel）
         if handle_refs <= 1 {
             let conn = self.conn.clone();
             let channel_id = self.channel_id;
-            tokio::spawn(async move {
+            handle.spawn(async move {
                 conn.remove_channel(channel_id).await;
             });
         }
@@ -870,7 +880,7 @@ impl Drop for SshChannel {
         // BaseSshConnection 引用计数 <= 1 时关闭整个连接
         if conn_refs <= 1 {
             let conn = self.conn.clone();
-            tokio::spawn(async move {
+            handle.spawn(async move {
                 conn.close().await;
             });
         }
