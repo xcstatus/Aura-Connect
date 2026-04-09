@@ -605,3 +605,93 @@ fn copy_shortcut(key: &Key, modifiers: Modifiers) -> bool {
         _ => false,
     }
 }
+
+/// 从终端输出中检测远程服务器当前工作目录。
+///
+/// 通过解析 Shell 提示符来识别路径：
+/// - 检测 OSC 7 序列（某些终端支持）
+/// - 解析常见 PS1 格式：`user@host:path$` 或 `user@host:path#`
+/// - 检测 cd 命令后的路径
+pub fn detect_remote_cwd(output: &str) -> Option<String> {
+    // 1. OSC 7 序列：ESC ] 7 ; file://HOST/PATH BEL
+    // 格式：\x1b]7;file://host/path\x07
+    // 返回完整路径（去掉 file:// 前缀和主机名部分）
+    if let Some(start) = output.find("\x1b]7;") {
+        if let Some(end) = output[start..].find('\x07') {
+            let path = &output[start + 4..start + end];
+            if path.starts_with("file://") {
+                // 去掉 file:// 和主机名，获取绝对路径
+                let after_host = &path[7..];
+                if let Some(slash_pos) = after_host.find('/') {
+                    return Some(after_host[slash_pos..].to_string());
+                }
+            }
+        }
+    }
+
+    // 2. 解析 PS1/PS2 提示符后的路径
+    // 常见格式：
+    //   user@host:~/path$ command
+    //   user@host:/absolute/path# command
+    //   [user@host dir]$ command
+    let lines: Vec<&str> = output.lines().collect();
+    for line in lines.iter().rev() {
+        let trimmed = line.trim_end();
+        // 跳过空行
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // 检测提示符模式：包含 @: 后跟 ~ 或 / 开头
+        if let Some(at_pos) = trimmed.rfind('@') {
+            if let Some(colon_pos) = trimmed[at_pos..].find(':') {
+                let after_colon = &trimmed[at_pos + colon_pos + 1..];
+                // 去掉结尾的 $ 或 #
+                let path = after_colon.trim_end_matches(|c| c == '$' || c == '#' || c == '>' || c == ' ');
+
+                // 检查是否是有效路径
+                if is_valid_path(path) {
+                    return Some(path.to_string());
+                }
+            }
+        }
+
+        // 检测带方括号的提示符：[user@host dir]$
+        if trimmed.starts_with('[') {
+            if let Some(close_bracket) = trimmed.find("]$") {
+                let after_bracket = &trimmed[close_bracket + 2..].trim();
+                if is_valid_path(after_bracket) {
+                    return Some(after_bracket.to_string());
+                }
+            }
+        }
+
+        // 跳过命令输出（包含空格开头的行通常是输出内容）
+        if trimmed.starts_with(' ') || trimmed.starts_with('\t') {
+            continue;
+        }
+    }
+
+    // 3. 简化方案：检测最近的 cd 命令输出
+    // 某些 shell 在 cd 后会显示新路径
+    for line in lines.iter().rev() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('/') || trimmed.starts_with("~/") || trimmed == "~" {
+            // 确认为路径
+            if !trimmed.contains('$') && !trimmed.contains('#') && !trimmed.contains('>') {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+/// 判断字符串是否为有效路径
+fn is_valid_path(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    // 路径必须以 / 或 ~ 开头
+    s.starts_with('/') || s.starts_with("~/") || s == "~"
+}

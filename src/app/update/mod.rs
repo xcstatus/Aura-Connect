@@ -564,6 +564,26 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
 
         // --- Connection ---
         Message::ConnectPressed => connection::handle_connect(state),
+        Message::BreadcrumbTogglePin => {
+            state.breadcrumb_pinned = !state.breadcrumb_pinned;
+            Task::none()
+        }
+        Message::BreadcrumbShowTemp => {
+            state.breadcrumb_temp_visible = true;
+            Task::none()
+        }
+        Message::BreadcrumbHideTemp => {
+            state.breadcrumb_temp_visible = false;
+            Task::none()
+        }
+        Message::BreadcrumbSftp => {
+            // TODO: 实现 SFTP 功能
+            Task::none()
+        }
+        Message::BreadcrumbPortForward => {
+            // TODO: 实现端口转发功能
+            Task::none()
+        }
         Message::ConnectResult(result) => {
             match result {
                 Ok(session_arc) => {

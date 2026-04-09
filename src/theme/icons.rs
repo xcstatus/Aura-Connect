@@ -25,6 +25,11 @@ pub enum IconId {
     Gear,         // gear.svg - 设置
     Close,        // cross-2.svg - 关闭
 
+    // Breadcrumb 图标
+    Sftp,         // file.svg - SFTP 文件传输
+    Pin,          // pin-top.svg - 固定 breadcrumb
+    Unpin,        // pin-bottom.svg - 取消固定
+
     // 状态图标（后续扩展）
     Connected,     // 连接已建立
     Connecting,    // 连接中（带动画）
@@ -73,6 +78,23 @@ static ICON_REGISTRY: LazyLock<HashMap<IconId, IconMeta>> = LazyLock::new(|| {
     });
     map.insert(IconId::Close, IconMeta {
         path: "assets/icon/cross-2.svg",
+        width: 15,
+        height: 15,
+    });
+
+    // Breadcrumb 图标
+    map.insert(IconId::Sftp, IconMeta {
+        path: "assets/icon/file.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::Pin, IconMeta {
+        path: "assets/icon/pin-top.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::Unpin, IconMeta {
+        path: "assets/icon/pin-bottom.svg",
         width: 15,
         height: 15,
     });

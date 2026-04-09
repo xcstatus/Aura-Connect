@@ -143,6 +143,16 @@ pub(crate) enum Message {
     QuickConnectKeyPathChanged(String),
     QuickConnectPassphraseChanged(String),
     ConnectPressed,
+    /// Breadcrumb 固定状态切换
+    BreadcrumbTogglePin,
+    /// Breadcrumb 临时显示（鼠标悬停浮动图标）
+    BreadcrumbShowTemp,
+    /// Breadcrumb 隐藏临时显示
+    BreadcrumbHideTemp,
+    /// 打开 SFTP 传输
+    BreadcrumbSftp,
+    /// 打开端口转发
+    BreadcrumbPortForward,
     /// Connection result callback (triggered by Task::perform).
     /// Contains: Result<session, (error_kind, host_key_error_info)>
     ConnectResult(Result<ConnectSession, ConnectResultError>),
@@ -271,6 +281,11 @@ impl std::fmt::Debug for Message {
             Message::QuickConnectKeyPathChanged(v) => write!(f, "Message::QuickConnectKeyPathChanged({})", v),
             Message::QuickConnectPassphraseChanged(_) => write!(f, "Message::QuickConnectPassphraseChanged(...)"),
             Message::ConnectPressed => write!(f, "Message::ConnectPressed"),
+            Message::BreadcrumbTogglePin => write!(f, "Message::BreadcrumbTogglePin"),
+            Message::BreadcrumbShowTemp => write!(f, "Message::BreadcrumbShowTemp"),
+            Message::BreadcrumbHideTemp => write!(f, "Message::BreadcrumbHideTemp"),
+            Message::BreadcrumbSftp => write!(f, "Message::BreadcrumbSftp"),
+            Message::BreadcrumbPortForward => write!(f, "Message::BreadcrumbPortForward"),
             Message::ConnectResult(_) => write!(f, "Message::ConnectResult(...)"),
             Message::QuickConnectInteractiveAnswerChanged(i, v) => write!(f, "Message::QuickConnectInteractiveAnswerChanged({}, {})", i, v),
             Message::QuickConnectInteractiveSubmit => write!(f, "Message::QuickConnectInteractiveSubmit"),

@@ -369,6 +369,12 @@ pub(crate) struct IcedState {
     pub scrollbar_hovered: bool,
     /// 滚动条 hover 开始时的 tick（用于 alpha 插值动画）。
     pub scrollbar_hover_enter_tick: Option<u64>,
+    /// Breadcrumb 是否固定显示（true = 固定，false = 自动隐藏）。
+    pub breadcrumb_pinned: bool,
+    /// Breadcrumb 是否临时显示（鼠标悬停在浮动图标上时临时显示）。
+    pub breadcrumb_temp_visible: bool,
+    /// 远程服务器当前工作目录。
+    pub remote_cwd: String,
 }
 
 impl IcedState {
@@ -967,6 +973,9 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             tab_scroll_offset: 0.0,
             tab_scroll_target: None,
             tab_overflow_open: false,
+            breadcrumb_pinned: false,
+            breadcrumb_temp_visible: false,
+            remote_cwd: String::from("~"),
         },
         Task::none(),
     )

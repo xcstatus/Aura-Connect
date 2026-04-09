@@ -141,3 +141,20 @@ pub const TAB_LABEL_CLOSE_SPACING: f32 = 3.0;
 pub const TAB_CHIP_PAD_H: f32 = 4.0;
 /// 标签页最小宽度（含关闭按钮 + padding + 间距）
 pub const TAB_CHIP_MIN_WIDTH: f32 = TAB_CLOSE_HIT_W + TAB_CHIP_PAD_H * 2.0 + TAB_LABEL_CLOSE_SPACING; // ≈ 35px
+
+// ============ Breadcrumb 布局常量 ============
+
+/// Breadcrumb 区域高度
+pub const BREADCRUMB_HEIGHT: f32 = 28.0;
+/// Breadcrumb 水平内边距
+pub const BREADCRUMB_PADDING_H: f32 = 12.0;
+/// Breadcrumb 垂直内边距
+pub const BREADCRUMB_PADDING_V: f32 = 6.0;
+/// 左侧会话标识与右侧按钮间距
+pub const BREADCRUMB_SECTIONS_GAP: f32 = 16.0;
+/// 右侧按钮间距
+pub const BREADCRUMB_BTN_GAP: f32 = 4.0;
+/// Breadcrumb 浮动图标大小
+pub const BREADCRUMB_FLOAT_ICON_SIZE: f32 = 22.0;
+/// Breadcrumb 浮动图标与边缘距离
+pub const BREADCRUMB_FLOAT_ICON_MARGIN: f32 = 8.0;

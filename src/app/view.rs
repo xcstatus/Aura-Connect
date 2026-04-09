@@ -12,14 +12,24 @@ use super::state::IcedState;
 use super::terminal_viewport;
 
 pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
-    let term_vp =
+    let mut term_vp =
         terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal);
+
+    // 根据 breadcrumb 状态更新 viewport spec
+    let breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+    term_vp.breadcrumb_visible = breadcrumb_visible;
 
     let tick_ms = state.tick_ms();
 
     let top_bar = components::top_bar::top_bar(state, tick_ms);
 
-    let breadcrumb = components::breadcrumb::breadcrumb(state);
+    // 根据 breadcrumb_pinned 和 breadcrumb_temp_visible 决定是否显示 breadcrumb
+    let breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+    let breadcrumb = if breadcrumb_visible {
+        Some(components::breadcrumb::breadcrumb(state))
+    } else {
+        None
+    };
 
     let terminal_panel = components::terminal_view::terminal_panel(state);
 
@@ -27,10 +37,19 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
 
     let bottom_bar = components::status_bar::status_bar(state);
 
-    // 顶栏 32px | 终端区（面包屑 + 主内容 + 底栏，快速连接浮层叠在终端区内）
-    let below_top_fill = column![breadcrumb, main_body, bottom_bar,]
-        .spacing(term_vp.main_column_spacing())
-        .height(iced::Length::Fill);
+    // 构建主体内容列（包含 breadcrumb、终端、底栏）
+    let below_top_fill: Element<'_, Message> = if let Some(bc) = breadcrumb {
+        column![bc, main_body, bottom_bar]
+            .spacing(term_vp.main_column_spacing())
+            .height(iced::Length::Fill)
+            .into()
+    } else {
+        // breadcrumb 隐藏时，终端区域上移，底栏紧贴顶栏
+        column![main_body, bottom_bar]
+            .spacing(term_vp.main_column_spacing())
+            .height(iced::Length::Fill)
+            .into()
+    };
 
     let under_top_bar: Element<'_, Message> = {
         let mut layers: Vec<Element<'_, Message>> = vec![below_top_fill.into()];
@@ -39,6 +58,11 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
         layers.push(overlays::inline_connecting_overlay(state));
         // Terminal-inline overlay: password/passphrase input (modal closed, need credential).
         layers.push(overlays::inline_password_overlay(state));
+
+        // 浮动 breadcrumb 图标（仅在 breadcrumb 未固定且未临时显示时显示）
+        if !state.breadcrumb_pinned && !state.breadcrumb_temp_visible {
+            layers.push(components::breadcrumb::breadcrumb_float_icon(state));
+        }
 
         // Render quick connect modal when anim phase is opening/open/closing
         // (not yet fully closed). This allows the close animation to play.

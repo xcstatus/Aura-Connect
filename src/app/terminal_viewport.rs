@@ -126,6 +126,8 @@ pub struct TerminalViewportSpec {
     pub breadcrumb_padding_h: f32,
     /// Minimum content height inside breadcrumb (text + compact buttons row).
     pub breadcrumb_row_min_h: f32,
+    /// Breadcrumb 是否显示（false 时高度为 0，终端区域上移）。
+    pub breadcrumb_visible: bool,
     /// `column![breadcrumb, main, bottom].spacing(gap)` — **two** gaps eat vertical space.
     pub main_column_gap: f32,
     pub bottom_bar_h: f32,
@@ -153,6 +155,7 @@ impl TerminalViewportSpec {
         breadcrumb_padding_bottom: 6.0,
         breadcrumb_padding_h: 12.0,
         breadcrumb_row_min_h: 28.0,
+        breadcrumb_visible: true, // 默认显示，运行时由 IcedState.breadcrumb_pinned 控制
         main_column_gap: 4.0,
         bottom_bar_h: BOTTOM_BAR_HEIGHT,
         terminal_panel_pad_top: 16.0,
@@ -270,9 +273,15 @@ pub fn terminal_scroll_area_rect(
         .max(1.0);
 
     // Y: top chrome + breadcrumb + gap + inside terminal panel vertical padding.
+    // breadcrumb 隐藏时高度为 0，终端区域上移与顶栏接触
+    let breadcrumb_h = if spec.breadcrumb_visible {
+        spec.breadcrumb_block_h()
+    } else {
+        0.0
+    };
     let y = (spec.top_bar_h
         + spec.macos_window_top_inset
-        + spec.breadcrumb_block_h()
+        + breadcrumb_h
         + spec.main_column_gap
         + spec.terminal_panel_pad_top
         + spec.terminal_inner_border_px)
@@ -281,7 +290,7 @@ pub fn terminal_scroll_area_rect(
     // Height: derived from the same SSOT chain as `terminal_scroll_area_px`.
     let below_top = (win_h - spec.top_bar_h - spec.macos_window_top_inset).max(1.0);
     let body_h =
-        (below_top - spec.breadcrumb_block_h() - spec.bottom_bar_h - spec.main_column_gap * 2.0)
+        (below_top - breadcrumb_h - spec.bottom_bar_h - spec.main_column_gap * 2.0)
             .max(1.0);
     let h = (body_h
         - spec.terminal_panel_pad_top
