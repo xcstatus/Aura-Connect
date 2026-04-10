@@ -407,11 +407,11 @@ fn color_scheme_pane(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mes
         for scheme in chunk.iter() {
             let active = current_scheme_id == scheme.id;
 
-            // 配色预览框 - 简化实现，避免生命周期问题
+            // 配色预览框 - 使用 effective_* 方法获取衍生值
             let preview = container(
                 column![
                     text("Aa").size(12).style(move |_| text::Style {
-                        color: Some(scheme.term_fg),
+                        color: Some(scheme.effective_term_fg()),
                     }),
                 ]
                 .spacing(4),
@@ -420,7 +420,7 @@ fn color_scheme_pane(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mes
             .height(iced::Length::Fixed(40.0))
             .padding(4)
             .style(move |_| container::Style {
-                background: Some(iced::Background::Color(scheme.term_bg)),
+                background: Some(iced::Background::Color(scheme.effective_term_bg())),
                 border: iced::Border {
                     width: 1.0,
                     color: if active { tokens.accent_base } else { tokens.border_default },

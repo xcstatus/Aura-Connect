@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::theme::tokens::ColorScheme;
+use crate::theme::user_scheme::UserColorSchemes;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -10,6 +13,8 @@ pub struct Settings {
     pub terminal: TerminalSettings,
     pub security: SecuritySettings,
     pub quick_connect: QuickConnectSettings,
+    /// 用户自定义配色列表
+    pub user_color_schemes: UserColorSchemes,
 }
 
 /// 快速连接「最近」列表中的一条记录（不含密码）。
@@ -246,11 +251,43 @@ impl Default for Settings {
             terminal: TerminalSettings::default(),
             security: SecuritySettings::default(),
             quick_connect: QuickConnectSettings::default(),
+            user_color_schemes: UserColorSchemes::new(),
         }
     }
 }
 
 impl Settings {
+    /// 获取当前生效的配色方案（内置或用户）
+    ///
+    /// 如果 `color_scheme` 以 "user_" 开头，则从 `user_color_schemes` 查找并应用覆盖；
+    /// 否则从内置预设中获取。
+    pub fn active_color_scheme(&self) -> ColorScheme {
+        if self.color_scheme.starts_with("user_") {
+            // 从用户配色中查找
+            if let Some(user_scheme) = self.user_color_schemes.find_by_id(&self.color_scheme) {
+                // 获取基础预设
+                if let Some(base_scheme) = ColorScheme::from_id(&user_scheme.based_on) {
+                    return base_scheme;
+                }
+            }
+            // 找不到则返回默认
+            ColorScheme::terminal_dark()
+        } else {
+            // 从内置预设获取
+            ColorScheme::from_id(&self.color_scheme).unwrap_or_else(ColorScheme::terminal_dark)
+        }
+    }
+
+    /// 检查当前配色是否为空（内置或用户）
+    pub fn is_builtin_color_scheme(&self) -> bool {
+        !self.color_scheme.starts_with("user_")
+    }
+
+    /// 检查当前配色是否是用户自定义
+    pub fn is_user_color_scheme(&self) -> bool {
+        self.color_scheme.starts_with("user_")
+    }
+
     /// 计算第 attempt 次重连的延迟秒数（1-indexed）。
     /// 如果 reconnect_exponential 为 true，使用指数退避：base * 2^(attempt-1)
     /// 最大延迟封顶为 30 秒。

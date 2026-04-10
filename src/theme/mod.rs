@@ -3,8 +3,10 @@
 pub mod animation;
 pub mod iced_bridge;
 pub mod icons;
+pub mod import_export;
 pub mod layout;
 pub mod tokens;
+pub mod user_scheme;
 
 pub use animation::{anim_done, anim_t, anim_t_bidir, ease_in, ease_in_out, ease_out, lerp, lerp_color};
 pub use iced_bridge::{
@@ -18,4 +20,13 @@ pub use icons::{
 };
 pub use tokens::{
     color, COLOR_SCHEMES, ColorScheme, DebugTokens, DesignTokens,
+};
+
+pub use import_export::{
+    export_user_scheme_to_json, import_from_json,
+};
+
+pub use user_scheme::{
+    ColorFieldCategory, ColorFieldMeta, COLOR_FIELDS, ExportedScheme, UserColorScheme,
+    UserColorSchemes, get_fields_by_category,
 };

@@ -1,8 +1,18 @@
 //! 配色方案系统：统一控制 UI 颜色和终端颜色。
 //!
 //! 核心数据结构：
-//! - `ColorScheme`: 完整配色方案，包含 UI 颜色 + 终端颜色
+//! - `ColorScheme`: 完整配色方案，包含 UI 颜色 + 终端颜色（可独立覆盖）
 //! - `DesignTokens`: UI 专用色票（从 ColorScheme 派生）
+//!
+//! 终端颜色衍生规则：
+//! - `term_bg` → 衍生自 `bg_primary`（可覆盖）
+//! - `term_fg` → 衍生自 `text_primary`（可覆盖）
+//! - `term_cursor` → 衍生自 `accent_base`（可覆盖）
+//! - `term_cursor_bg` → 衍生自 `accent_base`（可覆盖）
+//! - `term_selection_bg` → 衍生自 `selection_bg`（可覆盖）
+//! - `term_selection_fg` → 衍生自 `text_primary`（可覆盖）
+//! - `term_scrollbar_bg` → 衍生自 `surface_1`（可覆盖）
+//! - `term_scrollbar_fg` → 衍生自 `surface_3`（可覆盖）
 //!
 //! 终端颜色协议（VT 字节）：
 //! - OSC 4 (index;color): ANSI 0-15
@@ -15,11 +25,15 @@
 
 use iced::Color;
 
-/// 完整配色方案：UI 颜色 + 终端颜色
+/// 完整配色方案：UI 颜色 + 终端颜色（可独立覆盖）
 ///
 /// 每个预设方案同时定义：
 /// - UI 颜色：控制整个应用窗口框架的视觉风格
 /// - 终端颜色：通过 VT 字节发送给终端模拟器
+///
+/// 终端颜色使用 `Option<Color>` 表示：
+/// - `None` = 自动衍生自对应的 UI 颜色
+/// - `Some(color)` = 使用自定义值覆盖衍生
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ColorScheme {
     /// 配色方案 ID（唯一标识）
@@ -54,23 +68,23 @@ pub struct ColorScheme {
     /// UI 层选中区域背景（用于非终端区域）
     pub selection_bg: Color,
 
-    // === 终端颜色 ===
-    /// BG - 终端背景色 (OSC 11)
-    pub term_bg: Color,
-    /// FG - 终端前景色 (OSC 10)
-    pub term_fg: Color,
-    /// CU - 终端光标色 (OSC 12)
-    pub term_cursor: Color,
-    /// CA - 块光标前景色 (OSC 17)
-    pub term_cursor_bg: Color,
-    /// SB - 选中区域背景色 (OSC 19)
-    pub term_selection_bg: Color,
-    /// SF - 选中区域前景色 (OSC 20)
-    pub term_selection_fg: Color,
-    /// 终端滚动条背景
-    pub term_scrollbar_bg: Color,
-    /// 终端滚动条前景（滑块）
-    pub term_scrollbar_fg: Color,
+    // === 终端颜色（可独立覆盖） ===
+    /// BG - 终端背景色 (OSC 11)，None = 衍生自 bg_primary
+    pub term_bg: Option<Color>,
+    /// FG - 终端前景色 (OSC 10)，None = 衍生自 text_primary
+    pub term_fg: Option<Color>,
+    /// CU - 终端光标色 (OSC 12)，None = 衍生自 accent_base
+    pub term_cursor: Option<Color>,
+    /// CA - 块光标前景色 (OSC 17)，None = 衍生自 accent_base
+    pub term_cursor_bg: Option<Color>,
+    /// SB - 选中区域背景色 (OSC 19)，None = 衍生自 selection_bg
+    pub term_selection_bg: Option<Color>,
+    /// SF - 选中区域前景色 (OSC 20)，None = 衍生自 text_primary
+    pub term_selection_fg: Option<Color>,
+    /// 终端滚动条背景，None = 衍生自 surface_1
+    pub term_scrollbar_bg: Option<Color>,
+    /// 终端滚动条前景（滑块），None = 衍生自 surface_3
+    pub term_scrollbar_fg: Option<Color>,
 
     // === ANSI 16 色调色板 ===
     /// ANSI 颜色索引 0-15
@@ -125,15 +139,16 @@ impl ColorScheme {
             info: Color::from_rgb8(0x5A, 0xC8, 0xFA),
             line_highlight: Color::from_rgba(1.0, 1.0, 1.0, 0.03),
             selection_bg: Color::from_rgba(0.0, 1.0, 0.5, 0.25),
-            // 终端颜色
-            term_bg: Color::from_rgb8(0x0A, 0x0A, 0x0F),
-            term_fg: Color::from_rgb8(0xE6, 0xE6, 0xE6),
-            term_cursor: Color::from_rgb8(0x00, 0xFF, 0x80),
-            term_cursor_bg: Color::from_rgb8(0x00, 0xFF, 0x80),
-            term_selection_bg: Color::from_rgb8(0x00, 0xFF, 0x80),
-            term_selection_fg: Color::from_rgb8(0x0A, 0x0A, 0x0F),
-            term_scrollbar_bg: Color::from_rgb8(0x1C, 0x1C, 0x1E),
-            term_scrollbar_fg: Color::from_rgb8(0x3A, 0x3A, 0x3C),
+            // 终端颜色 - 使用 Option
+            // term_bg 使用纯黑，非衍生
+            term_bg: Some(Color::from_rgb8(0x0A, 0x0A, 0x0F)),
+            term_fg: None,
+            term_cursor: None,
+            term_cursor_bg: None,
+            term_selection_bg: None,
+            term_selection_fg: None,
+            term_scrollbar_bg: None,
+            term_scrollbar_fg: None,
             ansi,
         }
     }
@@ -185,15 +200,15 @@ impl ColorScheme {
             info: Color::from_rgb8(0x5A, 0xC8, 0xFA),
             line_highlight: Color::from_rgba(0.0, 0.0, 0.0, 0.03),
             selection_bg: Color::from_rgba(0.0, 0.478, 1.0, 0.25),
-            // 终端颜色
-            term_bg: Color::WHITE,
-            term_fg: Color::from_rgb8(0x1C, 0x1C, 0x1E),
-            term_cursor: Color::from_rgb8(0x00, 0x7A, 0xFF),
-            term_cursor_bg: Color::from_rgb8(0x00, 0x7A, 0xFF),
-            term_selection_bg: Color::from_rgb8(0x00, 0x7A, 0xFF),
-            term_selection_fg: Color::WHITE,
-            term_scrollbar_bg: Color::from_rgb8(0xF2, 0xF2, 0xF7),
-            term_scrollbar_fg: Color::from_rgb8(0xD1, 0xD1, 0xD6),
+            // 终端颜色 - 使用 Option
+            term_bg: None,
+            term_fg: None,
+            term_cursor: None,
+            term_cursor_bg: None,
+            term_selection_bg: None,
+            term_selection_fg: None,
+            term_scrollbar_bg: None,
+            term_scrollbar_fg: None,
             ansi,
         }
     }
@@ -245,15 +260,15 @@ impl ColorScheme {
             info: Color::from_rgb8(0x88, 0xC0, 0xD0),
             line_highlight: Color::from_rgba(0.878, 0.922, 0.957, 0.05),
             selection_bg: Color::from_rgba(0.298, 0.337, 0.416, 0.40),
-            // 终端颜色
-            term_bg: Color::from_rgb8(0x2E, 0x34, 0x40),
-            term_fg: Color::from_rgb8(0xD8, 0xDE, 0xE9),
-            term_cursor: Color::from_rgb8(0xD8, 0xDE, 0xE9),
-            term_cursor_bg: Color::from_rgb8(0xD8, 0xDE, 0xE9),
-            term_selection_bg: Color::from_rgb8(0x4C, 0x56, 0x6A),
-            term_selection_fg: Color::from_rgb8(0xEC, 0xEF, 0xF4),
-            term_scrollbar_bg: Color::from_rgb8(0x2E, 0x34, 0x40),
-            term_scrollbar_fg: Color::from_rgb8(0x4C, 0x56, 0x6A),
+            // 终端颜色 - 使用 Option
+            term_bg: None,
+            term_fg: None,
+            term_cursor: None,
+            term_cursor_bg: None,
+            term_selection_bg: None,
+            term_selection_fg: None,
+            term_scrollbar_bg: None,
+            term_scrollbar_fg: None,
             ansi,
         }
     }
@@ -305,15 +320,15 @@ impl ColorScheme {
             info: Color::from_rgb8(0x26, 0x8B, 0xD2),
             line_highlight: Color::from_rgba(0.514, 0.580, 0.588, 0.05),
             selection_bg: Color::from_rgba(0.027, 0.212, 0.259, 0.60),
-            // 终端颜色
-            term_bg: Color::from_rgb8(0x00, 0x2B, 0x36),
-            term_fg: Color::from_rgb8(0x83, 0x94, 0x96),
-            term_cursor: Color::from_rgb8(0x83, 0x94, 0x96),
-            term_cursor_bg: Color::from_rgb8(0x83, 0x94, 0x96),
-            term_selection_bg: Color::from_rgb8(0x07, 0x36, 0x42),
-            term_selection_fg: Color::from_rgb8(0xEE, 0xE8, 0xD5),
-            term_scrollbar_bg: Color::from_rgb8(0x00, 0x2B, 0x36),
-            term_scrollbar_fg: Color::from_rgb8(0x0D, 0x44, 0x52),
+            // 终端颜色 - 使用 Option
+            term_bg: None,
+            term_fg: None,
+            term_cursor: None,
+            term_cursor_bg: None,
+            term_selection_bg: None,
+            term_selection_fg: None,
+            term_scrollbar_bg: None,
+            term_scrollbar_fg: None,
             ansi,
         }
     }
@@ -365,15 +380,15 @@ impl ColorScheme {
             info: Color::from_rgb8(0x66, 0xD9, 0xEF),
             line_highlight: Color::from_rgba(0.973, 0.973, 0.949, 0.03),
             selection_bg: Color::from_rgba(0.286, 0.282, 0.243, 0.50),
-            // 终端颜色
-            term_bg: Color::from_rgb8(0x27, 0x28, 0x22),
-            term_fg: Color::from_rgb8(0xF8, 0xF8, 0xF2),
-            term_cursor: Color::from_rgb8(0xF8, 0xF8, 0xF2),
-            term_cursor_bg: Color::from_rgb8(0xF8, 0xF8, 0xF2),
-            term_selection_bg: Color::from_rgb8(0x49, 0x48, 0x3E),
-            term_selection_fg: Color::from_rgb8(0xF8, 0xF8, 0xF2),
-            term_scrollbar_bg: Color::from_rgb8(0x27, 0x28, 0x22),
-            term_scrollbar_fg: Color::from_rgb8(0x75, 0x71, 0x5E),
+            // 终端颜色 - 使用 Option
+            term_bg: None,
+            term_fg: None,
+            term_cursor: None,
+            term_cursor_bg: None,
+            term_selection_bg: None,
+            term_selection_fg: None,
+            term_scrollbar_bg: None,
+            term_scrollbar_fg: None,
             ansi,
         }
     }
@@ -425,15 +440,15 @@ impl ColorScheme {
             info: Color::from_rgb8(0x83, 0xA5, 0x98),
             line_highlight: Color::from_rgba(0.922, 0.859, 0.698, 0.04),
             selection_bg: Color::from_rgba(0.235, 0.220, 0.214, 0.60),
-            // 终端颜色
-            term_bg: Color::from_rgb8(0x28, 0x28, 0x28),
-            term_fg: Color::from_rgb8(0xEB, 0xDB, 0xB2),
-            term_cursor: Color::from_rgb8(0xFB, 0x49, 0x34),
-            term_cursor_bg: Color::from_rgb8(0xFB, 0x49, 0x34),
-            term_selection_bg: Color::from_rgb8(0x50, 0x49, 0x3F),
-            term_selection_fg: Color::from_rgb8(0xEB, 0xDB, 0xB2),
-            term_scrollbar_bg: Color::from_rgb8(0x28, 0x28, 0x28),
-            term_scrollbar_fg: Color::from_rgb8(0x92, 0x83, 0x5E),
+            // 终端颜色 - 使用 Option
+            term_bg: None,
+            term_fg: None,
+            term_cursor: None,
+            term_cursor_bg: None,
+            term_selection_bg: None,
+            term_selection_fg: None,
+            term_scrollbar_bg: None,
+            term_scrollbar_fg: None,
             ansi,
         }
     }
@@ -485,15 +500,15 @@ impl ColorScheme {
             info: Color::from_rgb8(0x8B, 0xF9, 0xF1),
             line_highlight: Color::from_rgba(0.973, 0.973, 0.949, 0.03),
             selection_bg: Color::from_rgb8(0x44, 0x47, 0x5A),
-            // 终端颜色
-            term_bg: Color::from_rgb8(0x28, 0x2A, 0x36),
-            term_fg: Color::from_rgb8(0xF8, 0xF8, 0xF2),
-            term_cursor: Color::from_rgb8(0xBD, 0x93, 0xF9),
-            term_cursor_bg: Color::from_rgb8(0xBD, 0x93, 0xF9),
-            term_selection_bg: Color::from_rgb8(0x44, 0x47, 0x5A),
-            term_selection_fg: Color::from_rgb8(0xF8, 0xF8, 0xF2),
-            term_scrollbar_bg: Color::from_rgb8(0x28, 0x2A, 0x36),
-            term_scrollbar_fg: Color::from_rgb8(0x62, 0x75, 0x7E),
+            // 终端颜色 - 使用 Option
+            term_bg: None,
+            term_fg: None,
+            term_cursor: None,
+            term_cursor_bg: None,
+            term_selection_bg: None,
+            term_selection_fg: None,
+            term_scrollbar_bg: None,
+            term_scrollbar_fg: None,
             ansi,
         }
     }
@@ -518,6 +533,57 @@ impl ColorScheme {
             "Dracula" => Some(Self::dracula()),
             _ => None,
         }
+    }
+
+    // === 终端颜色衍生方法 ===
+    // 如果字段为 Some(color) 则使用该值，否则使用对应的 UI 颜色
+
+    /// 获取生效的终端背景色
+    #[inline]
+    pub fn effective_term_bg(&self) -> Color {
+        self.term_bg.unwrap_or(self.bg_primary)
+    }
+
+    /// 获取生效的终端前景色
+    #[inline]
+    pub fn effective_term_fg(&self) -> Color {
+        self.term_fg.unwrap_or(self.text_primary)
+    }
+
+    /// 获取生效的终端光标色
+    #[inline]
+    pub fn effective_term_cursor(&self) -> Color {
+        self.term_cursor.unwrap_or(self.accent_base)
+    }
+
+    /// 获取生效的块光标背景色
+    #[inline]
+    pub fn effective_term_cursor_bg(&self) -> Color {
+        self.term_cursor_bg.unwrap_or(self.accent_base)
+    }
+
+    /// 获取生效的终端选中区域背景色
+    #[inline]
+    pub fn effective_term_selection_bg(&self) -> Color {
+        self.term_selection_bg.unwrap_or(self.selection_bg)
+    }
+
+    /// 获取生效的终端选中区域前景色
+    #[inline]
+    pub fn effective_term_selection_fg(&self) -> Color {
+        self.term_selection_fg.unwrap_or(self.text_primary)
+    }
+
+    /// 获取生效的终端滚动条背景色
+    #[inline]
+    pub fn effective_term_scrollbar_bg(&self) -> Color {
+        self.term_scrollbar_bg.unwrap_or(self.surface_1)
+    }
+
+    /// 获取生效的终端滚动条前景色（滑块）
+    #[inline]
+    pub fn effective_term_scrollbar_fg(&self) -> Color {
+        self.term_scrollbar_fg.unwrap_or(self.surface_3)
     }
 }
 
@@ -578,6 +644,8 @@ impl DesignTokens {
     }
 
     /// 从 ColorScheme 转换为 DesignTokens
+    ///
+    /// 终端颜色使用 effective_* 方法获取衍生值
     pub fn from_scheme(scheme: &ColorScheme) -> Self {
         Self {
             bg_primary: scheme.bg_primary,
@@ -601,10 +669,11 @@ impl DesignTokens {
             warning: scheme.warning,
             error: scheme.error,
             info: scheme.info,
-            terminal_bg: scheme.term_bg,
-            terminal_fg: scheme.term_fg,
-            scrollbar_hover: scheme.term_scrollbar_fg,
-            scrollbar_active: scheme.term_scrollbar_fg,
+            // 使用衍生方法获取终端颜色
+            terminal_bg: scheme.effective_term_bg(),
+            terminal_fg: scheme.effective_term_fg(),
+            scrollbar_hover: scheme.effective_term_scrollbar_fg(),
+            scrollbar_active: scheme.effective_term_scrollbar_fg(),
             line_highlight: scheme.line_highlight,
             selection_bg: scheme.selection_bg,
         }

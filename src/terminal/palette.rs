@@ -88,13 +88,13 @@ pub fn scheme_vt_bytes(scheme: &ColorScheme) -> Vec<u8> {
         push_osc4(&mut buf, i as u8, &color_to_hex_ignore_alpha(*color));
     }
 
-    // 设置 FG / BG / CU / CA / SB / SF
-    push_osc10(&mut buf, &color_to_hex_ignore_alpha(scheme.term_fg));    // FG
-    push_osc11(&mut buf, &color_to_hex_ignore_alpha(scheme.term_bg));    // BG
-    push_osc12(&mut buf, &color_to_hex_ignore_alpha(scheme.term_cursor)); // CU
-    push_osc17(&mut buf, &color_to_hex_ignore_alpha(scheme.term_cursor_bg)); // CA
-    push_osc19(&mut buf, &color_to_hex_ignore_alpha(scheme.term_selection_bg)); // SB
-    push_osc20(&mut buf, &color_to_hex_ignore_alpha(scheme.term_selection_fg)); // SF
+    // 设置 FG / BG / CU / CA / SB / SF（使用 effective_* 方法获取衍生值）
+    push_osc10(&mut buf, &color_to_hex_ignore_alpha(scheme.effective_term_fg()));     // FG
+    push_osc11(&mut buf, &color_to_hex_ignore_alpha(scheme.effective_term_bg()));    // BG
+    push_osc12(&mut buf, &color_to_hex_ignore_alpha(scheme.effective_term_cursor())); // CU
+    push_osc17(&mut buf, &color_to_hex_ignore_alpha(scheme.effective_term_cursor_bg())); // CA
+    push_osc19(&mut buf, &color_to_hex_ignore_alpha(scheme.effective_term_selection_bg())); // SB
+    push_osc20(&mut buf, &color_to_hex_ignore_alpha(scheme.effective_term_selection_fg())); // SF
 
     buf
 }
