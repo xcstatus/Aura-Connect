@@ -553,6 +553,8 @@ struct ChannelEntry {
     data_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<Vec<u8>>>>,
     /// 命令发送器：上层通过此发送数据给 pump 循环
     cmd_tx: mpsc::UnboundedSender<SessionCmd>,
+    /// 溢出缓冲区：当 mpsc 数据包大于调用者 buffer 时，存储超出的数据
+    overflow_buf: Arc<tokio::sync::Mutex<Vec<u8>>>,
 }
 
 /// 共享 SSH 连接（Base）：管理已认证的 `client::Handle`，支持多路复用多个 PTY channel。
@@ -599,6 +601,8 @@ impl BaseSshConnection {
         let (data_tx, data_rx) = mpsc::channel(8192);
         let data_rx = Arc::new(tokio::sync::Mutex::new(data_rx));
         let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<SessionCmd>();
+        // 创建溢出缓冲区，用于缓存大于调用者 buffer 的数据
+        let overflow_buf = Arc::new(tokio::sync::Mutex::new(Vec::new()));
 
         // 克隆 exit_status Arc 供 pump 任务使用（pump 和 SshChannel 各持有一个）
         let exit_status_arc = Arc::new(std::sync::Mutex::new(None));
@@ -685,6 +689,7 @@ impl BaseSshConnection {
         let entry = ChannelEntry {
             data_rx,
             cmd_tx,
+            overflow_buf: overflow_buf.clone(),
         };
 
         {
@@ -741,13 +746,32 @@ impl BaseSshConnection {
         let channels = self.channels.read().await;
         match channels.get(&channel_id) {
             Some(entry) => {
+                // 优先从溢出缓冲区读取（上次读取遗留的数据）
+                {
+                    let mut overflow = entry.overflow_buf.lock().await;
+                    if !overflow.is_empty() {
+                        let len = std::cmp::min(buffer.len(), overflow.len());
+                        buffer[..len].copy_from_slice(&overflow[..len]);
+                        if len < overflow.len() {
+                            overflow.drain(..len);
+                        } else {
+                            overflow.clear();
+                        }
+                        return Ok(len);
+                    }
+                }
+
+                // 从 mpsc 接收数据
                 let mut rx = entry.data_rx.lock().await;
                 match rx.try_recv() {
                     Ok(data) => {
                         let len = std::cmp::min(buffer.len(), data.len());
                         buffer[..len].copy_from_slice(&data[..len]);
                         if data.len() > len {
-                            // TODO: 缓存超出的数据
+                            // 修复：将超出的数据存入溢出缓冲区
+                            let remaining = data[len..].to_vec();
+                            let mut overflow = entry.overflow_buf.lock().await;
+                            overflow.extend_from_slice(&remaining);
                         }
                         Ok(len)
                     }
@@ -900,8 +924,13 @@ impl AsyncSession for SshChannel {
         if !self.read_buffer.is_empty() {
             let len = std::cmp::min(buffer.len(), self.read_buffer.len());
             buffer[..len].copy_from_slice(&self.read_buffer[..len]);
-            // 清空缓冲区（用 Vec::new 替代 drain，保持 Sync）
-            self.read_buffer = Vec::new();
+            // 修复：保留未读取的尾部字节（不能直接清空，否则会丢失数据）
+            if len < self.read_buffer.len() {
+                let remaining = self.read_buffer[len..].to_vec();
+                self.read_buffer = remaining;
+            } else {
+                self.read_buffer.clear();
+            }
             return Ok(len);
         }
 
