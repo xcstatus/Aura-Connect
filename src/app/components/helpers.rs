@@ -83,9 +83,10 @@ pub fn top_bar_material_style(tokens: DesignTokens) -> impl Fn(&Theme) -> contai
     }
 }
 
-/// 终端区域背景样式（使用 tokens.bg_primary，主题跟随）。
+/// 终端区域背景样式（使用 tokens.terminal_bg，确保终端配色独立于 UI 主题）。
 pub fn terminal_area_bg_style(tokens: DesignTokens) -> impl Fn(&Theme) -> container::Style + 'static {
+    let bg = tokens.terminal_bg;
     move |_: &Theme| {
-        container::Style::default().background(tokens.bg_primary)
+        container::Style::default().background(bg)
     }
 }

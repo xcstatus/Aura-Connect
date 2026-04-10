@@ -91,7 +91,14 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
             | SettingsField::TerminalFontSize(_)
             | SettingsField::ApplyTerminalMetrics(_)
     );
-    let sync_palette = matches!(&field, SettingsField::ColorScheme(_));
+    let sync_palette = matches!(
+        &field,
+        SettingsField::ColorScheme(_)
+            | SettingsField::TerminalTheme(_)
+            | SettingsField::CustomBg(_)
+            | SettingsField::CustomFg(_)
+            | SettingsField::CustomCursor(_)
+    );
     let s = &mut state.model.settings;
 
     match field {
@@ -107,6 +114,10 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
         SettingsField::FontSize(v) => s.general.font_size = v,
         SettingsField::TargetFps(v) => s.terminal.target_fps = v,
         SettingsField::ColorScheme(v) => s.terminal.color_scheme = v,
+        SettingsField::TerminalTheme(v) => s.terminal.terminal_theme = v,
+        SettingsField::CustomBg(v) => s.terminal.custom_bg = v,
+        SettingsField::CustomFg(v) => s.terminal.custom_fg = v,
+        SettingsField::CustomCursor(v) => s.terminal.custom_cursor = v,
         SettingsField::TerminalFontSize(v) => s.terminal.font_size = v,
         SettingsField::LineHeight(v) => s.terminal.line_height = v,
         SettingsField::ApplyTerminalMetrics(v) => s.terminal.apply_terminal_metrics = v,

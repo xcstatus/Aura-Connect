@@ -18,7 +18,16 @@ pub(crate) enum SettingsField {
     AccentColor(String),
     FontSize(f32),
     TargetFps(u32),
+    /// 终端配色方案预设（TerminalDark, Nord, Solarized 等）
     ColorScheme(String),
+    /// 终端主题（auto: 跟随 UI 主题, dark: 深色, light: 浅色）
+    TerminalTheme(String),
+    /// 快速调整 - 自定义背景色（HEX 格式，空字符串表示使用预设）
+    CustomBg(String),
+    /// 快速调整 - 自定义前景色
+    CustomFg(String),
+    /// 快速调整 - 自定义光标色
+    CustomCursor(String),
     /// Terminal text size (logical px); affects PTY grid when metrics are applied.
     TerminalFontSize(f32),
     LineHeight(f32),

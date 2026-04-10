@@ -13,7 +13,7 @@ use iced::{Border, Color, Element, Theme};
 use crate::session::{ProtocolType, SessionProfile, TransportConfig};
 use crate::settings::HostKeyPolicy;
 use crate::theme::layout;
-use crate::theme::{DesignTokens, RustSshThemeId};
+use crate::theme::{DesignTokens, RustSshThemeId, TerminalPalette};
 use crate::theme::icons::{icon_view_with, IconId, IconOptions};
 
 use super::message::{Message, SettingsCategory, SettingsField};
@@ -34,7 +34,7 @@ fn settings_tokens(state: &IcedState) -> DesignTokens {
 pub(crate) fn max_sub_tab(category: SettingsCategory) -> usize {
     match category {
         SettingsCategory::General => 2,
-        SettingsCategory::Terminal => 3,
+        SettingsCategory::Terminal => 4,
         SettingsCategory::Connection => 3,
         SettingsCategory::Security => 1,
         SettingsCategory::Backup => 0,
@@ -228,6 +228,7 @@ fn sub_tab_labels(category: SettingsCategory, i18n: &crate::i18n::I18n) -> Vec<S
             "iced.settings.sub.terminal.render",
             "iced.settings.sub.terminal.scheme",
             "iced.settings.sub.terminal.text",
+            "iced.settings.sub.terminal.quick",
             "iced.settings.sub.terminal.interaction",
         ],
         SettingsCategory::Connection => &[
@@ -451,41 +452,139 @@ fn terminal_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
         .width(iced::Length::Fill)
         .into(),
         1 => {
-            let schemes = [
-                ("Default", "Original Dark Scheme"),
-                ("Nord", "Arctic bluish Nord palette"),
-                ("Monokai", "Classic bright colors on grey"),
-                ("Solarized", "Precision colors for digital clarity"),
-            ];
+            use crate::theme::TerminalPalette;
+
+            let schemes = TerminalPalette::all_presets();
             let mut col =
                 column![section_title(i18n.tr("iced.settings.section.color_scheme"), tokens)].spacing(layout::SETTINGS_ITEM_SPACING);
-            for (name, desc) in schemes {
-                let active = t.color_scheme == name;
-                col = col.push(
-                    row![
+
+            // 分两列显示预设方案
+            let mut rows: Vec<Element<'_, Message>> = Vec::new();
+            for chunk in schemes.chunks(2) {
+                let mut row_elements: Vec<Element<'_, Message>> = Vec::new();
+                for palette in chunk.iter() {
+                    let active = t.color_scheme == palette.id;
+                    let palette_id = palette.id.to_string();
+                    let palette_bg = palette.bg;
+                    let palette_fg = palette.fg;
+                    let palette_name = palette.name;
+
+                    // 配色预览框
+                    let preview = container(
                         column![
-                            text(name).size(13).style(move |_t: &Theme| text::Style {
-                                color: Some(text_primary),
-                            }),
-                            text(desc).size(11).style(move |_t: &Theme| text::Style {
-                                color: Some(text_secondary),
+                            text("Aa").size(14).style(move |_| text::Style {
+                                color: Some(palette_fg),
                             }),
                         ]
-                        .spacing(layout::SETTINGS_LABEL_DESC_SPACING),
-                        Space::new().width(iced::Length::Fill),
-                        button(text(if active {
-                            i18n.tr("iced.settings.scheme.applied")
-                        } else {
-                            i18n.tr("iced.settings.scheme.apply")
-                        }))
+                        .spacing(4),
+                    )
+                    .width(iced::Length::Fixed(60.0))
+                    .height(iced::Length::Fixed(40.0))
+                    .padding(4)
+                    .style(move |_| container::Style {
+                        background: Some(iced::Background::Color(palette_bg)),
+                        border: iced::Border {
+                            width: 1.0,
+                            color: if active { tokens.accent_base } else { tokens.border_default },
+                            radius: 4.0.into(),
+                        },
+                        ..Default::default()
+                    });
+
+                    let applied_text: Element<'_, Message> = if active {
+                        text(i18n.tr("iced.settings.scheme.applied")).size(10).style(move |_t: &Theme| text::Style {
+                            color: Some(tokens.accent_base),
+                        }).into()
+                    } else {
+                        Space::new().height(iced::Length::Fixed(12.0)).into()
+                    };
+
+                    let scheme_content = column![
+                        text(palette_name).size(13).style(move |_t: &Theme| text::Style {
+                            color: Some(text_primary),
+                        }),
+                        preview,
+                        applied_text,
+                    ]
+                    .spacing(layout::SETTINGS_LABEL_DESC_SPACING);
+
+                    let scheme_btn = button(scheme_content)
                         .on_press(Message::SettingsFieldChanged(SettingsField::ColorScheme(
-                            name.to_string(),
+                            palette_id.clone(),
                         )))
-                        .style(style_chrome_secondary(tokens)),
+                        .padding(8)
+                        .style(move |_theme: &Theme, _status: iced::widget::button::Status| iced::widget::button::Style {
+                            background: Some(if active { tokens.accent_base.into() } else { tokens.surface_1.into() }),
+                            border: iced::Border {
+                                width: if active { 2.0 } else { 1.0 },
+                                color: if active { tokens.accent_base } else { tokens.border_default },
+                                radius: 8.0.into(),
+                            },
+                            ..Default::default()
+                        });
+
+                    row_elements.push(scheme_btn.into());
+                }
+
+                // 如果只有奇数个，补一个空占位
+                while row_elements.len() < 2 {
+                    row_elements.push(Space::new().width(iced::Length::Fill).height(iced::Length::Fixed(80.0)).into());
+                }
+
+                rows.push(row(row_elements).spacing(layout::SETTINGS_ITEM_SPACING).into());
+            }
+
+            for row_elem in rows {
+                col = col.push(row_elem);
+            }
+
+            // 添加终端主题选择
+            col = col.push(Space::new().width(iced::Length::Fill).height(iced::Length::Fixed(16.0)));
+            col = col.push(text(i18n.tr("iced.settings.section.terminal_theme")).size(12).style(move |_t: &Theme| text::Style {
+                color: Some(text_secondary),
+            }));
+
+            let theme_options = [
+                ("auto", i18n.tr("iced.settings.terminal.theme.auto")),
+                ("dark", i18n.tr("iced.settings.terminal.theme.dark")),
+                ("light", i18n.tr("iced.settings.terminal.theme.light")),
+            ];
+
+            let current_theme = t.terminal_theme.as_str();
+            for (value, label) in theme_options {
+                let active = current_theme == value;
+                let check_mark: Element<'_, Message> = if active {
+                    text("✓").size(14).style(move |_t: &Theme| text::Style {
+                        color: Some(tokens.accent_base),
+                    }).into()
+                } else {
+                    Space::new().width(iced::Length::Fixed(14.0)).into()
+                };
+
+                let btn = button(
+                    row![
+                        text(label).size(13).style(move |_t: &Theme| text::Style {
+                            color: Some(text_primary),
+                        }),
+                        Space::new().width(iced::Length::Fill),
+                        check_mark,
                     ]
                     .align_y(Alignment::Center),
-                );
+                )
+                .on_press(Message::SettingsFieldChanged(SettingsField::TerminalTheme(value.to_string())))
+                .padding(iced::Padding::from([4, 8]))
+                .style(move |_theme: &Theme, _status: iced::widget::button::Status| iced::widget::button::Style {
+                    background: if active { Some(tokens.surface_2.into()) } else { None },
+                    border: iced::Border {
+                        width: 0.0,
+                        color: iced::Color::TRANSPARENT,
+                        radius: 4.0.into(),
+                    },
+                    ..Default::default()
+                });
+                col = col.push(btn);
             }
+
             col.spacing(layout::SETTINGS_ITEM_SPACING)
                 .padding(layout::SETTINGS_CONTENT_PADDING as u16)
                 .width(iced::Length::Fill)
@@ -540,7 +639,134 @@ fn terminal_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
             .width(iced::Length::Fill)
             .into()
         }
-        3 => column![
+        // 快速调整页签 (sub=3)
+        3 => {
+            let t = &state.model.settings.terminal;
+            column![
+                section_title(i18n.tr("iced.settings.section.quick_adjust"), tokens),
+                text(i18n.tr("iced.settings.section.quick_adjust.desc")).size(11).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
+                Space::new().height(iced::Length::Fixed(8.0)),
+
+                // 背景色
+                settings_row(
+                    i18n.tr("iced.settings.color.bg"),
+                    text_input(
+                        i18n.tr("iced.settings.color.placeholder"),
+                        &t.custom_bg,
+                    )
+                    .on_input(|v| Message::SettingsFieldChanged(SettingsField::CustomBg(v)))
+                    .width(iced::Length::Fixed(120.0)),
+                    tokens,
+                ),
+
+                // 前景色
+                settings_row(
+                    i18n.tr("iced.settings.color.fg"),
+                    text_input(
+                        i18n.tr("iced.settings.color.placeholder"),
+                        &t.custom_fg,
+                    )
+                    .on_input(|v| Message::SettingsFieldChanged(SettingsField::CustomFg(v)))
+                    .width(iced::Length::Fixed(120.0)),
+                    tokens,
+                ),
+
+                // 光标色
+                settings_row(
+                    i18n.tr("iced.settings.color.cursor"),
+                    text_input(
+                        i18n.tr("iced.settings.color.placeholder"),
+                        &t.custom_cursor,
+                    )
+                    .on_input(|v| Message::SettingsFieldChanged(SettingsField::CustomCursor(v)))
+                    .width(iced::Length::Fixed(120.0)),
+                    tokens,
+                ),
+
+                Space::new().height(iced::Length::Fixed(16.0)),
+
+                // 重置按钮
+                {
+                    let reset_msg = Message::SettingsFieldChanged(SettingsField::CustomBg("".to_string()));
+                    button(
+                        text(i18n.tr("iced.settings.color.reset"))
+                            .style(move |_t: &Theme| text::Style { color: Some(iced::Color::WHITE) })
+                    )
+                    .on_press(reset_msg)
+                    .style(move |_theme: &Theme, _status: iced::widget::button::Status| iced::widget::button::Style {
+                        background: Some(tokens.error.into()),
+                        border: iced::Border {
+                            width: 0.0,
+                            color: iced::Color::TRANSPARENT,
+                            radius: 4.0.into(),
+                        },
+                        ..Default::default()
+                    })
+                },
+
+                Space::new().height(iced::Length::Fixed(16.0)),
+
+                // 预览
+                text(i18n.tr("iced.settings.section.preview")).size(12).style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
+                Space::new().height(iced::Length::Fixed(8.0)),
+
+                // 获取当前预览配色
+                {
+                    let preview_bg = if t.custom_bg.is_empty() {
+                        // 从配色方案获取背景色
+                        if let Some(palette) = TerminalPalette::from_id(&t.color_scheme) {
+                            palette.bg
+                        } else {
+                            tokens.terminal_bg
+                        }
+                    } else {
+                        crate::theme::tokens::color::from_hex(&t.custom_bg).unwrap_or(tokens.terminal_bg)
+                    };
+                    let preview_fg = if t.custom_fg.is_empty() {
+                        if let Some(palette) = TerminalPalette::from_id(&t.color_scheme) {
+                            palette.fg
+                        } else {
+                            tokens.terminal_fg
+                        }
+                    } else {
+                        crate::theme::tokens::color::from_hex(&t.custom_fg).unwrap_or(tokens.terminal_fg)
+                    };
+
+                    container(
+                        column![
+                            text("user@host:~$ ls -la").size(13).style(move |_| text::Style {
+                                color: Some(preview_fg),
+                            }),
+                            text("drwxr-xr-x   2 user  staff   96 Apr  8 10:30 .").size(13).style(move |_| text::Style {
+                                color: Some(preview_fg),
+                            }),
+                        ]
+                        .spacing(4),
+                    )
+                    .padding(12)
+                    .width(iced::Length::Fill)
+                    .style(move |_| container::Style {
+                        background: Some(iced::Background::Color(preview_bg)),
+                        border: iced::Border {
+                            width: 1.0,
+                            color: tokens.border_default,
+                            radius: 6.0.into(),
+                        },
+                        ..Default::default()
+                    })
+                },
+            ]
+            .spacing(layout::SETTINGS_ITEM_SPACING)
+            .padding(layout::SETTINGS_CONTENT_PADDING as u16)
+            .width(iced::Length::Fill)
+            .into()
+        }
+        // 交互页签 (sub=4)
+        4 => column![
             section_title(i18n.tr("iced.settings.section.interaction"), tokens),
             checkbox(t.right_click_paste)
                 .label(i18n.tr("iced.settings.row.right_paste"))
