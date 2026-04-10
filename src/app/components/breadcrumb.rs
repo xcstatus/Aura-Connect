@@ -1,14 +1,14 @@
 //! Breadcrumb 导航栏组件。
 
 use iced::alignment::Alignment;
-use iced::widget::{button, container, row, text};
+use iced::widget::{button, container, row, text, Space};
 use iced::{Element, Length};
 
 use crate::app::components::helpers::{terminal_area_bg_style, tokens_for_state};
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::terminal_viewport;
-use crate::app::widgets::chrome_button::style_chrome_secondary;
+use crate::app::widgets::chrome_button::style_top_icon;
 use crate::theme::icons::{icon_view_with, IconId, IconOptions};
 use crate::theme::layout::{
     BREADCRUMB_BTN_GAP, BREADCRUMB_FLOAT_ICON_MARGIN, BREADCRUMB_FLOAT_ICON_SIZE,
@@ -60,9 +60,9 @@ pub(crate) fn breadcrumb(state: &IcedState) -> Element<'_, Message> {
     // 右侧按钮
     let right_buttons = build_action_buttons(state, tokens, i18n);
 
-    // 完整布局
+    // 完整布局：左侧区域 + 弹性空间 + 右侧按钮（自动右对齐）
     container(
-        row![left_area, right_buttons]
+        row![left_area, Space::new().width(Length::Fill), right_buttons]
             .spacing(BREADCRUMB_SECTIONS_GAP)
             .align_y(Alignment::Center),
     )
@@ -87,7 +87,8 @@ fn build_action_buttons(
         Message::ConnectPressed,
     );
     let reconnect_btn = button(reconnect_icon)
-        .style(style_chrome_secondary(tokens));
+        .on_press(Message::ConnectPressed)
+        .style(style_top_icon(tokens));
 
     // SFTP 按钮
     let sftp_icon = icon_view_with(
@@ -97,7 +98,8 @@ fn build_action_buttons(
         Message::BreadcrumbSftp,
     );
     let sftp_btn = button(sftp_icon)
-        .style(style_chrome_secondary(tokens));
+        .on_press(Message::BreadcrumbSftp)
+        .style(style_top_icon(tokens));
 
     // 端口转发按钮
     let port_icon = icon_view_with(
@@ -107,22 +109,19 @@ fn build_action_buttons(
         Message::BreadcrumbPortForward,
     );
     let port_btn = button(port_icon)
-        .style(style_chrome_secondary(tokens));
+        .on_press(Message::BreadcrumbPortForward)
+        .style(style_top_icon(tokens));
 
-    // 固定/取消固定按钮
-    let (pin_icon_id, pin_msg) = if state.breadcrumb_pinned {
-        (IconId::Pin, Message::BreadcrumbTogglePin)
-    } else {
-        (IconId::Unpin, Message::BreadcrumbTogglePin)
-    };
+    // 固定按钮：点击后隐藏 breadcrumb
     let pin_icon = icon_view_with(
-        IconOptions::new(pin_icon_id)
+        IconOptions::new(IconId::Pin)
             .with_size(15)
             .with_color(tokens.text_secondary),
-        pin_msg,
+        Message::BreadcrumbTogglePin,
     );
     let pin_btn = button(pin_icon)
-        .style(style_chrome_secondary(tokens));
+        .on_press(Message::BreadcrumbTogglePin)
+        .style(style_top_icon(tokens));
 
     row![reconnect_btn, sftp_btn, port_btn, pin_btn]
         .spacing(BREADCRUMB_BTN_GAP)
@@ -137,19 +136,19 @@ pub(crate) fn breadcrumb_float_icon(state: &IcedState) -> Element<'static, Messa
 
     let tokens = tokens_for_state(state);
 
-    // 使用 pin 图标，点击后切换为固定模式
+    // 使用 pin 图标，点击后显示 breadcrumb（临时模式）
     let icon = icon_view_with(
         IconOptions::new(IconId::Unpin)
             .with_size(15)
             .with_color(tokens.text_secondary),
-        Message::BreadcrumbTogglePin,
+        Message::BreadcrumbShowTemp,
     );
 
     let btn = button(icon)
-        .on_press(Message::BreadcrumbTogglePin)
+        .on_press(Message::BreadcrumbShowTemp)
         .width(Length::Fixed(BREADCRUMB_FLOAT_ICON_SIZE))
         .height(Length::Fixed(BREADCRUMB_FLOAT_ICON_SIZE))
-        .style(style_chrome_secondary(tokens));
+        .style(style_top_icon(tokens));
 
     // 使用 Space 将图标推到右上角
     container(

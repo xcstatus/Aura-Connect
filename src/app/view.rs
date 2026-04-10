@@ -31,28 +31,27 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
         None
     };
 
+    let bottom_bar = components::status_bar::status_bar(state);
     let terminal_panel = components::terminal_view::terminal_panel(state);
 
-    let main_body: Element<'_, Message> = terminal_panel;
-
-    let bottom_bar = components::status_bar::status_bar(state);
-
-    // 构建主体内容列（包含 breadcrumb、终端、底栏）
+    // 构建主体内容区域（breadcrumb + 终端，终端弹性填满中间空间）
     let below_top_fill: Element<'_, Message> = if let Some(bc) = breadcrumb {
-        column![bc, main_body, bottom_bar]
+        column![bc, terminal_panel]
             .spacing(term_vp.main_column_spacing())
             .height(iced::Length::Fill)
             .into()
     } else {
-        // breadcrumb 隐藏时，终端区域上移，底栏紧贴顶栏
-        column![main_body, bottom_bar]
-            .spacing(term_vp.main_column_spacing())
-            .height(iced::Length::Fill)
-            .into()
+        terminal_panel.into()
     };
 
+    // 底栏固定在底部，主体区域填满剩余空间
+    let content_with_bottom: Element<'_, Message> = column![below_top_fill, bottom_bar]
+        .spacing(0)
+        .height(iced::Length::Fill)
+        .into();
+
     let under_top_bar: Element<'_, Message> = {
-        let mut layers: Vec<Element<'_, Message>> = vec![below_top_fill.into()];
+        let mut layers: Vec<Element<'_, Message>> = vec![content_with_bottom.into()];
 
         // Terminal-inline overlay: connection progress bar (shown while modal is closed).
         layers.push(overlays::inline_connecting_overlay(state));

@@ -215,9 +215,11 @@ impl TerminalHost {
                     return Task::none();
                 }
                 state.last_cursor_pos = Some(p);
-                let spec = terminal_viewport::terminal_viewport_spec_for_settings(
+                let mut spec = terminal_viewport::terminal_viewport_spec_for_settings(
                     &state.model.settings.terminal,
                 );
+                // 确保坐标计算与视图 breadcrumb 状态一致
+                spec.breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
                 let (cols, rows): (u16, u16) = {
                     let pane = state.active_pane_mut();
                     let engine = EngineAdapterMut::new(&mut pane.terminal);
@@ -295,9 +297,11 @@ impl TerminalHost {
             }
             TerminalEvent::MouseMoved(p) => {
                 state.last_cursor_pos = Some(p);
-                let spec = terminal_viewport::terminal_viewport_spec_for_settings(
+                let mut spec = terminal_viewport::terminal_viewport_spec_for_settings(
                     &state.model.settings.terminal,
                 );
+                // 确保坐标计算与视图 breadcrumb 状态一致
+                spec.breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
                 let window = state.window_size;
                 let (cols, rows): (u16, u16) = {
                     let pane = state.active_pane_mut();
@@ -328,9 +332,11 @@ impl TerminalHost {
                 if !state.model.settings.terminal.right_click_paste {
                     return Task::none();
                 }
-                let spec = terminal_viewport::terminal_viewport_spec_for_settings(
+                let mut spec = terminal_viewport::terminal_viewport_spec_for_settings(
                     &state.model.settings.terminal,
                 );
+                // 确保坐标计算与视图 breadcrumb 状态一致
+                spec.breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
                 let (cols, rows): (u16, u16) = {
                     let pane = state.active_pane_mut();
                     let engine = EngineAdapterMut::new(&mut pane.terminal);
@@ -355,9 +361,11 @@ impl TerminalHost {
                     return Task::none();
                 }
                 state.last_cursor_pos = Some(at);
-                let spec = terminal_viewport::terminal_viewport_spec_for_settings(
+                let mut spec = terminal_viewport::terminal_viewport_spec_for_settings(
                     &state.model.settings.terminal,
                 );
+                // 确保坐标计算与视图 breadcrumb 状态一致
+                spec.breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
                 let (cols, rows): (u16, u16) = {
                     let pane = state.active_pane_mut();
                     let engine = EngineAdapterMut::new(&mut pane.terminal);

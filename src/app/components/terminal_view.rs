@@ -10,7 +10,10 @@ use crate::app::terminal_viewport;
 
 /// Build the terminal panel (main content area).
 pub(crate) fn terminal_panel(state: &IcedState) -> Element<'_, Message> {
-    let term_vp = terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal);
+    let mut term_vp = terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal);
+    // 同步 breadcrumb 状态，确保 breadcrumb 隐藏时终端区域变大
+    let breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+    term_vp.breadcrumb_visible = breadcrumb_visible;
     let cell_w_hit = terminal_viewport::terminal_scroll_cell_geometry(
         state.window_size,
         &term_vp,

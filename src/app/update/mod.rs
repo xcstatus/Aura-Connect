@@ -565,7 +565,9 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
         // --- Connection ---
         Message::ConnectPressed => connection::handle_connect(state),
         Message::BreadcrumbTogglePin => {
-            state.breadcrumb_pinned = !state.breadcrumb_pinned;
+            // 点击后隐藏 breadcrumb（无论当前状态如何）
+            state.breadcrumb_pinned = false;
+            state.breadcrumb_temp_visible = false;
             Task::none()
         }
         Message::BreadcrumbShowTemp => {
