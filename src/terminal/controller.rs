@@ -381,10 +381,12 @@ impl TerminalController {
     }
 
     /// OSC 4 palette into the **local** libghostty VT (not SSH). Refreshes snapshots so Iced styled rows match.
-    pub fn apply_terminal_palette_for_scheme(&mut self, scheme: &str) {
-        let bytes = crate::terminal::palette::scheme_vt_bytes(scheme);
-        self.vt.write_vt(&bytes);
-        self.refresh_terminal_snapshots();
+    pub fn apply_terminal_palette_for_scheme(&mut self, scheme_id: &str) {
+        if let Some(scheme) = crate::theme::ColorScheme::from_id(scheme_id) {
+            let bytes = crate::terminal::palette::scheme_vt_bytes(&scheme);
+            self.vt.write_vt(&bytes);
+            self.refresh_terminal_snapshots();
+        }
     }
 
     /// Snapshot rows for Iced `rich_text` (viewport height = `rows`).

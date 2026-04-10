@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[serde(default)]
 pub struct Settings {
     pub general: GeneralSettings,
+    pub color_scheme: String,
     pub terminal: TerminalSettings,
     pub security: SecuritySettings,
     pub quick_connect: QuickConnectSettings,
@@ -94,7 +95,6 @@ pub fn unix_time_ms() -> i64 {
 #[serde(default)]
 pub struct GeneralSettings {
     pub language: String,
-    pub theme: String,
     pub accent_color: String,
     pub font_size: f32,
     pub window_opacity: f32,
@@ -109,16 +109,6 @@ pub struct TerminalSettings {
     /// Terminal text size (logical px). Drives Iced terminal widget and PTY `cols`/`rows` math.
     pub font_size: f32,
     pub line_height: f32,
-    /// 终端配色方案预设（TerminalDark, Nord, Solarized 等）
-    pub color_scheme: String,
-    /// 终端主题（auto: 跟随 UI 主题, dark: 深色, light: 浅色）
-    pub terminal_theme: String,
-    /// 快速调整 - 自定义背景色（空字符串表示使用预设值）
-    pub custom_bg: String,
-    /// 快速调整 - 自定义前景色
-    pub custom_fg: String,
-    /// 快速调整 - 自定义光标色
-    pub custom_cursor: String,
     pub scrollback_limit: usize,
     pub right_click_paste: bool,
     /// When true and the remote terminal has enabled DEC mode 2004, wrap paste in `\e[200~` … `\e[201~`.
@@ -206,7 +196,6 @@ impl Default for GeneralSettings {
     fn default() -> Self {
         Self {
             language: "zh-CN".to_string(),
-            theme: "Dark".to_string(),
             accent_color: "#00FF80".to_string(),
             font_size: 14.0,
             window_opacity: 0.95,
@@ -222,11 +211,6 @@ impl Default for TerminalSettings {
             font_family: "JetBrains Mono".to_string(),
             font_size: 14.0,
             line_height: 1.4,
-            color_scheme: "TerminalDark".to_string(),
-            terminal_theme: "auto".to_string(),
-            custom_bg: String::new(),
-            custom_fg: String::new(),
-            custom_cursor: String::new(),
             scrollback_limit: 10000,
             right_click_paste: true,
             bracketed_paste: false,
@@ -258,6 +242,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             general: GeneralSettings::default(),
+            color_scheme: "terminal_dark".to_string(),
             terminal: TerminalSettings::default(),
             security: SecuritySettings::default(),
             quick_connect: QuickConnectSettings::default(),

@@ -5,17 +5,11 @@
 use iced::widget::container;
 use iced::Theme;
 use crate::app::state::IcedState;
-use crate::theme::{DesignTokens, RustSshThemeId};
+use crate::theme::DesignTokens;
 
 /// Helper: get DesignTokens for current state theme.
 pub fn tokens_for_state(state: &IcedState) -> DesignTokens {
-    let theme_id = match state.model.settings.general.theme.as_str() {
-        "Light" => RustSshThemeId::Light,
-        "Warm" => RustSshThemeId::Warm,
-        "GitHub" => RustSshThemeId::GitHub,
-        _ => RustSshThemeId::Dark,
-    };
-    DesignTokens::for_id(theme_id)
+    DesignTokens::for_color_scheme(&state.model.settings.color_scheme)
 }
 
 /// Modal scrim style (用于 container.style())。
@@ -29,7 +23,7 @@ pub fn modal_scrim_style(tokens: DesignTokens) -> impl Fn(&Theme) -> container::
 
 /// Modal scrim style with dynamic alpha (for animations)。
 pub fn modal_scrim_alpha_fn(alpha: f32) -> impl Fn(&Theme) -> container::Style + 'static {
-    let bg = DesignTokens::for_id(RustSshThemeId::Dark).scrim_with_alpha(alpha);
+    let bg = DesignTokens::terminal_dark().scrim_with_alpha(alpha);
     move |_: &Theme| {
         container::Style::default().background(bg)
     }
@@ -47,7 +41,7 @@ pub fn layered_scrim_style(tokens: DesignTokens, level: usize) -> impl Fn(&Theme
 
 /// Layered scrim style with dynamic alpha (for animations + layered effect).
 pub fn layered_scrim_alpha(alpha: f32, level: usize) -> impl Fn(&Theme) -> container::Style + 'static {
-    let bg = DesignTokens::for_id(RustSshThemeId::Dark).layered_scrim_with_alpha(alpha, level);
+    let bg = DesignTokens::terminal_dark().layered_scrim_with_alpha(alpha, level);
     move |_: &Theme| {
         container::Style::default().background(bg)
     }

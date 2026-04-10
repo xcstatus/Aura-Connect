@@ -16,7 +16,7 @@ pub(crate) fn handle_add_tab(state: &mut IcedState) -> Task<Message> {
     });
     state
         .tab_panes
-        .push(TabPane::new(&state.model.settings.terminal));
+        .push(TabPane::new(&state.model.settings.terminal, &state.model.settings.color_scheme));
     state.tab_manager.add_tab();
     state.active_tab = state.tabs.len() - 1;
     // Start new tab width animation (expands from 0).

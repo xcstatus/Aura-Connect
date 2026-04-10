@@ -21,14 +21,7 @@ pub use connection::{DirectInputParts, is_direct_candidate, parse_direct_input};
 pub use model::{AppModel, ConnectErrorKind, ConnectionDraft, DraftSource, HostKeyErrorInfo};
 
 fn app_theme(state: &state::IcedState) -> iced::Theme {
-    use crate::theme::RustSshThemeId;
-    let theme_id = match state.model.settings.general.theme.as_str() {
-        "Light" => RustSshThemeId::Light,
-        "Warm" => RustSshThemeId::Warm,
-        "GitHub" => RustSshThemeId::GitHub,
-        _ => RustSshThemeId::Dark,
-    };
-    crate::theme::rustssh_iced_theme(theme_id)
+    crate::theme::rustssh_iced_theme(&state.model.settings.color_scheme)
 }
 
 pub fn run() -> iced::Result {

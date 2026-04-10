@@ -10,7 +10,7 @@ use iced::widget::Column;
 
 use crate::app::message::Message;
 use crate::app::state::IcedState;
-use crate::theme::{DebugTokens, DesignTokens, RustSshThemeId};
+use crate::theme::{DebugTokens, DesignTokens};
 
 const OVERLAY_PAD: f32 = 12.0;
 
@@ -21,13 +21,7 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
     let focused = state.window_focused;
 
     // 获取当前主题的 tokens
-    let theme_id = match state.model.settings.general.theme.as_str() {
-        "Light" => RustSshThemeId::Light,
-        "Warm" => RustSshThemeId::Warm,
-        "GitHub" => RustSshThemeId::GitHub,
-        _ => RustSshThemeId::Dark,
-    };
-    let tokens = DesignTokens::for_id(theme_id);
+    let tokens = DesignTokens::for_color_scheme(&state.model.settings.color_scheme);
     let debug = DebugTokens::from_design_tokens(&tokens);
 
     let slow_pct = if perf.ticks > 0 {

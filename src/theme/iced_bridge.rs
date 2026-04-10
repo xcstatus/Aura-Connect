@@ -5,7 +5,7 @@ use iced::theme::palette::{
     Background, Danger, Extended, Pair, Palette, Primary, Secondary, Success, Warning,
 };
 
-use super::tokens::{DesignTokens, RustSshThemeId};
+use super::tokens::DesignTokens;
 
 fn is_dark_bg(c: iced::Color) -> bool {
     c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722 < 0.45
@@ -51,23 +51,18 @@ pub fn iced_extended(tokens: &DesignTokens) -> Extended {
     }
 }
 
-/// 构建 Iced `Theme::Custom`，名称用于调试与未来的主题选择器。
-pub fn rustssh_iced_theme(id: RustSshThemeId) -> Theme {
-    let tokens = DesignTokens::for_id(id);
+/// 根据配色方案 ID 构建 Iced `Theme::Custom`。
+pub fn rustssh_iced_theme(scheme_id: &str) -> Theme {
+    let tokens = DesignTokens::for_color_scheme(scheme_id);
     let palette = iced_palette(&tokens);
-    let name = match id {
-        RustSshThemeId::Dark => "RustSsh Dark",
-        RustSshThemeId::Light => "RustSsh Light",
-        RustSshThemeId::Warm => "RustSsh Warm",
-        RustSshThemeId::GitHub => "RustSsh GitHub",
-    };
+    let name = format!("RustSsh {}", tokens.bg_primary);
     Theme::custom_with_fn(name, palette, move |p| {
         let _ = p;
         iced_extended(&tokens)
     })
 }
 
-/// 默认与产品主力模式一致：Dark。
+/// 默认主题：Terminal Dark。
 pub fn default_rustssh_iced_theme() -> Theme {
-    rustssh_iced_theme(RustSshThemeId::Dark)
+    rustssh_iced_theme("terminal_dark")
 }

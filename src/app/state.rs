@@ -261,10 +261,10 @@ pub(crate) struct TabPane {
 }
 
 impl TabPane {
-    pub fn new(terminal_settings: &TerminalSettings) -> Self {
+    pub fn new(terminal_settings: &TerminalSettings, color_scheme: &str) -> Self {
         let mut terminal = TerminalController::new(terminal_settings)
             .expect("Failed to initialize terminal controller - libghostty VT initialization failed");
-        terminal.apply_terminal_palette_for_scheme(&terminal_settings.color_scheme);
+        terminal.apply_terminal_palette_for_scheme(color_scheme);
         Self {
             terminal,
             last_terminal_focus_sent: None,
@@ -906,7 +906,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
         .expect("tokio runtime for iced app");
     let model = AppModel::load();
     let first_title = model.i18n.tr("iced.tab.new").to_string();
-    let tab_panes = vec![TabPane::new(&model.settings.terminal)];
+    let tab_panes = vec![TabPane::new(&model.settings.terminal, &model.settings.color_scheme)];
     let tab_manager = SessionManager::new(1); // one tab at boot
     let vault_status = VaultStatus::compute(&model.settings, model.vault_master_password.is_some());
     let now = crate::settings::unix_time_ms();

@@ -94,10 +94,6 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
     let sync_palette = matches!(
         &field,
         SettingsField::ColorScheme(_)
-            | SettingsField::TerminalTheme(_)
-            | SettingsField::CustomBg(_)
-            | SettingsField::CustomFg(_)
-            | SettingsField::CustomCursor(_)
     );
     let s = &mut state.model.settings;
 
@@ -109,15 +105,10 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
             return;
         }
         SettingsField::AutoCheckUpdate(v) => s.general.auto_check_update = v,
-        SettingsField::Theme(v) => s.general.theme = v,
         SettingsField::AccentColor(v) => s.general.accent_color = v.trim().to_string(),
         SettingsField::FontSize(v) => s.general.font_size = v,
         SettingsField::TargetFps(v) => s.terminal.target_fps = v,
-        SettingsField::ColorScheme(v) => s.terminal.color_scheme = v,
-        SettingsField::TerminalTheme(v) => s.terminal.terminal_theme = v,
-        SettingsField::CustomBg(v) => s.terminal.custom_bg = v,
-        SettingsField::CustomFg(v) => s.terminal.custom_fg = v,
-        SettingsField::CustomCursor(v) => s.terminal.custom_cursor = v,
+        SettingsField::ColorScheme(v) => s.color_scheme = v,
         SettingsField::TerminalFontSize(v) => s.terminal.font_size = v,
         SettingsField::LineHeight(v) => s.terminal.line_height = v,
         SettingsField::ApplyTerminalMetrics(v) => s.terminal.apply_terminal_metrics = v,
@@ -174,7 +165,7 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
     }
 
     if sync_palette {
-        let scheme = state.model.settings.terminal.color_scheme.clone();
+        let scheme = state.model.settings.color_scheme.clone();
         for p in &mut state.tab_panes {
             p.terminal.apply_terminal_palette_for_scheme(&scheme);
         }

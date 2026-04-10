@@ -1,19 +1,540 @@
-//! 设计系统 v3 色卡：Foundation → Surface → Semantic（见 `doc/设计系统_色卡.md`）。
+//! 配色方案系统：统一控制 UI 颜色和终端颜色。
+//!
+//! 核心数据结构：
+//! - `ColorScheme`: 完整配色方案，包含 UI 颜色 + 终端颜色
+//! - `DesignTokens`: UI 专用色票（从 ColorScheme 派生）
+//!
+//! 终端颜色协议（VT 字节）：
+//! - OSC 4 (index;color): ANSI 0-15
+//! - OSC 10: Foreground (FG, 前景色)
+//! - OSC 11: Background (BG, 背景色)
+//! - OSC 12: Cursor (CU, 光标色)
+//! - OSC 17: Cursor color (块光标前景色, CA)
+//! - OSC 19: Selection background (SB)
+//! - OSC 20: Selection foreground (SF)
 
 use iced::Color;
 
-/// 应用 UI 主题变体（Iced 窗口级）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum RustSshThemeId {
-    #[default]
-    Dark,
-    Light,
-    Warm,
-    /// GitHub 风格主题
-    GitHub,
+/// 完整配色方案：UI 颜色 + 终端颜色
+///
+/// 每个预设方案同时定义：
+/// - UI 颜色：控制整个应用窗口框架的视觉风格
+/// - 终端颜色：通过 VT 字节发送给终端模拟器
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ColorScheme {
+    /// 配色方案 ID（唯一标识）
+    pub id: &'static str,
+    /// 配色方案显示名称
+    pub name: &'static str,
+
+    // === UI 颜色 ===
+    pub bg_primary: Color,
+    pub bg_secondary: Color,
+    pub bg_header: Color,
+    pub bg_popup: Color,
+    pub surface_1: Color,
+    pub surface_2: Color,
+    pub surface_3: Color,
+    pub tab_active_bg: Color,
+    pub text_primary: Color,
+    pub text_secondary: Color,
+    pub text_disabled: Color,
+    pub border_default: Color,
+    pub border_subtle: Color,
+    pub accent_base: Color,
+    pub accent_hover: Color,
+    pub accent_active: Color,
+    /// Primary 实体按钮上的标签色（暗色绿钮为黑，浅色主题多为白）
+    pub on_accent_label: Color,
+    pub success: Color,
+    pub warning: Color,
+    pub error: Color,
+    pub info: Color,
+    pub line_highlight: Color,
+    /// UI 层选中区域背景（用于非终端区域）
+    pub selection_bg: Color,
+
+    // === 终端颜色 ===
+    /// BG - 终端背景色 (OSC 11)
+    pub term_bg: Color,
+    /// FG - 终端前景色 (OSC 10)
+    pub term_fg: Color,
+    /// CU - 终端光标色 (OSC 12)
+    pub term_cursor: Color,
+    /// CA - 块光标前景色 (OSC 17)
+    pub term_cursor_bg: Color,
+    /// SB - 选中区域背景色 (OSC 19)
+    pub term_selection_bg: Color,
+    /// SF - 选中区域前景色 (OSC 20)
+    pub term_selection_fg: Color,
+    /// 终端滚动条背景
+    pub term_scrollbar_bg: Color,
+    /// 终端滚动条前景（滑块）
+    pub term_scrollbar_fg: Color,
+
+    // === ANSI 16 色调色板 ===
+    /// ANSI 颜色索引 0-15
+    pub ansi: [Color; 16],
 }
 
+impl ColorScheme {
+    /// Terminal Dark - 经典深色终端
+    pub const fn terminal_dark() -> Self {
+        let ansi = [
+            Color::from_rgb8(0x0A, 0x0A, 0x0F), // 0: Black
+            Color::from_rgb8(0xFF, 0x3B, 0x30), // 1: Red
+            Color::from_rgb8(0x00, 0xFF, 0x80), // 2: Green
+            Color::from_rgb8(0xFF, 0xCC, 0x00), // 3: Yellow
+            Color::from_rgb8(0x00, 0x7A, 0xFF), // 4: Blue
+            Color::from_rgb8(0xAF, 0x52, 0xDE), // 5: Magenta
+            Color::from_rgb8(0x5A, 0xC8, 0xFA), // 6: Cyan
+            Color::from_rgb8(0xE6, 0xE6, 0xE6), // 7: White
+            Color::from_rgb8(0x4C, 0x4C, 0x4C), // 8: Bright Black
+            Color::from_rgb8(0xFF, 0x6B, 0x6B), // 9: Bright Red
+            Color::from_rgb8(0x6B, 0xFF, 0x9E), // 10: Bright Green
+            Color::from_rgb8(0xFF, 0xDD, 0x66), // 11: Bright Yellow
+            Color::from_rgb8(0x66, 0xB3, 0xFF), // 12: Bright Blue
+            Color::from_rgb8(0xDA, 0x8B, 0xFF), // 13: Bright Magenta
+            Color::from_rgb8(0x8B, 0xE8, 0xFF), // 14: Bright Cyan
+            Color::from_rgb8(0xFF, 0xFF, 0xFF), // 15: Bright White
+        ];
+        Self {
+            id: "terminal_dark",
+            name: "Terminal Dark",
+            // UI 颜色 - 经典深色
+            bg_primary: Color::from_rgb8(0x1C, 0x1C, 0x1E),
+            bg_secondary: Color::from_rgb8(0x23, 0x23, 0x26),
+            bg_header: Color::from_rgb8(0x28, 0x28, 0x2D),
+            bg_popup: Color::from_rgb8(0x2C, 0x2C, 0x2E),
+            surface_1: Color::from_rgb8(0x2C, 0x2C, 0x2E),
+            surface_2: Color::from_rgb8(0x3A, 0x3A, 0x3C),
+            surface_3: Color::from_rgb8(0x48, 0x48, 0x4A),
+            tab_active_bg: Color::BLACK,
+            text_primary: Color::WHITE,
+            text_secondary: Color::from_rgb8(0xA0, 0xA0, 0xA5),
+            text_disabled: Color::from_rgb8(0x6C, 0x6C, 0x70),
+            border_default: Color::from_rgba(1.0, 1.0, 1.0, 0.08),
+            border_subtle: Color::from_rgba(1.0, 1.0, 1.0, 0.04),
+            accent_base: Color::from_rgb8(0x00, 0xFF, 0x80),
+            accent_hover: Color::from_rgb8(0x33, 0xFF, 0x99),
+            accent_active: Color::from_rgb8(0x00, 0xCC, 0x66),
+            on_accent_label: Color::BLACK,
+            success: Color::from_rgb8(0x00, 0xFF, 0x80),
+            warning: Color::from_rgb8(0xFF, 0xCC, 0x00),
+            error: Color::from_rgb8(0xFF, 0x3B, 0x30),
+            info: Color::from_rgb8(0x5A, 0xC8, 0xFA),
+            line_highlight: Color::from_rgba(1.0, 1.0, 1.0, 0.03),
+            selection_bg: Color::from_rgba(0.0, 1.0, 0.5, 0.25),
+            // 终端颜色
+            term_bg: Color::from_rgb8(0x0A, 0x0A, 0x0F),
+            term_fg: Color::from_rgb8(0xE6, 0xE6, 0xE6),
+            term_cursor: Color::from_rgb8(0x00, 0xFF, 0x80),
+            term_cursor_bg: Color::from_rgb8(0x00, 0xFF, 0x80),
+            term_selection_bg: Color::from_rgb8(0x00, 0xFF, 0x80),
+            term_selection_fg: Color::from_rgb8(0x0A, 0x0A, 0x0F),
+            term_scrollbar_bg: Color::from_rgb8(0x1C, 0x1C, 0x1E),
+            term_scrollbar_fg: Color::from_rgb8(0x3A, 0x3A, 0x3C),
+            ansi,
+        }
+    }
+
+    /// Terminal Light - 浅色终端
+    pub const fn terminal_light() -> Self {
+        let ansi = [
+            Color::from_rgb8(0xFF, 0xFF, 0xFF), // 0: Black (白色作为背景)
+            Color::from_rgb8(0xD1, 0x28, 0x21), // 1: Red
+            Color::from_rgb8(0x26, 0xA2, 0x69), // 2: Green
+            Color::from_rgb8(0xB5, 0x86, 0x00), // 3: Yellow
+            Color::from_rgb8(0x1C, 0x6C, 0xD1), // 4: Blue
+            Color::from_rgb8(0xA0, 0x3B, 0xBE), // 5: Magenta
+            Color::from_rgb8(0x1C, 0x9B, 0xA8), // 6: Cyan
+            Color::from_rgb8(0x1C, 0x1C, 0x1E), // 7: White (深色作为前景)
+            Color::from_rgb8(0x8C, 0x8C, 0x8C), // 8: Bright Black
+            Color::from_rgb8(0xE5, 0x4D, 0x48), // 9: Bright Red
+            Color::from_rgb8(0x48, 0xC7, 0x8E), // 10: Bright Green
+            Color::from_rgb8(0xD4, 0xA8, 0x00), // 11: Bright Yellow
+            Color::from_rgb8(0x34, 0x90, 0xE8), // 12: Bright Blue
+            Color::from_rgb8(0xC4, 0x6D, 0xD9), // 13: Bright Magenta
+            Color::from_rgb8(0x3D, 0xB5, 0xC1), // 14: Bright Cyan
+            Color::from_rgb8(0x3C, 0x3C, 0x3E), // 15: Bright White
+        ];
+        Self {
+            id: "terminal_light",
+            name: "Terminal Light",
+            // UI 颜色 - 浅色
+            bg_primary: Color::WHITE,
+            bg_secondary: Color::from_rgb8(0xFA, 0xFA, 0xFA),
+            bg_header: Color::from_rgb8(0xF2, 0xF2, 0xF7),
+            bg_popup: Color::from_rgb8(0xF2, 0xF2, 0xF7),
+            surface_1: Color::from_rgb8(0xF2, 0xF2, 0xF7),
+            surface_2: Color::from_rgb8(0xE5, 0xE5, 0xEA),
+            surface_3: Color::from_rgb8(0xD1, 0xD1, 0xD6),
+            tab_active_bg: Color::WHITE,
+            text_primary: Color::from_rgb8(0x1C, 0x1C, 0x1E),
+            text_secondary: Color::from_rgb8(0x6E, 0x6E, 0x73),
+            text_disabled: Color::from_rgb8(0xA1, 0xA1, 0xA6),
+            border_default: Color::from_rgba(0.0, 0.0, 0.0, 0.08),
+            border_subtle: Color::from_rgba(0.0, 0.0, 0.0, 0.04),
+            accent_base: Color::from_rgb8(0x00, 0x7A, 0xFF),
+            accent_hover: Color::from_rgb8(0x33, 0x95, 0xFF),
+            accent_active: Color::from_rgb8(0x00, 0x5F, 0xCC),
+            on_accent_label: Color::WHITE,
+            success: Color::from_rgb8(0x00, 0xFF, 0x80),
+            warning: Color::from_rgb8(0xFF, 0xCC, 0x00),
+            error: Color::from_rgb8(0xFF, 0x3B, 0x30),
+            info: Color::from_rgb8(0x5A, 0xC8, 0xFA),
+            line_highlight: Color::from_rgba(0.0, 0.0, 0.0, 0.03),
+            selection_bg: Color::from_rgba(0.0, 0.478, 1.0, 0.25),
+            // 终端颜色
+            term_bg: Color::WHITE,
+            term_fg: Color::from_rgb8(0x1C, 0x1C, 0x1E),
+            term_cursor: Color::from_rgb8(0x00, 0x7A, 0xFF),
+            term_cursor_bg: Color::from_rgb8(0x00, 0x7A, 0xFF),
+            term_selection_bg: Color::from_rgb8(0x00, 0x7A, 0xFF),
+            term_selection_fg: Color::WHITE,
+            term_scrollbar_bg: Color::from_rgb8(0xF2, 0xF2, 0xF7),
+            term_scrollbar_fg: Color::from_rgb8(0xD1, 0xD1, 0xD6),
+            ansi,
+        }
+    }
+
+    /// Nord - 北欧蓝调
+    pub const fn nord() -> Self {
+        let ansi = [
+            Color::from_rgb8(0x2E, 0x34, 0x40), // 0: Black
+            Color::from_rgb8(0xBF, 0x61, 0x6A), // 1: Red
+            Color::from_rgb8(0xA3, 0xBE, 0x8C), // 2: Green
+            Color::from_rgb8(0xEB, 0xCB, 0x8B), // 3: Yellow
+            Color::from_rgb8(0x81, 0xA1, 0xC1), // 4: Blue
+            Color::from_rgb8(0xB4, 0x8E, 0xAD), // 5: Magenta
+            Color::from_rgb8(0x88, 0xC0, 0xD0), // 6: Cyan
+            Color::from_rgb8(0xEC, 0xEF, 0xF4), // 7: White
+            Color::from_rgb8(0x4C, 0x56, 0x6A), // 8: Bright Black
+            Color::from_rgb8(0xBF, 0x61, 0x6A), // 9: Bright Red
+            Color::from_rgb8(0xA3, 0xBE, 0x8C), // 10: Bright Green
+            Color::from_rgb8(0xEB, 0xCB, 0x8B), // 11: Bright Yellow
+            Color::from_rgb8(0x81, 0xA1, 0xC1), // 12: Bright Blue
+            Color::from_rgb8(0xB4, 0x8E, 0xAD), // 13: Bright Magenta
+            Color::from_rgb8(0x8F, 0xBC, 0xBB), // 14: Bright Cyan
+            Color::from_rgb8(0xEC, 0xEF, 0xF4), // 15: Bright White
+        ];
+        Self {
+            id: "nord",
+            name: "Nord",
+            // UI 颜色 - Nord 风格
+            bg_primary: Color::from_rgb8(0x2E, 0x34, 0x40),
+            bg_secondary: Color::from_rgb8(0x3B, 0x42, 0x4F),
+            bg_header: Color::from_rgb8(0x43, 0x4C, 0x5E),
+            bg_popup: Color::from_rgb8(0x43, 0x4C, 0x5E),
+            surface_1: Color::from_rgb8(0x43, 0x4C, 0x5E),
+            surface_2: Color::from_rgb8(0x4C, 0x56, 0x6A),
+            surface_3: Color::from_rgb8(0x5E, 0x66, 0x7C),
+            tab_active_bg: Color::from_rgb8(0x2E, 0x34, 0x40),
+            text_primary: Color::from_rgb8(0xEC, 0xEF, 0xF4),
+            text_secondary: Color::from_rgb8(0xD8, 0xDE, 0xE9),
+            text_disabled: Color::from_rgb8(0x81, 0xA1, 0xC1),
+            border_default: Color::from_rgba(0.878, 0.922, 0.957, 0.10),
+            border_subtle: Color::from_rgba(0.878, 0.922, 0.957, 0.06),
+            accent_base: Color::from_rgb8(0x88, 0xC0, 0xD0),
+            accent_hover: Color::from_rgb8(0x81, 0xA1, 0xC1),
+            accent_active: Color::from_rgb8(0x5E, 0x81, 0xAC),
+            on_accent_label: Color::from_rgb8(0x2E, 0x34, 0x40),
+            success: Color::from_rgb8(0xA3, 0xBE, 0x8C),
+            warning: Color::from_rgb8(0xEB, 0xCB, 0x8B),
+            error: Color::from_rgb8(0xBF, 0x61, 0x6A),
+            info: Color::from_rgb8(0x88, 0xC0, 0xD0),
+            line_highlight: Color::from_rgba(0.878, 0.922, 0.957, 0.05),
+            selection_bg: Color::from_rgba(0.298, 0.337, 0.416, 0.40),
+            // 终端颜色
+            term_bg: Color::from_rgb8(0x2E, 0x34, 0x40),
+            term_fg: Color::from_rgb8(0xD8, 0xDE, 0xE9),
+            term_cursor: Color::from_rgb8(0xD8, 0xDE, 0xE9),
+            term_cursor_bg: Color::from_rgb8(0xD8, 0xDE, 0xE9),
+            term_selection_bg: Color::from_rgb8(0x4C, 0x56, 0x6A),
+            term_selection_fg: Color::from_rgb8(0xEC, 0xEF, 0xF4),
+            term_scrollbar_bg: Color::from_rgb8(0x2E, 0x34, 0x40),
+            term_scrollbar_fg: Color::from_rgb8(0x4C, 0x56, 0x6A),
+            ansi,
+        }
+    }
+
+    /// Solarized Dark - 护眼暗色
+    pub const fn solarized() -> Self {
+        let ansi = [
+            Color::from_rgb8(0x07, 0x36, 0x42), // 0: Black
+            Color::from_rgb8(0xDC, 0x32, 0x2F), // 1: Red
+            Color::from_rgb8(0x85, 0x99, 0x00), // 2: Green
+            Color::from_rgb8(0xB5, 0x89, 0x00), // 3: Yellow
+            Color::from_rgb8(0x26, 0x8B, 0xD2), // 4: Blue
+            Color::from_rgb8(0xD3, 0x36, 0x82), // 5: Magenta
+            Color::from_rgb8(0x2A, 0xA1, 0x98), // 6: Cyan
+            Color::from_rgb8(0xEE, 0xE8, 0xD5), // 7: White
+            Color::from_rgb8(0x00, 0x2B, 0x36), // 8: Bright Black
+            Color::from_rgb8(0xCB, 0x4B, 0x16), // 9: Bright Red
+            Color::from_rgb8(0x58, 0x6E, 0x75), // 10: Bright Green
+            Color::from_rgb8(0x65, 0x7B, 0x83), // 11: Bright Yellow
+            Color::from_rgb8(0x83, 0x94, 0x96), // 12: Bright Blue
+            Color::from_rgb8(0x6C, 0x71, 0xC4), // 13: Bright Magenta
+            Color::from_rgb8(0x93, 0xA1, 0xA1), // 14: Bright Cyan
+            Color::from_rgb8(0xFD, 0xF6, 0xE3), // 15: Bright White
+        ];
+        Self {
+            id: "solarized",
+            name: "Solarized",
+            // UI 颜色 - Solarized 风格
+            bg_primary: Color::from_rgb8(0x00, 0x2B, 0x36),
+            bg_secondary: Color::from_rgb8(0x07, 0x36, 0x42),
+            bg_header: Color::from_rgb8(0x0A, 0x3D, 0x4A),
+            bg_popup: Color::from_rgb8(0x0A, 0x3D, 0x4A),
+            surface_1: Color::from_rgb8(0x0A, 0x3D, 0x4A),
+            surface_2: Color::from_rgb8(0x0D, 0x44, 0x52),
+            surface_3: Color::from_rgb8(0x14, 0x53, 0x62),
+            tab_active_bg: Color::from_rgb8(0x00, 0x2B, 0x36),
+            text_primary: Color::from_rgb8(0x83, 0x94, 0x96),
+            text_secondary: Color::from_rgb8(0x65, 0x7B, 0x83),
+            text_disabled: Color::from_rgb8(0x58, 0x6E, 0x75),
+            border_default: Color::from_rgba(0.514, 0.580, 0.588, 0.10),
+            border_subtle: Color::from_rgba(0.514, 0.580, 0.588, 0.06),
+            accent_base: Color::from_rgb8(0x26, 0x8B, 0xD2),
+            accent_hover: Color::from_rgb8(0x2A, 0xA1, 0x98),
+            accent_active: Color::from_rgb8(0xD3, 0x36, 0x82),
+            on_accent_label: Color::from_rgb8(0x00, 0x2B, 0x36),
+            success: Color::from_rgb8(0x85, 0x99, 0x00),
+            warning: Color::from_rgb8(0xB5, 0x89, 0x00),
+            error: Color::from_rgb8(0xDC, 0x32, 0x2F),
+            info: Color::from_rgb8(0x26, 0x8B, 0xD2),
+            line_highlight: Color::from_rgba(0.514, 0.580, 0.588, 0.05),
+            selection_bg: Color::from_rgba(0.027, 0.212, 0.259, 0.60),
+            // 终端颜色
+            term_bg: Color::from_rgb8(0x00, 0x2B, 0x36),
+            term_fg: Color::from_rgb8(0x83, 0x94, 0x96),
+            term_cursor: Color::from_rgb8(0x83, 0x94, 0x96),
+            term_cursor_bg: Color::from_rgb8(0x83, 0x94, 0x96),
+            term_selection_bg: Color::from_rgb8(0x07, 0x36, 0x42),
+            term_selection_fg: Color::from_rgb8(0xEE, 0xE8, 0xD5),
+            term_scrollbar_bg: Color::from_rgb8(0x00, 0x2B, 0x36),
+            term_scrollbar_fg: Color::from_rgb8(0x0D, 0x44, 0x52),
+            ansi,
+        }
+    }
+
+    /// Monokai - 经典程序员风格
+    pub const fn monokai() -> Self {
+        let ansi = [
+            Color::from_rgb8(0x27, 0x28, 0x22), // 0: Black
+            Color::from_rgb8(0xF9, 0x26, 0x72), // 1: Red
+            Color::from_rgb8(0xA6, 0xE2, 0x2E), // 2: Green
+            Color::from_rgb8(0xF4, 0xBF, 0x75), // 3: Yellow
+            Color::from_rgb8(0x66, 0xD9, 0xEF), // 4: Blue
+            Color::from_rgb8(0xAE, 0x81, 0xFF), // 5: Magenta
+            Color::from_rgb8(0xA1, 0xEF, 0xE4), // 6: Cyan
+            Color::from_rgb8(0xF8, 0xF8, 0xF2), // 7: White
+            Color::from_rgb8(0x75, 0x71, 0x5E), // 8: Bright Black
+            Color::from_rgb8(0xF9, 0x26, 0x72), // 9: Bright Red
+            Color::from_rgb8(0xA6, 0xE2, 0x2E), // 10: Bright Green
+            Color::from_rgb8(0xF4, 0xBF, 0x75), // 11: Bright Yellow
+            Color::from_rgb8(0x66, 0xD9, 0xEF), // 12: Bright Blue
+            Color::from_rgb8(0xAE, 0x81, 0xFF), // 13: Bright Magenta
+            Color::from_rgb8(0xA1, 0xEF, 0xE4), // 14: Bright Cyan
+            Color::from_rgb8(0xF9, 0xF8, 0xF5), // 15: Bright White
+        ];
+        Self {
+            id: "monokai",
+            name: "Monokai",
+            // UI 颜色 - Monokai 风格
+            bg_primary: Color::from_rgb8(0x27, 0x28, 0x22),
+            bg_secondary: Color::from_rgb8(0x2D, 0x2E, 0x28),
+            bg_header: Color::from_rgb8(0x31, 0x32, 0x2C),
+            bg_popup: Color::from_rgb8(0x35, 0x36, 0x30),
+            surface_1: Color::from_rgb8(0x35, 0x36, 0x30),
+            surface_2: Color::from_rgb8(0x49, 0x48, 0x3E),
+            surface_3: Color::from_rgb8(0x75, 0x71, 0x5E),
+            tab_active_bg: Color::from_rgb8(0x27, 0x28, 0x22),
+            text_primary: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+            text_secondary: Color::from_rgb8(0x75, 0x71, 0x5E),
+            text_disabled: Color::from_rgb8(0x49, 0x48, 0x3E),
+            border_default: Color::from_rgba(0.973, 0.973, 0.949, 0.08),
+            border_subtle: Color::from_rgba(0.973, 0.973, 0.949, 0.04),
+            accent_base: Color::from_rgb8(0x66, 0xD9, 0xEF),
+            accent_hover: Color::from_rgb8(0xA1, 0xEF, 0xE4),
+            accent_active: Color::from_rgb8(0xAE, 0x81, 0xFF),
+            on_accent_label: Color::from_rgb8(0x27, 0x28, 0x22),
+            success: Color::from_rgb8(0xA6, 0xE2, 0x2E),
+            warning: Color::from_rgb8(0xF4, 0xBF, 0x75),
+            error: Color::from_rgb8(0xF9, 0x26, 0x72),
+            info: Color::from_rgb8(0x66, 0xD9, 0xEF),
+            line_highlight: Color::from_rgba(0.973, 0.973, 0.949, 0.03),
+            selection_bg: Color::from_rgba(0.286, 0.282, 0.243, 0.50),
+            // 终端颜色
+            term_bg: Color::from_rgb8(0x27, 0x28, 0x22),
+            term_fg: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+            term_cursor: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+            term_cursor_bg: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+            term_selection_bg: Color::from_rgb8(0x49, 0x48, 0x3E),
+            term_selection_fg: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+            term_scrollbar_bg: Color::from_rgb8(0x27, 0x28, 0x22),
+            term_scrollbar_fg: Color::from_rgb8(0x75, 0x71, 0x5E),
+            ansi,
+        }
+    }
+
+    /// Gruvbox Dark - 暖色复古风格
+    pub const fn gruvbox() -> Self {
+        let ansi = [
+            Color::from_rgb8(0x28, 0x28, 0x28), // 0: Black
+            Color::from_rgb8(0xCC, 0x24, 0x1D), // 1: Red
+            Color::from_rgb8(0x98, 0x97, 0x1A), // 2: Green
+            Color::from_rgb8(0xD7, 0x99, 0x21), // 3: Yellow
+            Color::from_rgb8(0x45, 0x8A, 0xB3), // 4: Blue
+            Color::from_rgb8(0xB1, 0x62, 0x86), // 5: Magenta
+            Color::from_rgb8(0x68, 0x9C, 0x96), // 6: Cyan
+            Color::from_rgb8(0xEB, 0xDB, 0xB2), // 7: White
+            Color::from_rgb8(0x92, 0x83, 0x5E), // 8: Bright Black
+            Color::from_rgb8(0xFB, 0x49, 0x34), // 9: Bright Red
+            Color::from_rgb8(0xB8, 0xBB, 0x26), // 10: Bright Green
+            Color::from_rgb8(0xFA, 0xBD, 0x2F), // 11: Bright Yellow
+            Color::from_rgb8(0x83, 0xA5, 0x98), // 12: Bright Blue
+            Color::from_rgb8(0xD3, 0x86, 0x9B), // 13: Bright Magenta
+            Color::from_rgb8(0x8E, 0xCC, 0xC6), // 14: Bright Cyan
+            Color::from_rgb8(0xFF, 0xFF, 0xFF), // 15: Bright White
+        ];
+        Self {
+            id: "gruvbox",
+            name: "Gruvbox",
+            // UI 颜色 - Gruvbox 风格
+            bg_primary: Color::from_rgb8(0x28, 0x28, 0x28),
+            bg_secondary: Color::from_rgb8(0x30, 0x30, 0x2A),
+            bg_header: Color::from_rgb8(0x35, 0x33, 0x2E),
+            bg_popup: Color::from_rgb8(0x3C, 0x3A, 0x32),
+            surface_1: Color::from_rgb8(0x3C, 0x3A, 0x32),
+            surface_2: Color::from_rgb8(0x50, 0x49, 0x3F),
+            surface_3: Color::from_rgb8(0x66, 0x5E, 0x4C),
+            tab_active_bg: Color::from_rgb8(0x28, 0x28, 0x28),
+            text_primary: Color::from_rgb8(0xEB, 0xDB, 0xB2),
+            text_secondary: Color::from_rgb8(0xA8, 0x99, 0x84),
+            text_disabled: Color::from_rgb8(0x66, 0x5E, 0x4C),
+            border_default: Color::from_rgba(0.922, 0.859, 0.698, 0.10),
+            border_subtle: Color::from_rgba(0.922, 0.859, 0.698, 0.06),
+            accent_base: Color::from_rgb8(0xFB, 0x49, 0x34),
+            accent_hover: Color::from_rgb8(0xFE, 0xA0, 0x4A),
+            accent_active: Color::from_rgb8(0xCC, 0x24, 0x1D),
+            on_accent_label: Color::from_rgb8(0x28, 0x28, 0x28),
+            success: Color::from_rgb8(0x98, 0x97, 0x1A),
+            warning: Color::from_rgb8(0xD7, 0x99, 0x21),
+            error: Color::from_rgb8(0xCC, 0x24, 0x1D),
+            info: Color::from_rgb8(0x83, 0xA5, 0x98),
+            line_highlight: Color::from_rgba(0.922, 0.859, 0.698, 0.04),
+            selection_bg: Color::from_rgba(0.235, 0.220, 0.214, 0.60),
+            // 终端颜色
+            term_bg: Color::from_rgb8(0x28, 0x28, 0x28),
+            term_fg: Color::from_rgb8(0xEB, 0xDB, 0xB2),
+            term_cursor: Color::from_rgb8(0xFB, 0x49, 0x34),
+            term_cursor_bg: Color::from_rgb8(0xFB, 0x49, 0x34),
+            term_selection_bg: Color::from_rgb8(0x50, 0x49, 0x3F),
+            term_selection_fg: Color::from_rgb8(0xEB, 0xDB, 0xB2),
+            term_scrollbar_bg: Color::from_rgb8(0x28, 0x28, 0x28),
+            term_scrollbar_fg: Color::from_rgb8(0x92, 0x83, 0x5E),
+            ansi,
+        }
+    }
+
+    /// Dracula - 紫色主题
+    pub const fn dracula() -> Self {
+        let ansi = [
+            Color::from_rgb8(0x28, 0x2A, 0x36), // 0: Black
+            Color::from_rgb8(0xFF, 0x55, 0x7E), // 1: Red
+            Color::from_rgb8(0x50, 0xFA, 0x7B), // 2: Green
+            Color::from_rgb8(0xFF, 0xB8, 0x6C), // 3: Yellow
+            Color::from_rgb8(0xBD, 0x93, 0xF9), // 4: Blue
+            Color::from_rgb8(0xFF, 0x79, 0xC6), // 5: Magenta
+            Color::from_rgb8(0x8B, 0xF9, 0xF1), // 6: Cyan
+            Color::from_rgb8(0xF8, 0xF8, 0xF2), // 7: White
+            Color::from_rgb8(0x62, 0x75, 0x7E), // 8: Bright Black
+            Color::from_rgb8(0xFF, 0x7A, 0x93), // 9: Bright Red
+            Color::from_rgb8(0x69, 0xFF, 0x94), // 10: Bright Green
+            Color::from_rgb8(0xFF, 0xCC, 0x8C), // 11: Bright Yellow
+            Color::from_rgb8(0xC9, 0xA2, 0xFC), // 12: Bright Blue
+            Color::from_rgb8(0xFF, 0x92, 0xD0), // 13: Bright Magenta
+            Color::from_rgb8(0xA4, 0xFF, 0xF9), // 14: Bright Cyan
+            Color::from_rgb8(0xFF, 0xFF, 0xFF), // 15: Bright White
+        ];
+        Self {
+            id: "dracula",
+            name: "Dracula",
+            // UI 颜色 - Dracula 风格
+            bg_primary: Color::from_rgb8(0x28, 0x2A, 0x36),
+            bg_secondary: Color::from_rgb8(0x31, 0x33, 0x40),
+            bg_header: Color::from_rgb8(0x34, 0x36, 0x44),
+            bg_popup: Color::from_rgb8(0x38, 0x3A, 0x4C),
+            surface_1: Color::from_rgb8(0x38, 0x3A, 0x4C),
+            surface_2: Color::from_rgb8(0x44, 0x47, 0x5A),
+            surface_3: Color::from_rgb8(0x62, 0x75, 0x7E),
+            tab_active_bg: Color::from_rgb8(0x28, 0x2A, 0x36),
+            text_primary: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+            text_secondary: Color::from_rgb8(0x62, 0x75, 0x7E),
+            text_disabled: Color::from_rgb8(0x44, 0x47, 0x5A),
+            border_default: Color::from_rgba(0.973, 0.973, 0.949, 0.10),
+            border_subtle: Color::from_rgba(0.973, 0.973, 0.949, 0.06),
+            accent_base: Color::from_rgb8(0xBD, 0x93, 0xF9),
+            accent_hover: Color::from_rgb8(0xC9, 0xA2, 0xFC),
+            accent_active: Color::from_rgb8(0xFF, 0x79, 0xC6),
+            on_accent_label: Color::from_rgb8(0x28, 0x2A, 0x36),
+            success: Color::from_rgb8(0x50, 0xFA, 0x7B),
+            warning: Color::from_rgb8(0xFF, 0xB8, 0x6C),
+            error: Color::from_rgb8(0xFF, 0x55, 0x7E),
+            info: Color::from_rgb8(0x8B, 0xF9, 0xF1),
+            line_highlight: Color::from_rgba(0.973, 0.973, 0.949, 0.03),
+            selection_bg: Color::from_rgb8(0x44, 0x47, 0x5A),
+            // 终端颜色
+            term_bg: Color::from_rgb8(0x28, 0x2A, 0x36),
+            term_fg: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+            term_cursor: Color::from_rgb8(0xBD, 0x93, 0xF9),
+            term_cursor_bg: Color::from_rgb8(0xBD, 0x93, 0xF9),
+            term_selection_bg: Color::from_rgb8(0x44, 0x47, 0x5A),
+            term_selection_fg: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+            term_scrollbar_bg: Color::from_rgb8(0x28, 0x2A, 0x36),
+            term_scrollbar_fg: Color::from_rgb8(0x62, 0x75, 0x7E),
+            ansi,
+        }
+    }
+
+    /// 根据 ID 获取配色方案
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "terminal_dark" => Some(Self::terminal_dark()),
+            "terminal_light" => Some(Self::terminal_light()),
+            "nord" => Some(Self::nord()),
+            "solarized" => Some(Self::solarized()),
+            "monokai" => Some(Self::monokai()),
+            "gruvbox" => Some(Self::gruvbox()),
+            "dracula" => Some(Self::dracula()),
+            // 向后兼容旧 ID
+            "TerminalDark" => Some(Self::terminal_dark()),
+            "TerminalLight" => Some(Self::terminal_light()),
+            "Nord" => Some(Self::nord()),
+            "Solarized" => Some(Self::solarized()),
+            "Monokai" => Some(Self::monokai()),
+            "Gruvbox" => Some(Self::gruvbox()),
+            "Dracula" => Some(Self::dracula()),
+            _ => None,
+        }
+    }
+}
+
+/// 所有预设配色方案
+pub const COLOR_SCHEMES: &[ColorScheme] = &[
+    ColorScheme::terminal_dark(),
+    ColorScheme::terminal_light(),
+    ColorScheme::nord(),
+    ColorScheme::solarized(),
+    ColorScheme::monokai(),
+    ColorScheme::gruvbox(),
+    ColorScheme::dracula(),
+];
+
 /// 与文档对齐的可编程色票（sRGB + 不透明；半透明边框单独字段）。
+///
+/// 从 ColorScheme 派生，用于 UI 渲染。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DesignTokens {
     pub bg_primary: Color,
@@ -47,153 +568,78 @@ pub struct DesignTokens {
 }
 
 impl DesignTokens {
-    pub fn for_id(id: RustSshThemeId) -> Self {
-        match id {
-            RustSshThemeId::Dark => Self::dark(),
-            RustSshThemeId::Light => Self::light(),
-            RustSshThemeId::Warm => Self::warm(),
-            RustSshThemeId::GitHub => Self::github(),
+    /// 从配色方案 ID 获取 DesignTokens
+    pub fn for_color_scheme(scheme_id: &str) -> Self {
+        if let Some(scheme) = ColorScheme::from_id(scheme_id) {
+            Self::from_scheme(&scheme)
+        } else {
+            Self::terminal_dark()
         }
     }
 
-    /// 🌑 Dark（主力）
-    pub const fn dark() -> Self {
+    /// 从 ColorScheme 转换为 DesignTokens
+    pub fn from_scheme(scheme: &ColorScheme) -> Self {
         Self {
-            bg_primary: Color::from_rgb8(0x1c, 0x1c, 0x1e),
+            bg_primary: scheme.bg_primary,
+            bg_secondary: scheme.bg_secondary,
+            bg_header: scheme.bg_header,
+            bg_popup: scheme.bg_popup,
+            surface_1: scheme.surface_1,
+            surface_2: scheme.surface_2,
+            surface_3: scheme.surface_3,
+            tab_active_bg: scheme.tab_active_bg,
+            text_primary: scheme.text_primary,
+            text_secondary: scheme.text_secondary,
+            text_disabled: scheme.text_disabled,
+            border_default: scheme.border_default,
+            border_subtle: scheme.border_subtle,
+            accent_base: scheme.accent_base,
+            accent_hover: scheme.accent_hover,
+            accent_active: scheme.accent_active,
+            on_accent_label: scheme.on_accent_label,
+            success: scheme.success,
+            warning: scheme.warning,
+            error: scheme.error,
+            info: scheme.info,
+            terminal_bg: scheme.term_bg,
+            terminal_fg: scheme.term_fg,
+            scrollbar_hover: scheme.term_scrollbar_fg,
+            scrollbar_active: scheme.term_scrollbar_fg,
+            line_highlight: scheme.line_highlight,
+            selection_bg: scheme.selection_bg,
+        }
+    }
+
+    /// Terminal Dark（默认）
+    pub const fn terminal_dark() -> Self {
+        Self {
+            bg_primary: Color::from_rgb8(0x1C, 0x1C, 0x1E),
             bg_secondary: Color::from_rgb8(0x23, 0x23, 0x26),
-            bg_header: Color::from_rgb8(0x28, 0x28, 0x2d),
-            bg_popup: Color::from_rgb8(0x2c, 0x2c, 0x2e),
-            surface_1: Color::from_rgb8(0x2c, 0x2c, 0x2e),
-            surface_2: Color::from_rgb8(0x3a, 0x3a, 0x3c),
-            surface_3: Color::from_rgb8(0x48, 0x48, 0x4a),
+            bg_header: Color::from_rgb8(0x28, 0x28, 0x2D),
+            bg_popup: Color::from_rgb8(0x2C, 0x2C, 0x2E),
+            surface_1: Color::from_rgb8(0x2C, 0x2C, 0x2E),
+            surface_2: Color::from_rgb8(0x3A, 0x3A, 0x3C),
+            surface_3: Color::from_rgb8(0x48, 0x48, 0x4A),
             tab_active_bg: Color::BLACK,
             text_primary: Color::WHITE,
-            text_secondary: Color::from_rgb8(0xa0, 0xa0, 0xa5),
-            text_disabled: Color::from_rgb8(0x6c, 0x6c, 0x70),
+            text_secondary: Color::from_rgb8(0xA0, 0xA0, 0xA5),
+            text_disabled: Color::from_rgb8(0x6C, 0x6C, 0x70),
             border_default: Color::from_rgba(1.0, 1.0, 1.0, 0.08),
             border_subtle: Color::from_rgba(1.0, 1.0, 1.0, 0.04),
-            accent_base: Color::from_rgb8(0x00, 0xff, 0x80),
-            accent_hover: Color::from_rgb8(0x33, 0xff, 0x99),
-            accent_active: Color::from_rgb8(0x00, 0xcc, 0x66),
+            accent_base: Color::from_rgb8(0x00, 0xFF, 0x80),
+            accent_hover: Color::from_rgb8(0x33, 0xFF, 0x99),
+            accent_active: Color::from_rgb8(0x00, 0xCC, 0x66),
             on_accent_label: Color::BLACK,
-            success: Color::from_rgb8(0x00, 0xff, 0x80),
-            warning: Color::from_rgb8(0xff, 0xcc, 0x00),
-            error: Color::from_rgb8(0xff, 0x3b, 0x30),
-            info: Color::from_rgb8(0x5a, 0xc8, 0xfa),
-            terminal_bg: Color::BLACK,
-            terminal_fg: Color::WHITE,
+            success: Color::from_rgb8(0x00, 0xFF, 0x80),
+            warning: Color::from_rgb8(0xFF, 0xCC, 0x00),
+            error: Color::from_rgb8(0xFF, 0x3B, 0x30),
+            info: Color::from_rgb8(0x5A, 0xC8, 0xFA),
+            terminal_bg: Color::from_rgb8(0x0A, 0x0A, 0x0F),
+            terminal_fg: Color::from_rgb8(0xE6, 0xE6, 0xE6),
             scrollbar_hover: Color::from_rgba(1.0, 1.0, 1.0, 0.10),
             scrollbar_active: Color::from_rgba(1.0, 1.0, 1.0, 0.20),
             line_highlight: Color::from_rgba(1.0, 1.0, 1.0, 0.03),
             selection_bg: Color::from_rgba(0.0, 1.0, 0.5, 0.25),
-        }
-    }
-
-    /// ☀️ Light
-    pub const fn light() -> Self {
-        Self {
-            bg_primary: Color::WHITE,
-            bg_secondary: Color::from_rgb8(0xfa, 0xfa, 0xfa),
-            bg_header: Color::from_rgb8(0xf2, 0xf2, 0xf7),
-            bg_popup: Color::from_rgb8(0xf2, 0xf2, 0xf7),
-            surface_1: Color::from_rgb8(0xf2, 0xf2, 0xf7),
-            surface_2: Color::from_rgb8(0xe5, 0xe5, 0xea),
-            surface_3: Color::from_rgb8(0xd1, 0xd1, 0xd6),
-            tab_active_bg: Color::WHITE,
-            text_primary: Color::from_rgb8(0x1c, 0x1c, 0x1e),
-            text_secondary: Color::from_rgb8(0x6e, 0x6e, 0x73),
-            text_disabled: Color::from_rgb8(0xa1, 0xa1, 0xa6),
-            border_default: Color::from_rgba(0.0, 0.0, 0.0, 0.08),
-            border_subtle: Color::from_rgba(0.0, 0.0, 0.0, 0.04),
-            accent_base: Color::from_rgb8(0x00, 0x7a, 0xff),
-            accent_hover: Color::from_rgb8(0x33, 0x95, 0xff),
-            accent_active: Color::from_rgb8(0x00, 0x5f, 0xcc),
-            on_accent_label: Color::WHITE,
-            success: Color::from_rgb8(0x00, 0xff, 0x80),
-            warning: Color::from_rgb8(0xff, 0xcc, 0x00),
-            error: Color::from_rgb8(0xff, 0x3b, 0x30),
-            info: Color::from_rgb8(0x5a, 0xc8, 0xfa),
-            terminal_bg: Color::BLACK,
-            terminal_fg: Color::WHITE,
-            scrollbar_hover: Color::from_rgba(0.0, 0.0, 0.0, 0.10),
-            scrollbar_active: Color::from_rgba(0.0, 0.0, 0.0, 0.20),
-            line_highlight: Color::from_rgba(0.0, 0.0, 0.0, 0.03),
-            selection_bg: Color::from_rgba(0.0, 0.478, 1.0, 0.25),
-        }
-    }
-
-    /// 🌙 Warm
-    pub const fn warm() -> Self {
-        Self {
-            bg_primary: Color::from_rgb8(0x2d, 0x2a, 0x26),
-            bg_secondary: Color::from_rgb8(0x33, 0x2f, 0x2b),
-            bg_header: Color::from_rgb8(0x35, 0x32, 0x2e),
-            bg_popup: Color::from_rgb8(0x3a, 0x36, 0x31),
-            surface_1: Color::from_rgb8(0x3a, 0x36, 0x31),
-            surface_2: Color::from_rgb8(0x4a, 0x44, 0x3e),
-            surface_3: Color::from_rgb8(0x5a, 0x52, 0x4b),
-            tab_active_bg: Color::from_rgb8(0x2d, 0x2a, 0x26),
-            text_primary: Color::from_rgb8(0xd4, 0xbe, 0xab),
-            text_secondary: Color::from_rgb8(0xb7, 0xa9, 0x99),
-            text_disabled: Color::from_rgb8(0x8a, 0x7d, 0x72),
-            border_default: Color::from_rgba(0.831, 0.745, 0.671, 0.12),
-            border_subtle: Color::from_rgba(0.831, 0.745, 0.671, 0.06),
-            accent_base: Color::from_rgb8(0xe0, 0x99, 0x5e),
-            accent_hover: Color::from_rgb8(0xf0, 0xb2, 0x7a),
-            accent_active: Color::from_rgb8(0xc6, 0x7c, 0x3a),
-            on_accent_label: Color::from_rgb8(0x1c, 0x1c, 0x1e),
-            success: Color::from_rgb8(0x00, 0xff, 0x80),
-            warning: Color::from_rgb8(0xff, 0xcc, 0x00),
-            error: Color::from_rgb8(0xff, 0x3b, 0x30),
-            info: Color::from_rgb8(0x5a, 0xc8, 0xfa),
-            terminal_bg: Color::BLACK,
-            terminal_fg: Color::WHITE,
-            scrollbar_hover: Color::from_rgba(0.831, 0.745, 0.671, 0.15),
-            scrollbar_active: Color::from_rgba(0.831, 0.745, 0.671, 0.28),
-            line_highlight: Color::from_rgba(0.831, 0.745, 0.671, 0.06),
-            selection_bg: Color::from_rgba(0.878, 0.6, 0.37, 0.28),
-        }
-    }
-
-    /// 🐙 GitHub 风格主题
-    ///
-    /// 基于 GitHub Dark 主题色彩体系，为开发者提供熟悉的界面。
-    /// 参考: https://github.com/primer/github-syntax-dark
-    pub const fn github() -> Self {
-        Self {
-            // 背景色 - GitHub Dark
-            bg_primary: Color::from_rgb8(0x16, 0x1B, 0x22),     // #161B22
-            bg_secondary: Color::from_rgb8(0x0D, 0x11, 0x17),    // #0D1117
-            bg_header: Color::from_rgb8(0x21, 0x26, 0x2D),       // #21262D
-            bg_popup: Color::from_rgb8(0x21, 0x26, 0x2D),       // #21262D
-            surface_1: Color::from_rgb8(0x21, 0x26, 0x2D),      // #21262D
-            surface_2: Color::from_rgb8(0x30, 0x36, 0x3D),       // #30363D
-            surface_3: Color::from_rgb8(0x48, 0x4F, 0x58),       // #484F58
-            tab_active_bg: Color::from_rgb8(0x0D, 0x11, 0x17),   // #0D1117
-            // 文本色
-            text_primary: Color::from_rgb8(0xE6, 0xED, 0xF3),   // #E6EDF3
-            text_secondary: Color::from_rgb8(0x8B, 0x94, 0x9E), // #8B949E
-            text_disabled: Color::from_rgb8(0x6E, 0x76, 0x81),  // #6E7681
-            // 边框色 - 基于 #484F58 的透明度
-            border_default: Color::from_rgba(0.545, 0.580, 0.620, 0.13),
-            border_subtle: Color::from_rgba(0.545, 0.580, 0.620, 0.08),
-            // Accent 色 - GitHub 绿
-            accent_base: Color::from_rgb8(0x23, 0x86, 0x36),     // #238636
-            accent_hover: Color::from_rgb8(0x2E, 0xA0, 0x43),   // #2EA043
-            accent_active: Color::from_rgb8(0x19, 0x6C, 0x2E),  // #196C2E
-            on_accent_label: Color::WHITE,
-            // 状态色 - GitHub 风格
-            success: Color::from_rgb8(0x3F, 0xB9, 0x50),         // #3FB950
-            warning: Color::from_rgb8(0xD2, 0x99, 0x22),         // #D29922
-            error: Color::from_rgb8(0xF8, 0x51, 0x49),           // #F85149
-            info: Color::from_rgb8(0x58, 0xA6, 0xFF),            // #58A6FF
-            // 终端色 - GitHub 深色
-            terminal_bg: Color::from_rgb8(0x0D, 0x11, 0x17),    // #0D1117
-            terminal_fg: Color::from_rgb8(0xE6, 0xED, 0xF3),    // #E6EDF3
-            scrollbar_hover: Color::from_rgba(0.545, 0.580, 0.620, 0.15),
-            scrollbar_active: Color::from_rgba(0.545, 0.580, 0.620, 0.25),
-            line_highlight: Color::from_rgba(0.545, 0.580, 0.620, 0.08),
-            selection_bg: Color::from_rgba(0.220, 0.545, 0.992, 0.25), // #58A6FF @ 25%
         }
     }
 }
@@ -254,7 +700,6 @@ pub mod color {
         let hex = hex.trim_start_matches('#');
         let (r, g, b) = match hex.len() {
             3 => {
-                // #RGB -> #RRGGBB
                 let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
                 let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
                 let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
@@ -317,282 +762,5 @@ impl DebugTokens {
             tab_first: tokens.accent_base,
             tab_other: tokens.text_secondary,
         }
-    }
-}
-
-/// ANSI 16 色（终端，见 `doc/组件设计规范.md` §3.4）。
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TerminalAnsiTokens {
-    pub black: Color,
-    pub red: Color,
-    pub green: Color,
-    pub yellow: Color,
-    pub blue: Color,
-    pub magenta: Color,
-    pub cyan: Color,
-    pub white: Color,
-}
-
-impl TerminalAnsiTokens {
-    pub const CANON: Self = Self {
-        black: Color::BLACK,
-        red: Color::from_rgb8(0xff, 0x3b, 0x30),
-        green: Color::from_rgb8(0x00, 0xff, 0x80),
-        yellow: Color::from_rgb8(0xff, 0xcc, 0x00),
-        blue: Color::from_rgb8(0x00, 0x7a, 0xff),
-        magenta: Color::from_rgb8(0xaf, 0x52, 0xde),
-        cyan: Color::from_rgb8(0x5a, 0xc8, 0xfa),
-        white: Color::WHITE,
-    };
-}
-
-/// 终端配色方案（包含 ANSI 调色板 + 默认前景/背景）
-///
-/// 用于：
-/// - 预设方案选择（Terminal Dark、Terminal Light、Nord 等）
-/// - 快速调整（用户自定义背景色、前景色、光标色）
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TerminalPalette {
-    /// 配色方案 ID
-    pub id: &'static str,
-    /// 配色方案显示名称
-    pub name: &'static str,
-    /// 默认前景色（终端文字）
-    pub fg: Color,
-    /// 默认背景色（终端内容区）
-    pub bg: Color,
-    /// ANSI 16 色调色板
-    pub ansi: [Color; 16],
-}
-
-impl TerminalPalette {
-    /// Terminal Dark - 经典深色终端
-    pub const fn dark() -> Self {
-        let ansi = [
-            Color::from_rgb8(0x0A, 0x0A, 0x0F), // 0: Black
-            Color::from_rgb8(0xFF, 0x3B, 0x30), // 1: Red
-            Color::from_rgb8(0x00, 0xFF, 0x80), // 2: Green
-            Color::from_rgb8(0xFF, 0xCC, 0x00), // 3: Yellow
-            Color::from_rgb8(0x00, 0x7A, 0xFF), // 4: Blue
-            Color::from_rgb8(0xAF, 0x52, 0xDE), // 5: Magenta
-            Color::from_rgb8(0x5A, 0xC8, 0xFA), // 6: Cyan
-            Color::from_rgb8(0xE6, 0xE6, 0xE6), // 7: White
-            Color::from_rgb8(0x4C, 0x4C, 0x4C), // 8: Bright Black
-            Color::from_rgb8(0xFF, 0x6B, 0x6B), // 9: Bright Red
-            Color::from_rgb8(0x6B, 0xFF, 0x9E), // 10: Bright Green
-            Color::from_rgb8(0xFF, 0xDD, 0x66), // 11: Bright Yellow
-            Color::from_rgb8(0x66, 0xB3, 0xFF), // 12: Bright Blue
-            Color::from_rgb8(0xDA, 0x8B, 0xFF), // 13: Bright Magenta
-            Color::from_rgb8(0x8B, 0xE8, 0xFF), // 14: Bright Cyan
-            Color::from_rgb8(0xFF, 0xFF, 0xFF), // 15: Bright White
-        ];
-        Self {
-            id: "TerminalDark",
-            name: "Terminal Dark",
-            fg: Color::from_rgb8(0xE6, 0xE6, 0xE6),
-            bg: Color::from_rgb8(0x0A, 0x0A, 0x0F),
-            ansi,
-        }
-    }
-
-    /// Terminal Light - 浅色终端
-    pub const fn light() -> Self {
-        let ansi = [
-            Color::from_rgb8(0xFF, 0xFF, 0xFF), // 0: Black (在浅色主题中白色作为背景)
-            Color::from_rgb8(0xD1, 0x28, 0x21), // 1: Red
-            Color::from_rgb8(0x26, 0xA2, 0x69), // 2: Green
-            Color::from_rgb8(0xB5, 0x86, 0x00), // 3: Yellow
-            Color::from_rgb8(0x1C, 0x6C, 0xD1), // 4: Blue
-            Color::from_rgb8(0xA0, 0x3B, 0xBE), // 5: Magenta
-            Color::from_rgb8(0x1C, 0x9B, 0xA8), // 6: Cyan
-            Color::from_rgb8(0x1C, 0x1C, 0x1E), // 7: White (深色作为前景)
-            Color::from_rgb8(0x8C, 0x8C, 0x8C), // 8: Bright Black
-            Color::from_rgb8(0xE5, 0x4D, 0x48), // 9: Bright Red
-            Color::from_rgb8(0x48, 0xC7, 0x8E), // 10: Bright Green
-            Color::from_rgb8(0xD4, 0xA8, 0x00), // 11: Bright Yellow
-            Color::from_rgb8(0x34, 0x90, 0xE8), // 12: Bright Blue
-            Color::from_rgb8(0xC4, 0x6D, 0xD9), // 13: Bright Magenta
-            Color::from_rgb8(0x3D, 0xB5, 0xC1), // 14: Bright Cyan
-            Color::from_rgb8(0x3C, 0x3C, 0x3E), // 15: Bright White
-        ];
-        Self {
-            id: "TerminalLight",
-            name: "Terminal Light",
-            fg: Color::from_rgb8(0x1C, 0x1C, 0x1E),
-            bg: Color::from_rgb8(0xFF, 0xFF, 0xFF),
-            ansi,
-        }
-    }
-
-    /// Nord - 北欧蓝调
-    pub const fn nord() -> Self {
-        let ansi = [
-            Color::from_rgb8(0x2E, 0x34, 0x40), // 0: Black
-            Color::from_rgb8(0xBF, 0x61, 0x6A), // 1: Red
-            Color::from_rgb8(0xA3, 0xBE, 0x8C), // 2: Green
-            Color::from_rgb8(0xEB, 0xCB, 0x8B), // 3: Yellow
-            Color::from_rgb8(0x81, 0xA1, 0xC1), // 4: Blue
-            Color::from_rgb8(0xB4, 0x8E, 0xAD), // 5: Magenta
-            Color::from_rgb8(0x88, 0xC0, 0xD0), // 6: Cyan
-            Color::from_rgb8(0xEC, 0xEF, 0xF4), // 7: White
-            Color::from_rgb8(0x4C, 0x56, 0x6A), // 8: Bright Black
-            Color::from_rgb8(0xBF, 0x61, 0x6A), // 9: Bright Red
-            Color::from_rgb8(0xA3, 0xBE, 0x8C), // 10: Bright Green
-            Color::from_rgb8(0xEB, 0xCB, 0x8B), // 11: Bright Yellow
-            Color::from_rgb8(0x81, 0xA1, 0xC1), // 12: Bright Blue
-            Color::from_rgb8(0xB4, 0x8E, 0xAD), // 13: Bright Magenta
-            Color::from_rgb8(0x8F, 0xBC, 0xBB), // 14: Bright Cyan
-            Color::from_rgb8(0xEC, 0xEF, 0xF4), // 15: Bright White
-        ];
-        Self {
-            id: "Nord",
-            name: "Nord",
-            fg: Color::from_rgb8(0xD8, 0xDE, 0xE9),
-            bg: Color::from_rgb8(0x2E, 0x34, 0x40),
-            ansi,
-        }
-    }
-
-    /// Solarized Dark - 护眼暗色
-    pub const fn solarized_dark() -> Self {
-        let ansi = [
-            Color::from_rgb8(0x07, 0x36, 0x42), // 0: Black
-            Color::from_rgb8(0xDC, 0x32, 0x2F), // 1: Red
-            Color::from_rgb8(0x85, 0x99, 0x00), // 2: Green
-            Color::from_rgb8(0xB5, 0x89, 0x00), // 3: Yellow
-            Color::from_rgb8(0x26, 0x8B, 0xD2), // 4: Blue
-            Color::from_rgb8(0xD3, 0x36, 0x82), // 5: Magenta
-            Color::from_rgb8(0x2A, 0xA1, 0x98), // 6: Cyan
-            Color::from_rgb8(0xEE, 0xE8, 0xD5), // 7: White
-            Color::from_rgb8(0x00, 0x2B, 0x36), // 8: Bright Black
-            Color::from_rgb8(0xCB, 0x4B, 0x16), // 9: Bright Red
-            Color::from_rgb8(0x58, 0x6E, 0x75), // 10: Bright Green
-            Color::from_rgb8(0x65, 0x7B, 0x83), // 11: Bright Yellow
-            Color::from_rgb8(0x83, 0x94, 0x96), // 12: Bright Blue
-            Color::from_rgb8(0x6C, 0x71, 0xC4), // 13: Bright Magenta
-            Color::from_rgb8(0x93, 0xA1, 0xA1), // 14: Bright Cyan
-            Color::from_rgb8(0xFD, 0xF6, 0xE3), // 15: Bright White
-        ];
-        Self {
-            id: "Solarized",
-            name: "Solarized",
-            fg: Color::from_rgb8(0x83, 0x94, 0x96),
-            bg: Color::from_rgb8(0x00, 0x2B, 0x36),
-            ansi,
-        }
-    }
-
-    /// Monokai - 经典程序员风格
-    pub const fn monokai() -> Self {
-        let ansi = [
-            Color::from_rgb8(0x27, 0x28, 0x22), // 0: Black
-            Color::from_rgb8(0xF9, 0x26, 0x72), // 1: Red
-            Color::from_rgb8(0xA6, 0xE2, 0x2E), // 2: Green
-            Color::from_rgb8(0xF4, 0xBF, 0x75), // 3: Yellow
-            Color::from_rgb8(0x66, 0xD9, 0xEF), // 4: Blue
-            Color::from_rgb8(0xAE, 0x81, 0xFF), // 5: Magenta
-            Color::from_rgb8(0xA1, 0xEF, 0xE4), // 6: Cyan
-            Color::from_rgb8(0xF8, 0xF8, 0xF2), // 7: White
-            Color::from_rgb8(0x75, 0x71, 0x5E), // 8: Bright Black
-            Color::from_rgb8(0xF9, 0x26, 0x72), // 9: Bright Red
-            Color::from_rgb8(0xA6, 0xE2, 0x2E), // 10: Bright Green
-            Color::from_rgb8(0xF4, 0xBF, 0x75), // 11: Bright Yellow
-            Color::from_rgb8(0x66, 0xD9, 0xEF), // 12: Bright Blue
-            Color::from_rgb8(0xAE, 0x81, 0xFF), // 13: Bright Magenta
-            Color::from_rgb8(0xA1, 0xEF, 0xE4), // 14: Bright Cyan
-            Color::from_rgb8(0xF9, 0xF8, 0xF5), // 15: Bright White
-        ];
-        Self {
-            id: "Monokai",
-            name: "Monokai",
-            fg: Color::from_rgb8(0xF8, 0xF8, 0xF2),
-            bg: Color::from_rgb8(0x27, 0x28, 0x22),
-            ansi,
-        }
-    }
-
-    /// Gruvbox Dark - 暖色复古风格
-    pub const fn gruvbox_dark() -> Self {
-        let ansi = [
-            Color::from_rgb8(0x28, 0x28, 0x28), // 0: Black
-            Color::from_rgb8(0xCC, 0x24, 0x1D), // 1: Red
-            Color::from_rgb8(0x98, 0x97, 0x1A), // 2: Green
-            Color::from_rgb8(0xD7, 0x99, 0x21), // 3: Yellow
-            Color::from_rgb8(0x45, 0x8A, 0xB3), // 4: Blue
-            Color::from_rgb8(0xB1, 0x62, 0x86), // 5: Magenta
-            Color::from_rgb8(0x68, 0x9C, 0x96), // 6: Cyan
-            Color::from_rgb8(0xEB, 0xDB, 0xB2), // 7: White
-            Color::from_rgb8(0x92, 0x83, 0x5E), // 8: Bright Black
-            Color::from_rgb8(0xFB, 0x49, 0x34), // 9: Bright Red
-            Color::from_rgb8(0xB8, 0xBB, 0x26), // 10: Bright Green
-            Color::from_rgb8(0xFA, 0xBD, 0x2F), // 11: Bright Yellow
-            Color::from_rgb8(0x83, 0xA5, 0x98), // 12: Bright Blue
-            Color::from_rgb8(0xD3, 0x86, 0x9B), // 13: Bright Magenta
-            Color::from_rgb8(0x8E, 0xCC, 0xC6), // 14: Bright Cyan
-            Color::from_rgb8(0xFF, 0xFF, 0xFF), // 15: Bright White
-        ];
-        Self {
-            id: "Gruvbox",
-            name: "Gruvbox",
-            fg: Color::from_rgb8(0xEB, 0xDB, 0xB2),
-            bg: Color::from_rgb8(0x28, 0x28, 0x28),
-            ansi,
-        }
-    }
-
-    /// Dracula - 紫色主题
-    pub const fn dracula() -> Self {
-        let ansi = [
-            Color::from_rgb8(0x28, 0x2A, 0x36), // 0: Black
-            Color::from_rgb8(0xFF, 0x55, 0x7E), // 1: Red
-            Color::from_rgb8(0x50, 0xFA, 0x7B), // 2: Green
-            Color::from_rgb8(0xFF, 0xB8, 0x6C), // 3: Yellow
-            Color::from_rgb8(0xBD, 0x93, 0xF9), // 4: Blue
-            Color::from_rgb8(0xFF, 0x79, 0xC6), // 5: Magenta
-            Color::from_rgb8(0x8B, 0xF9, 0xF1), // 6: Cyan
-            Color::from_rgb8(0xF8, 0xF8, 0xF2), // 7: White
-            Color::from_rgb8(0x62, 0x75, 0x7E), // 8: Bright Black
-            Color::from_rgb8(0xFF, 0x7A, 0x93), // 9: Bright Red
-            Color::from_rgb8(0x69, 0xFF, 0x94), // 10: Bright Green
-            Color::from_rgb8(0xFF, 0xCC, 0x8C), // 11: Bright Yellow
-            Color::from_rgb8(0xC9, 0xA2, 0xFC), // 12: Bright Blue
-            Color::from_rgb8(0xFF, 0x92, 0xD0), // 13: Bright Magenta
-            Color::from_rgb8(0xA4, 0xFF, 0xF9), // 14: Bright Cyan
-            Color::from_rgb8(0xFF, 0xFF, 0xFF), // 15: Bright White
-        ];
-        Self {
-            id: "Dracula",
-            name: "Dracula",
-            fg: Color::from_rgb8(0xF8, 0xF8, 0xF2),
-            bg: Color::from_rgb8(0x28, 0x2A, 0x36),
-            ansi,
-        }
-    }
-
-    /// 根据 ID 获取配色方案
-    pub fn from_id(id: &str) -> Option<Self> {
-        match id {
-            "TerminalDark" => Some(Self::dark()),
-            "TerminalLight" => Some(Self::light()),
-            "Nord" => Some(Self::nord()),
-            "Solarized" => Some(Self::solarized_dark()),
-            "Monokai" => Some(Self::monokai()),
-            "Gruvbox" => Some(Self::gruvbox_dark()),
-            "Dracula" => Some(Self::dracula()),
-            _ => None,
-        }
-    }
-
-    /// 获取所有预设方案
-    pub fn all_presets() -> [Self; 7] {
-        [
-            Self::dark(),
-            Self::light(),
-            Self::nord(),
-            Self::solarized_dark(),
-            Self::monokai(),
-            Self::gruvbox_dark(),
-            Self::dracula(),
-        ]
     }
 }

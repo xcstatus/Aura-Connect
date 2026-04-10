@@ -16,4 +16,6 @@ pub use icons::{
     IconAnimationState, IconId, IconMeta, IconOptions, IconSizes, IconState,
     IconStyleConfig, IconThemeAdapter, RELOAD_ROTATION_SPEED,
 };
-pub use tokens::{DebugTokens, DesignTokens, RustSshThemeId, TerminalAnsiTokens, TerminalPalette};
+pub use tokens::{
+    color, COLOR_SCHEMES, ColorScheme, DebugTokens, DesignTokens,
+};

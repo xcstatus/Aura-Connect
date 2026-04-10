@@ -14,7 +14,7 @@ use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
 use crate::i18n::I18n;
 use crate::session::AuthMethod;
-use crate::theme::{DesignTokens, RustSshThemeId};
+use crate::theme::DesignTokens;
 use crate::theme::icons::{icon_view_with, IconId, IconOptions};
 
 use super::sidebar::{sidebar, SidebarPage};
@@ -30,12 +30,7 @@ pub enum SessionFormMode {
 
 /// 辅助函数：获取当前状态对应的 DesignTokens
 pub fn session_form_tokens(state: &IcedState) -> DesignTokens {
-    let theme_id = match state.model.settings.general.theme.as_str() {
-        "Light" => RustSshThemeId::Light,
-        "GitHub" => RustSshThemeId::GitHub,
-        _ => RustSshThemeId::Dark,
-    };
-    DesignTokens::for_id(theme_id)
+    DesignTokens::for_color_scheme(&state.model.settings.color_scheme)
 }
 
 /// 会话编辑器模态框（统一版本）
