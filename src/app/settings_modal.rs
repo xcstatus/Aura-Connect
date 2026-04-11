@@ -11,7 +11,7 @@ use iced::widget::{
 use iced::{Border, Color, Element, Theme};
 
 use crate::session::{ProtocolType, SessionProfile, TransportConfig};
-use crate::settings::HostKeyPolicy;
+use crate::settings::KnownHostRecord;
 use crate::theme::layout;
 use crate::theme::{COLOR_SCHEMES, DesignTokens};
 use crate::theme::icons::{icon_view_with, IconId, IconOptions};
@@ -863,50 +863,262 @@ fn security_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
             .width(iced::Length::Fill)
             .into()
         }
-        1 => {
-            let policy = sec.host_key_policy;
-            column![
-                section_title(i18n.tr("settings.security.hosts.title"), tokens),
-                text(i18n.tr("settings.security.hosts.policy.label")).size(14).style(move |_t: &Theme| text::Style {
-                    color: Some(text_primary),
-                }),
-                radio(
-                    i18n.tr("settings.security.hosts.policy.strict"),
-                    HostKeyPolicy::Strict,
-                    Some(policy),
-                    |p| Message::SettingsFieldChanged(SettingsField::HostKeyPolicy(p)),
-                ),
-                radio(
-                    i18n.tr("settings.security.hosts.policy.ask"),
-                    HostKeyPolicy::Ask,
-                    Some(policy),
-                    |p| Message::SettingsFieldChanged(SettingsField::HostKeyPolicy(p)),
-                ),
-                radio(
-                    i18n.tr("settings.security.hosts.policy.accept_new"),
-                    HostKeyPolicy::AcceptNew,
-                    Some(policy),
-                    |p| Message::SettingsFieldChanged(SettingsField::HostKeyPolicy(p)),
-                ),
-                text(i18n.tr("settings.security.hosts.policy.help")).size(11).style(move |_t: &Theme| text::Style {
-                    color: Some(text_secondary),
-                }),
-                text(i18n.tr("settings.security.hosts.table.title")).size(14).style(move |_t: &Theme| text::Style {
-                    color: Some(text_primary),
-                }),
-                text("(mock) 10.0.0.1:22  ·  ED25519").size(12).style(move |_t: &Theme| text::Style {
-                    color: Some(text_secondary),
-                }),
-                text("(mock) github.com  ·  RSA").size(12).style(move |_t: &Theme| text::Style {
-                    color: Some(text_secondary),
-                }),
-            ]
-            .spacing(layout::SETTINGS_ITEM_SPACING)
-            .padding(layout::SETTINGS_CONTENT_PADDING as u16)
-            .width(iced::Length::Fill)
-            .into()
-        }
+        1 => host_key_table_pane(state, tokens),
         _ => Space::new().into(),
+    }
+}
+
+/// 构建主机指纹列表面板（包含验证策略 + 主机列表）
+fn host_key_table_pane<'a>(state: &'a IcedState, tokens: DesignTokens) -> Element<'a, Message> {
+    let i18n = &state.model.i18n;
+    let sec = &state.model.settings.security;
+    let known_hosts = &sec.known_hosts;
+    let text_primary = tokens.text_primary;
+    let text_secondary = tokens.text_secondary;
+    let policy = sec.host_key_policy;
+
+    // 验证策略部分
+    let policy_section = column![
+        text(i18n.tr("settings.security.hosts.policy.label")).size(14).style(move |_t: &Theme| text::Style {
+            color: Some(text_primary),
+        }),
+        radio(
+            i18n.tr("settings.security.hosts.policy.strict"),
+            crate::settings::HostKeyPolicy::Strict,
+            Some(policy),
+            |p| Message::SettingsFieldChanged(SettingsField::HostKeyPolicy(p)),
+        ),
+        radio(
+            i18n.tr("settings.security.hosts.policy.ask"),
+            crate::settings::HostKeyPolicy::Ask,
+            Some(policy),
+            |p| Message::SettingsFieldChanged(SettingsField::HostKeyPolicy(p)),
+        ),
+        radio(
+            i18n.tr("settings.security.hosts.policy.accept_new"),
+            crate::settings::HostKeyPolicy::AcceptNew,
+            Some(policy),
+            |p| Message::SettingsFieldChanged(SettingsField::HostKeyPolicy(p)),
+        ),
+        text(i18n.tr("settings.security.hosts.policy.help")).size(11).style(move |_t: &Theme| text::Style {
+            color: Some(text_secondary),
+        }),
+    ]
+    .spacing(layout::SETTINGS_ITEM_SPACING);
+
+    // 如果没有已信任主机，显示空状态
+    if known_hosts.is_empty() {
+        return column![
+            section_title(i18n.tr("settings.security.hosts.title"), tokens),
+            policy_section,
+            Space::new().height(iced::Length::Fixed(8.0)),
+            text(i18n.tr("settings.security.hosts.table.title")).size(14).style(move |_t: &Theme| text::Style {
+                color: Some(text_primary),
+            }),
+            text(i18n.tr("settings.security.hosts.empty"))
+                .size(13)
+                .style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
+        ]
+        .spacing(layout::SETTINGS_ITEM_SPACING)
+        .padding(layout::SETTINGS_CONTENT_PADDING as u16)
+        .width(iced::Length::Fill)
+        .into();
+    }
+
+    // 构建列表
+    let mut rows: Vec<Element<'a, Message>> = Vec::new();
+    for record in known_hosts {
+        rows.push(host_key_table_row(state, tokens, record));
+    }
+
+    column![
+        section_title(i18n.tr("settings.security.hosts.title"), tokens),
+        policy_section,
+        Space::new().height(iced::Length::Fixed(8.0)),
+        text(i18n.tr("settings.security.hosts.table.title")).size(14).style(move |_t: &Theme| text::Style {
+            color: Some(text_primary),
+        }),
+        column(rows)
+            .spacing(2)
+    ]
+    .spacing(layout::SETTINGS_ITEM_SPACING)
+    .padding(layout::SETTINGS_CONTENT_PADDING as u16)
+    .width(iced::Length::Fill)
+    .into()
+}
+
+/// 构建单条主机记录行
+fn host_key_table_row<'a>(
+    state: &'a IcedState,
+    tokens: DesignTokens,
+    record: &'a KnownHostRecord,
+) -> Element<'a, Message> {
+    let i18n = &state.model.i18n;
+    let text_primary = tokens.text_primary;
+    let text_secondary = tokens.text_secondary;
+    let surface_1 = tokens.surface_1;
+    let border_subtle = tokens.border_subtle;
+
+    // 检查是否展开详情
+    let detail_key = format!("{}:{}", record.host, record.port);
+    let is_expanded = state.expanded_known_host.as_ref() == Some(&detail_key);
+
+    // 主机显示文本
+    let host_display = if record.port == 22 {
+        Some(record.host.as_str())
+    } else {
+        None
+    };
+    let host_display_leaked = host_display.unwrap_or_else(|| {
+        Box::leak(format!("{}:{}", record.host, record.port).into_boxed_str()) as &str
+    });
+
+    // 删除按钮
+    let delete_msg = Message::SettingsFieldChanged(SettingsField::DeleteKnownHost {
+        host: record.host.clone(),
+        port: record.port,
+    });
+    let delete_btn = button(
+        icon_view_with(
+            IconOptions::new(IconId::Close)
+                .with_size(12)
+                .with_color(text_secondary),
+            delete_msg.clone(),
+        ),
+    )
+    .on_press(delete_msg)
+    .width(iced::Length::Fixed(24.0))
+    .height(iced::Length::Fixed(24.0))
+    .padding(6)
+    .style(style_top_icon(tokens));
+
+    // 展开指示器
+    let expand_icon = text(if is_expanded { "▼" } else { "▶" })
+        .size(10)
+        .style(move |_t: &Theme| text::Style {
+            color: Some(text_secondary),
+        });
+
+    // 主行内容
+    let main_row_content: Element<'a, Message> = row![
+        expand_icon,
+        Space::new().width(iced::Length::Fixed(6.0)),
+        text(host_display_leaked)
+            .size(13)
+            .style(move |_t: &Theme| text::Style {
+                color: Some(text_primary),
+            }),
+        iced::widget::Space::new().width(iced::Length::Fill),
+        text(&record.algo)
+            .size(12)
+            .style(move |_t: &Theme| text::Style {
+                color: Some(text_secondary),
+            }),
+        iced::widget::Space::new().width(iced::Length::Fixed(12.0)),
+        delete_btn,
+    ]
+    .align_y(Alignment::Center)
+    .into();
+
+    // 点击展开的按钮
+    let toggle_msg = Message::SettingsFieldChanged(SettingsField::ToggleKnownHostDetail {
+        host: record.host.clone(),
+        port: record.port,
+    });
+    let main_row_btn = button(main_row_content)
+        .on_press(toggle_msg)
+        .width(iced::Length::Fill)
+        .style(style_top_icon(tokens));
+
+    let main_row = container(main_row_btn)
+        .padding([6, 8])
+        .width(iced::Length::Fill)
+        .style(move |_t: &Theme| container::Style {
+            background: Some(iced::Background::Color(surface_1)),
+            border: iced::Border {
+                width: 1.0,
+                color: border_subtle,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        });
+
+    // 如果展开，显示详情
+    if is_expanded {
+        let added_str = if record.added_ms > 0 {
+            Box::leak(
+                crate::time_utils::format_local_datetime(record.added_ms).into_boxed_str(),
+            ) as &str
+        } else {
+            i18n.tr("settings.security.hosts.empty")
+        };
+
+        let detail: Element<'a, Message> = column![
+            row![
+                text(i18n.tr("settings.security.hosts.detail.algorithm"))
+                    .size(12)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
+                text(&record.algo)
+                    .size(12)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_primary),
+                    }),
+            ]
+            .spacing(8),
+            row![
+                text(i18n.tr("settings.security.hosts.detail.fingerprint"))
+                    .size(12)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
+                text(format!("SHA256:{}", record.fingerprint))
+                    .size(12)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_primary),
+                    }),
+            ]
+            .spacing(8),
+            row![
+                text(i18n.tr("settings.security.hosts.table.col.added_at"))
+                    .size(12)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
+                text(added_str)
+                    .size(12)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_primary),
+                    }),
+            ]
+            .spacing(8),
+        ]
+        .spacing(4)
+        .padding([8, 12])
+        .into();
+
+        let detail_container = container(detail)
+            .width(iced::Length::Fill)
+            .style(move |_t: &Theme| container::Style {
+                background: Some(iced::Background::Color(surface_1)),
+                border: iced::Border {
+                    width: 1.0,
+                    color: border_subtle,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            });
+
+        column![main_row, detail_container]
+            .spacing(2)
+            .into()
+    } else {
+        column![main_row]
+            .spacing(2)
+            .into()
     }
 }
 

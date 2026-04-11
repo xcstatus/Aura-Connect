@@ -310,6 +310,8 @@ pub(crate) struct IcedState {
     pub host_key_prompt: Option<HostKeyPromptState>,
     /// Runtime-only known host overrides ("accept once").
     pub runtime_known_hosts: Vec<crate::settings::KnownHostRecord>,
+    /// 当前展开详情的主机 key（格式 "host:port"）
+    pub expanded_known_host: Option<String>,
     /// 鼠标悬停的标签索引；用于仅在悬停时显示关闭按钮。
     pub tab_hover_index: Option<usize>,
     /// Last known window cursor position (for mouse press/release events without coordinates).
@@ -939,6 +941,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             quick_connect_interactive: None,
             host_key_prompt: None,
             runtime_known_hosts: Vec::new(),
+            expanded_known_host: None,
             tab_hover_index: None,
             last_cursor_pos: None,
             settings_modal_open: false,

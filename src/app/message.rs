@@ -37,6 +37,10 @@ pub(crate) enum SettingsField {
     /// Vault KDF 内存级别
     KdfMemoryLevel(crate::settings::KdfMemoryLevel),
     HostKeyPolicy(crate::settings::HostKeyPolicy),
+    /// 删除已信任主机
+    DeleteKnownHost { host: String, port: u16 },
+    /// 展开/折叠主机详情
+    ToggleKnownHostDetail { host: String, port: u16 },
     ConnectionSearch(String),
     /// When true: only one tab may hold SSH; switching tabs disconnects the previous session.
     SingleSharedSession(bool),

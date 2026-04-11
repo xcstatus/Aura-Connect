@@ -132,6 +132,17 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
         SettingsField::LockOnSleep(v) => s.security.lock_on_sleep = v,
         SettingsField::KdfMemoryLevel(v) => s.security.kdf_memory_level = v,
         SettingsField::HostKeyPolicy(p) => s.security.host_key_policy = p,
+        SettingsField::DeleteKnownHost { host, port } => {
+            s.security.known_hosts.retain(|r| !(r.host == host && r.port == port));
+        }
+        SettingsField::ToggleKnownHostDetail { host, port } => {
+            let key = format!("{}:{}", host, port);
+            if state.expanded_known_host.as_ref() == Some(&key) {
+                state.expanded_known_host = None;
+            } else {
+                state.expanded_known_host = Some(key);
+            }
+        }
         SettingsField::ConnectionSearch(q) => {
             state.settings_connection_search = q;
             return;

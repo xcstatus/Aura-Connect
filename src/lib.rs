@@ -11,6 +11,7 @@ pub mod session;
 pub mod settings;
 pub mod terminal;
 pub mod theme;
+pub mod time_utils;
 pub mod utils;
 pub mod vault;
 
