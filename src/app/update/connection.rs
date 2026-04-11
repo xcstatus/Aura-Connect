@@ -8,6 +8,13 @@ use super::super::state::{ConnectionStage, IcedState, PrewarmStatus, QuickConnec
 
 /// Handle ConnectPressed message - core connection logic.
 pub(crate) fn handle_connect(state: &mut IcedState) -> Task<Message> {
+    // 已连接状态下点击重连/连接：先清空旧的预连接 UI，避免旧信息残留
+    if state.quick_connect_flow == QuickConnectFlow::Connected {
+        state.active_pane_mut().terminal.clear_local_preconnect_ui();
+        state.preconnect_info_line_count = 0;
+        state.vault_hint_line_count = 0;
+    }
+
     // User required gate (NeedUser).
     if state.model.draft.host.trim().is_empty() || state.model.draft.user.trim().is_empty() {
         state.quick_connect_flow = QuickConnectFlow::NeedUser;
@@ -434,12 +441,10 @@ pub(crate) fn handle_connect_success(state: &mut IcedState, session: Box<dyn Asy
     state.quick_connect_error_kind = None;
     state.connection_stage = ConnectionStage::None;
 
-    // 清理预连接信息行（SSH target/fingerprint/auth_method，不清理"连接中…"行）
-    let lines_to_clear = state.preconnect_info_line_count;
-    if lines_to_clear > 0 {
-        state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
-    }
+    // 清空所有预连接 UI（vault 提示 + SSH info + "连接中…"）
+    state.active_pane_mut().terminal.clear_local_preconnect_ui();
     state.preconnect_info_line_count = 0;
+    state.vault_hint_line_count = 0;
 
     // 显示连接成功信息
     let msg = state.model.i18n.tr("iced.term.connected");
@@ -543,12 +548,10 @@ pub(crate) fn handle_connect_success_arc(
     state.quick_connect_error_kind = None;
     state.connection_stage = ConnectionStage::None;
 
-    // 清理预连接信息行
-    let lines_to_clear = state.preconnect_info_line_count;
-    if lines_to_clear > 0 {
-        state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
-    }
+    // 清空所有预连接 UI（vault 提示 + SSH info + "连接中…"）
+    state.active_pane_mut().terminal.clear_local_preconnect_ui();
     state.preconnect_info_line_count = 0;
+    state.vault_hint_line_count = 0;
 
     // 显示连接成功信息
     let msg = state.model.i18n.tr("iced.term.connected");
@@ -788,12 +791,10 @@ pub(crate) fn handle_interactive_submit(state: &mut IcedState) -> Task<Message> 
                     state.quick_connect_error_kind = None;
                     state.connection_stage = ConnectionStage::None;
 
-                    // 清理预连接信息行，再显示"已连接"
-                    let lines_to_clear = state.preconnect_info_line_count;
-                    if lines_to_clear > 0 {
-                        state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
-                    }
+                    // 清空所有预连接 UI（vault 提示 + SSH info + "连接中…"）
+                    state.active_pane_mut().terminal.clear_local_preconnect_ui();
                     state.preconnect_info_line_count = 0;
+                    state.vault_hint_line_count = 0;
 
                     // 显示连接成功
                     let msg = state.model.i18n.tr("iced.term.connected");
@@ -858,7 +859,9 @@ pub(crate) fn merge_known_hosts(
 /// If `skip_counting` is true, SSH info lines are injected but `preconnect_info_line_count`
 /// is NOT updated. Use this when re-injecting SSH info (e.g. after vault unlock).
 pub(crate) fn inject_ssh_connecting_info(state: &mut IcedState) {
-    inject_ssh_connecting_info_full(state, false)
+    inject_ssh_connecting_info_full(state, false);
+    // 累加 vault 提示行数（vault 解锁路径中已注入 vault_unlocked 消息）
+    state.preconnect_info_line_count += state.vault_hint_line_count;
 }
 
 pub(crate) fn inject_ssh_connecting_info_full(state: &mut IcedState, skip_counting: bool) {
@@ -1033,12 +1036,10 @@ pub(crate) fn handle_reconnect_result(
             state.connection_stage = ConnectionStage::None;
             state.reconnect_context = None;
 
-            // 清理重连提示行
-            let lines = state.preconnect_info_line_count;
-            if lines > 0 {
-                state.active_pane_mut().terminal.clear_preconnect_lines(lines);
-            }
+            // 清空所有预连接 UI（vault 提示 + SSH info + "连接中…"）
+            state.active_pane_mut().terminal.clear_local_preconnect_ui();
             state.preconnect_info_line_count = 0;
+            state.vault_hint_line_count = 0;
 
             // 完成会话建立
             let label = format!(

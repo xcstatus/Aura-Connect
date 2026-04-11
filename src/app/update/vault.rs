@@ -458,7 +458,8 @@ pub(crate) fn handle_vault_unlock_complete(
         state.active_pane_mut()
             .terminal
             .inject_local_lines(&[&vault_unlocked_msg]);
-        state.vault_hint_line_count = 0;
+        // 记录 vault 提示行数，等待 handle_connect() 注入 SSH info 后一并计数
+        state.vault_hint_line_count = 1;
 
         return super::super::update::update(state, Message::ConnectPressed);
     }
