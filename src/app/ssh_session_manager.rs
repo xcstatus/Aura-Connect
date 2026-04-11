@@ -163,14 +163,31 @@ impl SessionManager {
 
     /// Remove a tab slot. If the removed tab was after active_tab, active_tab shifts.
     /// Returns the session that was on the removed tab (if any).
+    /// 会自动通知 shared_manager 关闭连接（引用计数泄漏修复）。
     pub fn remove_tab(&mut self, tab_index: usize) -> Option<TabSession> {
         if tab_index >= self.sessions.len() {
             return None;
         }
+
+        // 提前获取 connection_key，以便在移除后通知 shared_manager
+        let connection_key = self.sessions[tab_index]
+            .as_ref()
+            .and_then(|ts| ts.connection_key.clone());
+
         let removed = self.sessions.remove(tab_index);
+
         if self.active_tab > tab_index && self.active_tab > 0 {
             self.active_tab -= 1;
         }
+
+        // 通知 shared_manager 减少引用计数，如果没有其他页签使用则关闭底层连接
+        if let Some(key) = connection_key {
+            let manager = self.shared_manager.clone();
+            tokio::spawn(async move {
+                manager.write().await.close(&key).await;
+            });
+        }
+
         removed
     }
 

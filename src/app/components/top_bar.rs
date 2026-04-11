@@ -52,6 +52,41 @@ pub(crate) fn top_bar(state: &IcedState, _tick_ms: f32) -> Element<'_, Message> 
         .into()
 }
 
+/// 欢迎页专用的简化顶栏：只有 traffic lights + 操作按钮，无标签栏。
+pub(crate) fn title_bar(state: &IcedState, _tick_ms: f32) -> Element<'_, Message> {
+    let tokens = tokens_for_state(state);
+    let action_group = build_action_group(state, tokens);
+    let control_group = build_control_group(state, tokens);
+
+    let left_area: Element<'_, Message> = {
+        let mut left_row = row![].spacing(0);
+
+        #[cfg(target_os = "macos")]
+        {
+            left_row = left_row.push(
+                container(Space::new().height(iced::Length::Fixed(TRAFFIC_LIGHT_DIAMETER)))
+                    .width(iced::Length::Fixed(TRAFFIC_LIGHT_BAND_W))
+                    .style(top_bar_ambient_style(tokens)),
+            );
+        }
+
+        container(left_row)
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fixed(TOP_BAR_H))
+            .into()
+    };
+
+    let top_bar_row = row![left_area, action_group, control_group]
+        .spacing(0)
+        .align_y(Alignment::Center);
+
+    container(top_bar_row)
+        .height(iced::Length::Fixed(TOP_BAR_H))
+        .padding(0)
+        .style(top_bar_ambient_style(tokens))
+        .into()
+}
+
 /// 顶栏背景样式（用于容器）
 fn top_bar_ambient_style(tokens: crate::theme::DesignTokens) -> impl Fn(&Theme) -> iced::widget::container::Style + 'static {
     let bg = tokens.bg_header;
@@ -100,7 +135,15 @@ fn build_tab_strip(state: &IcedState) -> Element<'_, Message> {
         .align_y(Alignment::Center);
 
         let close_btn: Element<'_, Message> = if show_close {
-            icon_tab_close_button(tokens, i, TAB_CLOSE_HIT_W)
+            // 欢迎页模式下不显示关闭按钮（欢迎页不是标签，不能被关闭）
+            if state.show_welcome {
+                Space::new()
+                    .width(iced::Length::Fixed(0.0))
+                    .height(iced::Length::Fill)
+                    .into()
+            } else {
+                icon_tab_close_button(tokens, i, TAB_CLOSE_HIT_W)
+            }
         } else {
             Space::new()
                 .width(iced::Length::Fixed(close_w))

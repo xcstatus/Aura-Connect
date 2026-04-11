@@ -34,6 +34,11 @@ fn compute_tick_ms(state: &IcedState) -> u32 {
 
 /// Handle Tick message: pump SSH sessions, update perf counters, cursor blink.
 pub(crate) fn handle_tick(state: &mut IcedState) -> Task<Message> {
+    // 安全边界：欢迎页且无页签时，所有需要终端的操作都跳过
+    if state.tab_panes.is_empty() {
+        return Task::none();
+    }
+
     let now = settings::unix_time_ms();
     let tick_start = std::time::Instant::now();
 
@@ -48,7 +53,7 @@ pub(crate) fn handle_tick(state: &mut IcedState) -> Task<Message> {
     state.tick_modal_anims(tick_ms);
 
     let bg_pump_every_ms: i64 = if state.window_focused { 200 } else { 250 };
-    pump_all_sessions(state, now, bg_pump_every_ms);
+    let exit_task = pump_all_sessions(state, now, bg_pump_every_ms);
     handle_cursor_blink(state, now);
 
     // 重连计时器：每 1 秒触发一次
@@ -78,7 +83,7 @@ pub(crate) fn handle_tick(state: &mut IcedState) -> Task<Message> {
     handle_tab_scroll_animation(state);
 
     // 合并两个 Task
-    reconnect_task.chain(prewarm_task)
+    reconnect_task.chain(prewarm_task).chain(exit_task.unwrap_or_else(Task::none))
 }
 
 /// Handle tab scroll animation: ease current offset toward target.
@@ -156,7 +161,8 @@ fn handle_prewarm_timer(state: &mut IcedState, _now: i64) -> Task<Message> {
 }
 
 /// Pump all registered SSH sessions (one per tab).
-fn pump_all_sessions(state: &mut IcedState, now: i64, bg_pump_every_ms: i64) {
+/// Returns a Task if any session has exited and needs to close its tab.
+fn pump_all_sessions(state: &mut IcedState, now: i64, bg_pump_every_ms: i64) -> Option<Task<Message>> {
     let active = state.active_tab;
 
     for (i, pane) in state.tab_panes.iter_mut().enumerate() {
@@ -201,7 +207,16 @@ fn pump_all_sessions(state: &mut IcedState, now: i64, bg_pump_every_ms: i64) {
                 log::debug!(target: "term-perf", "pump_output error tab={}: {e}", i);
             }
         }
+
+        // Detect session exit: user ran `exit` and the shell terminated.
+        // Detach the session from tab_manager (which notifies shared_manager),
+        // then return a Task to close the tab.
+        if session.exit_status().is_some() && !state.tabs.is_empty() {
+            state.tab_manager.detach_session(i);
+            return Some(super::update(state, Message::SessionExited(i)));
+        }
     }
+    None
 }
 
 /// Handle cursor blink and frame tick — active tab only.

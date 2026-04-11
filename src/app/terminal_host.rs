@@ -151,6 +151,11 @@ impl TerminalHost {
     }
 
     pub(crate) fn handle_event(state: &mut IcedState, ev: TerminalEvent) -> Task<Message> {
+        // 欢迎页且无标签页时，忽略所有终端事件（欢迎页不需要终端交互）
+        if state.tab_panes.is_empty() {
+            return Task::none();
+        }
+
         let now = crate::settings::unix_time_ms();
         let mut activity = false;
 

@@ -377,6 +377,8 @@ pub(crate) struct IcedState {
     pub breadcrumb_temp_visible: bool,
     /// 远程服务器当前工作目录。
     pub remote_cwd: String,
+    /// 是否显示欢迎页（应用启动时或所有页签关闭后）。
+    pub show_welcome: bool,
 }
 
 impl IcedState {
@@ -388,6 +390,12 @@ impl IcedState {
     #[inline]
     pub(crate) fn active_pane_mut(&mut self) -> &mut TabPane {
         &mut self.tab_panes[self.active_tab]
+    }
+
+    /// Safe version: returns None if tab_panes is empty (prevents index panic).
+    #[inline]
+    pub(crate) fn active_pane_mut_safe(&mut self) -> Option<&mut TabPane> {
+        self.tab_panes.get_mut(self.active_tab)
     }
 
     #[inline]
@@ -907,9 +915,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
         .build()
         .expect("tokio runtime for iced app");
     let model = AppModel::load();
-    let first_title = model.i18n.tr("iced.tab.new").to_string();
-    let tab_panes = vec![TabPane::new(&model.settings.terminal, &model.settings.color_scheme)];
-    let tab_manager = SessionManager::new(1); // one tab at boot
+    let tab_manager = SessionManager::new(0); // 启动时无标签页
     let vault_status = VaultStatus::compute(&model.settings, model.vault_master_password.is_some());
     let now = crate::settings::unix_time_ms();
     let dump_path = std::env::var("RUST_SSH_PERF_DUMP")
@@ -920,11 +926,8 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
         IcedState {
             model,
             rt,
-            tabs: vec![IcedTab {
-                title: first_title,
-                profile_id: None,
-            }],
-            tab_panes,
+            tabs: vec![],
+            tab_panes: vec![],
             tab_manager,
             active_tab: 0,
             window_size: Size::new(1280.0, 800.0),
@@ -979,6 +982,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             breadcrumb_pinned: false,
             breadcrumb_temp_visible: false,
             remote_cwd: String::from("~"),
+            show_welcome: true,
         },
         Task::none(),
     )

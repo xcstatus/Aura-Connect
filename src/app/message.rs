@@ -181,6 +181,8 @@ pub(crate) enum Message {
     /// 切换认证方式（Failed/AuthLocked 状态）：返回 NewConnection 表单让用户选择其他认证方式。
     QuickConnectSwitchAuth,
     DisconnectPressed,
+    /// SSH 会话正常退出（exit）：自动关闭对应页签
+    SessionExited(usize),
     ProfileConnect(crate::session::SessionProfile),
     VaultUnlockOpenConnect(crate::session::SessionProfile),
     VaultUnlockOpenDelete(String),
@@ -305,6 +307,7 @@ impl std::fmt::Debug for Message {
             Message::AutoProbeConsentUsePassword => write!(f, "Message::AutoProbeConsentUsePassword"),
             Message::QuickConnectSwitchAuth => write!(f, "Message::QuickConnectSwitchAuth"),
             Message::DisconnectPressed => write!(f, "Message::DisconnectPressed"),
+            Message::SessionExited(i) => write!(f, "Message::SessionExited({})", i),
             Message::ProfileConnect(p) => write!(f, "Message::ProfileConnect({:?})", p.name),
             Message::VaultUnlockOpenConnect(_) => write!(f, "Message::VaultUnlockOpenConnect(...)"),
             Message::VaultUnlockOpenDelete(id) => write!(f, "Message::VaultUnlockOpenDelete({})", id),
