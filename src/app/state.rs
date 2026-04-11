@@ -318,7 +318,7 @@ pub(crate) struct IcedState {
     pub last_cursor_pos: Option<Point>,
     pub settings_modal_open: bool,
     pub settings_category: SettingsCategory,
-    pub settings_sub_tab: [usize; 5],
+    pub settings_sub_tab: [usize; 6],
     pub settings_connection_search: String,
     pub settings_needs_restart: bool,
     /// 帧计数（定时订阅），用于光标闪烁等。
@@ -949,7 +949,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             last_cursor_pos: None,
             settings_modal_open: false,
             settings_category: SettingsCategory::General,
-            settings_sub_tab: [0; 5],
+            settings_sub_tab: [0; 6],
             settings_connection_search: String::new(),
             settings_needs_restart: false,
             tick_count: 0,
