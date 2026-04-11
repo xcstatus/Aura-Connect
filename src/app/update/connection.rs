@@ -9,7 +9,7 @@ use super::super::state::{ConnectionStage, IcedState, PrewarmStatus, QuickConnec
 /// Handle ConnectPressed message - core connection logic.
 pub(crate) fn handle_connect(state: &mut IcedState) -> Task<Message> {
     // 已连接状态下点击重连/连接：先清空旧的预连接 UI，避免旧信息残留
-    if state.quick_connect_flow == QuickConnectFlow::Connected {
+    if state.quick_connect_flow == QuickConnectFlow::Connected && !state.tab_panes.is_empty() {
         state.active_pane_mut().terminal.clear_local_preconnect_ui();
         state.preconnect_info_line_count = 0;
         state.vault_hint_line_count = 0;
@@ -654,7 +654,9 @@ pub(crate) fn handle_host_key_reject(state: &mut IcedState) -> Task<Message> {
 /// Handle DisconnectPressed message.
 pub(crate) fn handle_disconnect(state: &mut IcedState) -> Task<Message> {
     super::super::update::disconnect_active_tab_session(state);
-    state.active_pane_mut().last_terminal_focus_sent = None;
+    if !state.tab_panes.is_empty() {
+        state.active_pane_mut().last_terminal_focus_sent = None;
+    }
     Task::none()
 }
 
@@ -677,6 +679,12 @@ pub(crate) fn handle_profile_connect(
                 super::super::state::ModalAnimState::closing(state.tick_count);
         }
         state.quick_connect_panel = super::super::state::QuickConnectPanel::Picker;
+
+        // Ensure tab exists before accessing terminal (welcome page mode may have no tabs).
+        if state.tab_panes.is_empty() {
+            let _ = super::session::handle_add_tab(state);
+        }
+
         // Track vault hint line count so we can clear them after unlock.
         let a = state.model.i18n.tr("iced.term.vault_needed");
         let b = state.model.i18n.tr("iced.term.vault_unlock_to_continue");
@@ -688,6 +696,11 @@ pub(crate) fn handle_profile_connect(
     let master = state.model.vault_master_password.clone();
     match state.model.fill_draft_from_profile(&profile, master.as_ref()) {
         Ok(()) => {
+            // 欢迎页模式或不处于活跃连接时，强制开新页签
+            if state.show_welcome || !state.active_session_is_connected() {
+                let _ = super::session::handle_add_tab(state);
+            }
+
             let mut can_auto_connect = false;
             if let crate::session::TransportConfig::Ssh(_ssh) = &profile.transport {
                 match &state.model.draft.auth {
@@ -716,6 +729,10 @@ pub(crate) fn handle_profile_connect(
                 state.quick_connect_error_kind = None;
 
                 // Show a hint in the terminal so the user knows what to do next.
+                // Ensure tab exists before accessing terminal (defensive check).
+                if state.tab_panes.is_empty() {
+                    let _ = super::session::handle_add_tab(state);
+                }
                 let hint = match &state.model.draft.auth {
                     crate::session::AuthMethod::Password => {
                         state.model.i18n.tr("iced.quick_connect.need_password")
@@ -731,8 +748,8 @@ pub(crate) fn handle_profile_connect(
 
             return super::super::update::update(state, Message::ConnectPressed);
         }
-        Err(msg) => {
-            state.model.status = msg;
+        Err(_msg) => {
+            // 错误静默处理，连接失败时终端会显示错误信息
         }
     }
     Task::none()
