@@ -201,6 +201,11 @@ fn pump_all_sessions(state: &mut IcedState, now: i64, bg_pump_every_ms: i64) -> 
                 } else {
                     // Empty read: no data this pump cycle.
                     state.perf.pump_empty_reads += 1;
+                    // 如果连接已断开（收到 EOF 但 exit_status 尚未到达），立即关闭页签
+                    if !session.is_connected() && !state.tabs.is_empty() {
+                        state.tab_manager.detach_session(i);
+                        return Some(super::update(state, Message::SessionExited(i)));
+                    }
                 }
             }
             Err(e) => {
