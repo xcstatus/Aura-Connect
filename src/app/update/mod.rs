@@ -28,12 +28,16 @@ use super::terminal_host::TerminalHost;
 use super::terminal_viewport;
 
 /// Resize PTY/grid from window size for a single tab.
+/// `breadcrumb_visible` reflects the current breadcrumb visibility state and is used
+/// to compute the correct available terminal height in `grid_from_window_size_with_spec`.
 pub(crate) fn apply_terminal_grid_resize_for_pane(
     pane: &mut TabPane,
     window: Size,
     terminal_settings: &crate::settings::TerminalSettings,
+    breadcrumb_visible: bool,
 ) {
-    let spec = terminal_viewport::terminal_viewport_spec_for_settings(terminal_settings);
+    let mut spec = terminal_viewport::terminal_viewport_spec_for_settings(terminal_settings);
+    spec.breadcrumb_visible = breadcrumb_visible;
     let (cols, rows) = terminal_viewport::grid_from_window_size_with_spec(window, &spec);
 
     let prev_rows = pane.terminal.grid_size().1;
@@ -50,8 +54,11 @@ pub(crate) fn sync_terminal_grid_to_session(state: &mut IcedState) {
     let term_settings = &state.model.settings.terminal;
     let pane = &mut state.tab_panes[state.active_tab];
     let window_size = state.window_size;
+    let breadcrumb_visible =
+        state.breadcrumb_pinned || state.breadcrumb_temp_visible;
     let (cols, rows) = {
-        let spec = terminal_viewport::terminal_viewport_spec_for_settings(term_settings);
+        let mut spec = terminal_viewport::terminal_viewport_spec_for_settings(term_settings);
+        spec.breadcrumb_visible = breadcrumb_visible;
         terminal_viewport::grid_from_window_size_with_spec(window_size, &spec)
     };
     let prev_rows = pane.terminal.grid_size().1;
@@ -144,8 +151,15 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.window_size = size;
             let term_settings = state.model.settings.terminal.clone();
             let window_size = state.window_size;
+            let breadcrumb_visible =
+                state.breadcrumb_pinned || state.breadcrumb_temp_visible;
             for pane in &mut state.tab_panes {
-                apply_terminal_grid_resize_for_pane(pane, window_size, &term_settings);
+                apply_terminal_grid_resize_for_pane(
+                    pane,
+                    window_size,
+                    &term_settings,
+                    breadcrumb_visible,
+                );
             }
             Task::none()
         }
@@ -568,14 +582,53 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             // 点击后隐藏 breadcrumb（无论当前状态如何）
             state.breadcrumb_pinned = false;
             state.breadcrumb_temp_visible = false;
+            // breadcrumb 状态变更会影响终端可视区域大小，需触发 PTY grid resize
+            let window_size = state.window_size;
+            let term_settings = state.model.settings.terminal.clone();
+            let breadcrumb_visible =
+                state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+            for pane in &mut state.tab_panes {
+                apply_terminal_grid_resize_for_pane(
+                    pane,
+                    window_size,
+                    &term_settings,
+                    breadcrumb_visible,
+                );
+            }
             Task::none()
         }
         Message::BreadcrumbShowTemp => {
             state.breadcrumb_temp_visible = true;
+            // breadcrumb 状态变更会影响终端可视区域大小，需触发 PTY grid resize
+            let window_size = state.window_size;
+            let term_settings = state.model.settings.terminal.clone();
+            let breadcrumb_visible =
+                state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+            for pane in &mut state.tab_panes {
+                apply_terminal_grid_resize_for_pane(
+                    pane,
+                    window_size,
+                    &term_settings,
+                    breadcrumb_visible,
+                );
+            }
             Task::none()
         }
         Message::BreadcrumbHideTemp => {
             state.breadcrumb_temp_visible = false;
+            // breadcrumb 状态变更会影响终端可视区域大小，需触发 PTY grid resize
+            let window_size = state.window_size;
+            let term_settings = state.model.settings.terminal.clone();
+            let breadcrumb_visible =
+                state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+            for pane in &mut state.tab_panes {
+                apply_terminal_grid_resize_for_pane(
+                    pane,
+                    window_size,
+                    &term_settings,
+                    breadcrumb_visible,
+                );
+            }
             Task::none()
         }
         Message::BreadcrumbSftp => {
