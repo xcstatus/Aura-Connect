@@ -441,14 +441,10 @@ pub(crate) fn handle_connect_success(state: &mut IcedState, session: Box<dyn Asy
     state.quick_connect_error_kind = None;
     state.connection_stage = ConnectionStage::None;
 
-    // 清空所有预连接 UI（vault 提示 + SSH info + "连接中…"）
+    // 清空所有预连接 UI（vault 提示 + SSH info + "连接中…"），SSH 数据从行 0 开始
     state.active_pane_mut().terminal.clear_local_preconnect_ui();
     state.preconnect_info_line_count = 0;
     state.vault_hint_line_count = 0;
-
-    // 显示连接成功信息
-    let msg = state.model.i18n.tr("iced.term.connected");
-    state.active_pane_mut().terminal.inject_local_lines(&[msg]);
 
     // 立即 pump 一次，读取 MOTD
     let active_tab = state.active_tab;
@@ -548,14 +544,10 @@ pub(crate) fn handle_connect_success_arc(
     state.quick_connect_error_kind = None;
     state.connection_stage = ConnectionStage::None;
 
-    // 清空所有预连接 UI（vault 提示 + SSH info + "连接中…"）
+    // 清空所有预连接 UI（vault 提示 + SSH info + "连接中…"），SSH 数据从行 0 开始
     state.active_pane_mut().terminal.clear_local_preconnect_ui();
     state.preconnect_info_line_count = 0;
     state.vault_hint_line_count = 0;
-
-    // 显示连接成功信息
-    let msg = state.model.i18n.tr("iced.term.connected");
-    state.active_pane_mut().terminal.inject_local_lines(&[msg]);
 
     // 立即 pump 一次，读取 MOTD
     let active_tab = state.active_tab;
@@ -791,14 +783,10 @@ pub(crate) fn handle_interactive_submit(state: &mut IcedState) -> Task<Message> 
                     state.quick_connect_error_kind = None;
                     state.connection_stage = ConnectionStage::None;
 
-                    // 清空所有预连接 UI（vault 提示 + SSH info + "连接中…"）
+                    // 清空所有预连接 UI（vault 提示 + SSH info + "连接中…"），SSH 数据从行 0 开始
                     state.active_pane_mut().terminal.clear_local_preconnect_ui();
                     state.preconnect_info_line_count = 0;
                     state.vault_hint_line_count = 0;
-
-                    // 显示连接成功
-                    let msg = state.model.i18n.tr("iced.term.connected");
-                    state.active_pane_mut().terminal.inject_local_lines(&[msg]);
 
                     let active_tab = state.active_tab;
                     let pane = &mut state.tab_panes[active_tab];
@@ -1029,14 +1017,11 @@ pub(crate) fn handle_reconnect_result(
     match result {
         Ok(session_arc) => {
             // 重连成功！
-            let msg = state.model.i18n.tr("iced.term.reconnect_success");
-            state.active_pane_mut().terminal.inject_local_lines(&[&msg]);
-
             state.quick_connect_flow = QuickConnectFlow::Connected;
             state.connection_stage = ConnectionStage::None;
             state.reconnect_context = None;
 
-            // 清空所有预连接 UI（vault 提示 + SSH info + "连接中…"）
+            // 清空所有预连接 UI，SSH 数据从行 0 开始
             state.active_pane_mut().terminal.clear_local_preconnect_ui();
             state.preconnect_info_line_count = 0;
             state.vault_hint_line_count = 0;
