@@ -1,15 +1,15 @@
 //! SFTP 文件列表组件
 
-use iced::widget::{button, container, row, scrollable, text, Space, Column};
+use iced::alignment::Vertical;
+use iced::widget::{button, container, row, scrollable, text, Column, Space};
 use iced::{Element, Length};
 
 use crate::app::components::helpers::tokens_for_state;
 use crate::app::message::Message;
 use crate::app::state::{IcedState, SftpPanel};
 use crate::sftp::{RemoteFileEntry, SftpSortBy};
-use crate::theme::layout;
-use crate::theme::icons::{icon_view_with, IconId, IconOptions};
-use crate::theme::DesignTokens;
+use crate::theme::{layout, DesignTokens};
+use crate::theme::icons::{icon, icon_view_with, IconId, IconOptions, IconState};
 
 /// 构建 SFTP 文件列表
 pub(crate) fn file_list<'a>(state: &'a IcedState, sftp: &'a SftpPanel) -> Element<'a, Message> {
@@ -111,11 +111,11 @@ fn build_file_row<'a>(state: &'a IcedState, entry: RemoteFileEntry) -> Element<'
 
     // 文件图标（上一级显示左箭头，目录显示文件夹，文件显示文档）
     let icon_elem: Element<'a, Message> = if is_parent_dir {
-        icon_view_with(IconOptions::new(IconId::ArrowLeft).with_size(15), msg.clone())
+        icon_view_with(IconOptions::new(IconId::ArrowLeft).with_size(12), msg.clone())
     } else if is_dir {
-        icon_view_with(IconOptions::new(IconId::Folder).with_size(15), msg.clone())
+        icon_view_with(IconOptions::new(IconId::Folder).with_size(12), msg.clone())
     } else {
-        icon_view_with(IconOptions::new(IconId::File).with_size(15), msg.clone())
+        icon_view_with(IconOptions::new(IconId::File).with_size(12), msg.clone())
     };
 
     // 文件名
@@ -152,37 +152,26 @@ fn build_file_row<'a>(state: &'a IcedState, entry: RemoteFileEntry) -> Element<'
     // 整体布局（行）
     let row_elem: Element<'a, Message> = row![
         icon_elem,
-        Space::new().width(Length::Fixed(6.0)),
+        Space::new().width(Length::Fixed(layout::SFTP_COL_NAME_ICON_SPACING)),
         name_elem,
         Space::new().width(Length::Fill),
-        container(perm_elem).width(Length::Fixed(80.0)),
-        Space::new().width(Length::Fixed(8.0)),
-        container(size_elem).width(Length::Fixed(60.0)),
-        Space::new().width(Length::Fixed(8.0)),
-        container(modified_elem).width(Length::Fixed(120.0)),
+        container(perm_elem).width(Length::Fixed(layout::SFTP_COL_PERMISSIONS)),
+        Space::new().width(Length::Fixed(layout::SFTP_COL_SPACING)),
+        container(size_elem).width(Length::Fixed(layout::SFTP_COL_SIZE)),
+        Space::new().width(Length::Fixed(layout::SFTP_COL_SPACING)),
+        container(modified_elem).width(Length::Fixed(layout::SFTP_COL_MODIFIED)),
     ]
     .spacing(0)
-    .align_y(iced::alignment::Vertical::Center)
+    .align_y(Vertical::Center)
     .into();
 
-    // 可点击的行（上一级条目使用特殊样式）
-    if is_parent_dir {
-        button(row_elem)
-            .padding([4, 12])
-            .width(Length::Fill)
-            .height(Length::Fixed(layout::SFTP_FILE_ROW_HEIGHT))
-            .on_press(msg)
-            .style(parent_dir_button_style(tokens))
-            .into()
-    } else {
-        button(row_elem)
+    button(row_elem)
             .padding([4, 12])
             .width(Length::Fill)
             .height(Length::Fixed(layout::SFTP_FILE_ROW_HEIGHT))
             .on_press(msg)
             .style(flat_button_style(tokens))
             .into()
-    }
 }
 
 /// 根据排序规则排序文件列表
@@ -245,23 +234,40 @@ fn flat_button_style(tokens: DesignTokens) -> impl Fn(&iced::Theme, button::Stat
     }
 }
 
-/// 父目录按钮样式（更明显的悬停效果）
-fn parent_dir_button_style(tokens: DesignTokens) -> impl Fn(&iced::Theme, button::Status) -> iced::widget::button::Style + 'static {
-    let surface_1 = tokens.surface_1;
-    let surface_3 = tokens.surface_3;
-    let accent_base = tokens.accent_base;
-    move |_: &iced::Theme, status: button::Status| {
-        let mut style = iced::widget::button::Style::default();
-        match status {
-            button::Status::Hovered => {
-                style.background = Some(iced::Background::Color(surface_1));
-                style.text_color = accent_base;
-            }
-            button::Status::Pressed => {
-                style.background = Some(iced::Background::Color(surface_3));
-            }
-            _ => {}
-        }
-        style
+// ============== 返回上级目录行 ==============
+
+/// 构建返回上级目录行
+pub(crate) fn parent_row<'a>(state: &'a IcedState, sftp: &'a SftpPanel) -> Element<'a, Message> {
+    let tokens = tokens_for_state(state);
+    let i18n = &state.model.i18n;
+
+    let show_parent = !sftp.current_path.is_empty() && sftp.current_path != "/";
+    if !show_parent {
+        return Space::new().width(Length::Fill).height(Length::Fixed(0.0)).into();
     }
+
+    let back_icon: Element<'a, ()> = icon(IconId::ArrowLeft, &tokens, IconState::Default);
+    let back_text = text(i18n.tr("iced.sftp.btn.parent"))
+        .size(12)
+        .color(tokens.text_secondary);
+
+    let content: Element<'a, Message> = row![
+        back_icon.map(|_| Message::SftpTab(crate::app::message::SftpTabMessage::SftpNavigateToParent)),
+        text(" ").color(tokens.text_secondary),
+        back_text,
+    ]
+    .spacing(6)
+    .align_y(iced::alignment::Vertical::Center)
+    .into();
+
+    container(
+        button(content)
+            .padding([4, 12])
+            .style(flat_button_style(tokens))
+            .width(Length::Fill)
+            .height(Length::Fixed(layout::SFTP_FILE_ROW_HEIGHT))
+            .on_press(Message::SftpTab(crate::app::message::SftpTabMessage::SftpNavigateToParent)),
+    )
+    .width(Length::Fill)
+    .into()
 }

@@ -8,6 +8,7 @@ use crate::app::components::helpers::tokens_for_state;
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::state::SftpPanel;
+use crate::app::widgets::chrome_button::style_top_icon;
 use crate::theme::icons::{icon, IconId, IconState};
 use crate::theme::layout;
 use crate::theme::DesignTokens;
@@ -75,7 +76,7 @@ fn layout_toggle_button(state: &IcedState) -> Element<'static, Message> {
         .width(Length::Fixed(layout::ICON_BUTTON_SIZE))
         .height(Length::Fixed(layout::ICON_BUTTON_SIZE))
         .padding(0)
-        .style(icon_button_style(tokens))
+        .style(style_top_icon(tokens))
         .on_press(Message::SftpTab(crate::app::message::SftpTabMessage::SftpToggleLayout))
         .into()
 }
@@ -93,7 +94,7 @@ fn refresh_button(state: &IcedState) -> Element<'static, Message> {
         .width(Length::Fixed(layout::ICON_BUTTON_SIZE))
         .height(Length::Fixed(layout::ICON_BUTTON_SIZE))
         .padding(0)
-        .style(icon_button_style(tokens))
+        .style(style_top_icon(tokens))
         .on_press(Message::SftpTab(crate::app::message::SftpTabMessage::SftpRefresh))
         .into()
 }
@@ -111,7 +112,7 @@ fn close_button(state: &IcedState) -> Element<'static, Message> {
         .width(Length::Fixed(layout::ICON_BUTTON_SIZE))
         .height(Length::Fixed(layout::ICON_BUTTON_SIZE))
         .padding(0)
-        .style(icon_button_style(tokens))
+        .style(style_top_icon(tokens))
         .on_press(Message::SftpTab(crate::app::message::SftpTabMessage::SftpToggle))
         .into()
 }
@@ -129,48 +130,5 @@ fn top_bar_style(tokens: DesignTokens) -> impl Fn(&iced::Theme) -> iced::widget:
             },
             ..Default::default()
         }
-    }
-}
-
-/// 图标按钮样式
-fn icon_button_style(tokens: DesignTokens) -> impl Fn(&iced::Theme, button::Status) -> iced::widget::button::Style + 'static {
-    let surface_2 = tokens.surface_2;
-    let surface_3 = tokens.surface_3;
-    move |_: &iced::Theme, status: button::Status| {
-        let mut style = iced::widget::button::Style::default();
-
-        match status {
-            button::Status::Hovered => {
-                style.background = Some(iced::Background::Color(surface_2));
-            }
-            button::Status::Pressed => {
-                style.background = Some(iced::Background::Color(surface_3));
-            }
-            _ => {}
-        }
-
-        style
-    }
-}
-
-/// 扁平按钮样式
-#[allow(dead_code)]
-fn flat_button_style(tokens: DesignTokens) -> impl Fn(&iced::Theme, button::Status) -> iced::widget::button::Style + 'static {
-    let surface_2 = tokens.surface_2;
-    let surface_3 = tokens.surface_3;
-    move |_: &iced::Theme, status: button::Status| {
-        let mut style = iced::widget::button::Style::default();
-
-        match status {
-            button::Status::Hovered => {
-                style.background = Some(iced::Background::Color(surface_2));
-            }
-            button::Status::Pressed => {
-                style.background = Some(iced::Background::Color(surface_3));
-            }
-            _ => {}
-        }
-
-        style
     }
 }

@@ -6,5 +6,4 @@ pub mod context_menu;
 pub mod file_list;
 pub mod pane_layout;
 pub mod panel;
-pub mod parent_row;
 pub mod top_bar;

@@ -32,6 +32,10 @@ pub enum IconId {
     Unpin,        // pin-bottom.svg - 取消固定
     PortForward,  // port-forward.svg - 端口转发
 
+    // SFTP 专用图标
+    Download,     // download.svg - 下载
+    NewFolder,    // folder-plus.svg - 新建文件夹
+
     // 布局与导航图标
     Layout,       // 切换布局
     ArrowRight,   // 向右箭头（左右布局指示）
@@ -48,7 +52,7 @@ pub enum IconId {
     Locked,        // 锁定
     Unlocked,      // 解锁
 
-    Foldere,
+    File,
 }
 
 /// 图标元数据
@@ -147,8 +151,27 @@ static ICON_REGISTRY: LazyLock<HashMap<IconId, IconMeta>> = LazyLock::new(|| {
         width: 15,
         height: 15,
     });
+
+    map.insert(IconId::File, IconMeta {
+        path: "assets/icon/file-text.svg",
+        width: 15,
+        height: 15,
+    });
+
     map.insert(IconId::Document, IconMeta {
         path: "assets/icon/document.svg",
+        width: 15,
+        height: 15,
+    });
+
+    // SFTP 专用图标
+    map.insert(IconId::Download, IconMeta {
+        path: "assets/icon/download.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::NewFolder, IconMeta {
+        path: "assets/icon/folder-plus.svg",
         width: 15,
         height: 15,
     });

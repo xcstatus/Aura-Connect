@@ -1,16 +1,19 @@
 //! SFTP 右键菜单组件
 
-use iced::widget::{button, column, container, text};
+use iced::alignment::Vertical;
+use iced::widget::{button, column, container, row, text, Space};
 use iced::{Element, Length};
 
 use crate::app::components::helpers::tokens_for_state;
 use crate::app::message::{Message, SftpContextMenuTarget, SftpTabMessage};
 use crate::app::state::{IcedState, SftpContextMenuState};
+use crate::app::widgets::chrome_button::style_chrome_secondary;
+use crate::theme::icons::{icon_view_with, IconId, IconOptions};
 
 /// 右键菜单项数据
 struct MenuItem {
     label: &'static str,
-    icon: &'static str,
+    icon_id: IconId,
     action: SftpTabMessage,
 }
 
@@ -29,17 +32,17 @@ pub(crate) fn context_menu<'a>(
                 vec![
                     MenuItem {
                         label: i18n.tr("iced.sftp.menu.download_folder"),
-                        icon: "⬇",
+                        icon_id: IconId::Download,
                         action: SftpTabMessage::SftpDownloadFolder(path.clone()),
                     },
                     MenuItem {
                         label: i18n.tr("iced.sftp.menu.copy_path"),
-                        icon: "📋",
+                        icon_id: IconId::QuickConnect, // Using as copy icon
                         action: SftpTabMessage::SftpCopyPath(path.clone()),
                     },
                     MenuItem {
                         label: i18n.tr("iced.sftp.menu.delete"),
-                        icon: "🗑",
+                        icon_id: IconId::Delete,
                         action: SftpTabMessage::SftpDelete(path.clone()),
                     },
                 ]
@@ -47,17 +50,17 @@ pub(crate) fn context_menu<'a>(
                 vec![
                     MenuItem {
                         label: i18n.tr("iced.sftp.menu.download"),
-                        icon: "⬇",
+                        icon_id: IconId::Download,
                         action: SftpTabMessage::SftpDownload(path.clone()),
                     },
                     MenuItem {
                         label: i18n.tr("iced.sftp.menu.copy_path"),
-                        icon: "📋",
+                        icon_id: IconId::QuickConnect,
                         action: SftpTabMessage::SftpCopyPath(path.clone()),
                     },
                     MenuItem {
                         label: i18n.tr("iced.sftp.menu.delete"),
-                        icon: "🗑",
+                        icon_id: IconId::Delete,
                         action: SftpTabMessage::SftpDelete(path.clone()),
                     },
                 ]
@@ -67,12 +70,12 @@ pub(crate) fn context_menu<'a>(
             vec![
                 MenuItem {
                     label: i18n.tr("iced.sftp.menu.create_folder"),
-                    icon: "📁",
+                    icon_id: IconId::NewFolder,
                     action: SftpTabMessage::SftpCreateFolder,
                 },
                 MenuItem {
                     label: i18n.tr("iced.sftp.menu.refresh"),
-                    icon: "🔄",
+                    icon_id: IconId::Reload,
                     action: SftpTabMessage::SftpRefresh,
                 },
             ]
@@ -85,7 +88,7 @@ pub(crate) fn context_menu<'a>(
             .map(|item| {
                 menu_item_row(
                     item.label,
-                    item.icon,
+                    item.icon_id,
                     Message::SftpTab(item.action.clone()),
                     &tokens,
                 )
@@ -97,31 +100,46 @@ pub(crate) fn context_menu<'a>(
 
     // 菜单容器
     container(menu_column)
-        .style(context_menu_style(&tokens))
+        .style(context_menu_container_style(&tokens))
         .into()
 }
 
 /// 构建单个菜单项行
 fn menu_item_row<'a>(
     label: &'a str,
-    icon: &'a str,
+    icon_id: IconId,
     action: Message,
     tokens: &crate::theme::DesignTokens,
 ) -> Element<'a, Message> {
-    let icon_elem = text(format!("{}  {}", icon, label))
+    let icon_elem = icon_view_with(
+        IconOptions::new(icon_id)
+            .with_size(12)
+            .with_color(tokens.text_secondary),
+        action.clone(),
+    );
+
+    let label_elem = text(label)
         .size(12)
         .color(tokens.text_primary);
 
-    button(icon_elem)
+    let content = row![
+        icon_elem,
+        Space::new().width(iced::Length::Fixed(8.0)),
+        label_elem,
+    ]
+    .spacing(0)
+    .align_y(Vertical::Center);
+
+    button(content)
         .width(Length::Fill)
         .padding([6, 12])
-        .style(context_menu_item_style(tokens))
+        .style(style_chrome_secondary(*tokens))
         .on_press(action)
         .into()
 }
 
-/// 右键菜单样式
-fn context_menu_style(
+/// 右键菜单容器样式
+fn context_menu_container_style(
     tokens: &crate::theme::DesignTokens,
 ) -> impl Fn(&iced::Theme) -> iced::widget::container::Style + 'static {
     let bg = tokens.surface_1;
@@ -136,28 +154,5 @@ fn context_menu_style(
             },
             ..Default::default()
         }
-    }
-}
-
-/// 右键菜单项按钮样式
-fn context_menu_item_style(
-    tokens: &crate::theme::DesignTokens,
-) -> impl Fn(&iced::Theme, button::Status) -> iced::widget::button::Style + 'static {
-    let surface_2 = tokens.surface_2;
-    let surface_3 = tokens.surface_3;
-    move |_: &iced::Theme, status: button::Status| {
-        let mut style = iced::widget::button::Style::default();
-
-        match status {
-            button::Status::Hovered => {
-                style.background = Some(iced::Background::Color(surface_2));
-            }
-            button::Status::Pressed => {
-                style.background = Some(iced::Background::Color(surface_3));
-            }
-            _ => {}
-        }
-
-        style
     }
 }

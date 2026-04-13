@@ -5,7 +5,7 @@ use iced::{Element, Length};
 
 use crate::app::components::helpers::{terminal_area_bg_style, tokens_for_state};
 use crate::app::components::sftp::file_list::file_list;
-use crate::app::components::sftp::parent_row::parent_row;
+use crate::app::components::sftp::file_list::parent_row;
 use crate::app::components::sftp::top_bar::sftp_top_bar;
 use crate::app::message::Message;
 use crate::app::state::IcedState;

@@ -176,3 +176,10 @@ pub const SFTP_PANEL_MIN_HEIGHT: f32 = 150.0;
 pub const SFTP_PANEL_DEFAULT_RATIO: f32 = 0.4;
 /// SFTP 左右布局比例
 pub const SFTP_PANEL_SIDE_RATIO: f32 = 0.4;
+
+/// SFTP 文件列表列宽
+pub const SFTP_COL_PERMISSIONS: f32 = 80.0;
+pub const SFTP_COL_SIZE: f32 = 60.0;
+pub const SFTP_COL_MODIFIED: f32 = 120.0;
+pub const SFTP_COL_SPACING: f32 = 8.0;
+pub const SFTP_COL_NAME_ICON_SPACING: f32 = 6.0;
