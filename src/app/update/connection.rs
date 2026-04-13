@@ -76,6 +76,8 @@ pub(crate) fn handle_inline_password_submit(
     state.model.draft.password = secrecy::SecretString::from(password);
     state.model.draft.edited = true;
     state.model.draft.password_error_count = 0;
+    // Clear the inline password input immediately after submission.
+    state.inline_password_input = secrecy::SecretString::from(String::new());
     super::super::update::update(state, Message::ConnectPressed)
 }
 

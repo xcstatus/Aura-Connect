@@ -389,6 +389,8 @@ pub(crate) struct IcedState {
     pub quick_connect_error_kind: Option<crate::app::model::ConnectErrorKind>,
     /// Raw password input while the inline password overlay is shown (decoupled from draft).
     pub inline_password_input: secrecy::SecretString,
+    /// Whether to show the inline password in plain text.
+    pub show_inline_password: bool,
     /// Keyboard-interactive auth flow state (when `quick_connect_flow == NeedAuthInteractive`).
     pub quick_connect_interactive: Option<InteractiveAuthFlow>,
     /// Host key confirmation overlay (Ask policy).
@@ -1064,6 +1066,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             connection_stage: ConnectionStage::None,
             quick_connect_error_kind: None,
             inline_password_input: secrecy::SecretString::from(String::new()),
+            show_inline_password: false,
             quick_connect_interactive: None,
             host_key_prompt: None,
             runtime_known_hosts: Vec::new(),

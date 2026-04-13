@@ -44,13 +44,15 @@ pub enum IconId {
     Folder,       // 文件夹
     Document,     // 文档/文件
 
-    // 状态图标（后续扩展）
-    Connected,     // 连接已建立
-    Connecting,    // 连接中（带动画）
-    Disconnected,  // 未连接
-    Error,         // 错误状态
-    Locked,        // 锁定
-    Unlocked,      // 解锁
+    // Status icons (extended)
+    Connected,     // Connection established
+    Connecting,    // Connecting (with animation)
+    Disconnected,  // Not connected
+    Error,         // Error state
+    Locked,        // Locked
+    Unlocked,      // Unlocked
+    Eye,           // Show password
+    EyeOff,        // Hide password
 
     File,
 }
@@ -176,6 +178,50 @@ static ICON_REGISTRY: LazyLock<HashMap<IconId, IconMeta>> = LazyLock::new(|| {
         height: 15,
     });
 
+    // Status icons (extended)
+    map.insert(IconId::Connected, IconMeta {
+        path: "assets/icon/check-circle.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::Connecting, IconMeta {
+        path: "assets/icon/loader.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::Disconnected, IconMeta {
+        path: "assets/icon/x-circle.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::Error, IconMeta {
+        path: "assets/icon/alert-circle.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::Locked, IconMeta {
+        path: "assets/icon/lock-closed.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::Unlocked, IconMeta {
+        path: "assets/icon/lock-open-1.svg",
+        width: 15,
+        height: 15,
+    });
+
+    // Password visibility icons
+    map.insert(IconId::Eye, IconMeta {
+        path: "assets/icon/eye-line.svg",
+        width: 15,
+        height: 10,
+    });
+    map.insert(IconId::EyeOff, IconMeta {
+        path: "assets/icon/eye-off-line.svg",
+        width: 15,
+        height: 10,
+    });
+
     map
 });
 
@@ -217,8 +263,9 @@ impl IconState {
 pub struct IconOptions {
     /// 图标 ID
     pub id: IconId,
-    /// 渲染尺寸（宽高相同）
-    pub size: u32,
+    /// 渲染尺寸
+    pub width: u32,
+    pub height: u32,
     /// 主题颜色
     pub color: Color,
     /// 旋转角度（0-360），用于动画
@@ -229,7 +276,8 @@ impl Default for IconOptions {
     fn default() -> Self {
         Self {
             id: IconId::Plus,
-            size: 15,
+            width: 15,
+            height: 15,
             color: Color::from_rgb8(0xa0, 0xa0, 0xa5),
             rotation: None,
         }
@@ -242,7 +290,18 @@ impl IconOptions {
     }
 
     pub fn with_size(mut self, size: u32) -> Self {
-        self.size = size;
+        self.width = size;
+        self.height = size;
+        self
+    }
+
+    pub fn with_width(mut self, width: u32) -> Self {
+        self.width = width;
+        self
+    }
+
+    pub fn with_height(mut self, height: u32) -> Self {
+        self.height = height;
         self
     }
 
@@ -260,7 +319,8 @@ impl IconOptions {
     pub fn from_state(id: IconId, tokens: &crate::theme::DesignTokens, state: IconState) -> Self {
         Self {
             id,
-            size: 15,
+            width: 15,
+            height: 15,
             color: state.color(tokens),
             rotation: None,
         }
@@ -338,15 +398,15 @@ pub fn icon_view(options: IconOptions) -> iced::Element<'static, ()> {
         Some(p) => p,
         None => {
             return Space::new()
-                .width(Length::Fixed(options.size as f32))
-                .height(Length::Fixed(options.size as f32))
+                .width(Length::Fixed(options.width as f32))
+                .height(Length::Fixed(options.height as f32))
                 .into();
         }
     };
 
     let mut svg = Svg::from_path(&path)
-        .width(Length::Fixed(options.size as f32))
-        .height(Length::Fixed(options.size as f32));
+        .width(Length::Fixed(options.width as f32))
+        .height(Length::Fixed(options.height as f32));
 
     // 设置颜色滤镜
     svg = svg.style(move |_theme, _status| Style {
