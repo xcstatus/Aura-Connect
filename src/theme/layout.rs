@@ -17,11 +17,14 @@ pub const BTN_HEIGHT_STANDARD: f32 = 32.0;
 /// 图标按钮尺寸
 pub const ICON_BUTTON_SIZE: f32 = 28.0;           // 标准图标按钮 28×28
 pub const ICON_BUTTON_SIZE_COMPACT: f32 = 24.0;   // 紧凑图标按钮 24×24
-pub const ICON_SIZE_COMPACT: f32 = 22.0;          // 紧凑按钮内图标视觉尺寸
+pub const ICON_SIZE_COMPACT: f32 = 12.0;          // 紧凑按钮内图标视觉尺寸
 
 /// 按钮水平 / 垂直内边距（规范 8×12）
 pub const BTN_PADDING_H: f32 = 12.0;
 pub const BTN_PADDING_V: f32 = 8.0;
+
+/// 按钮组之间的间距
+pub const BUTTON_GROUP_SPACING: f32 = 4.0;
 
 /// 顶栏 / Tab 行高
 pub const TOP_BAR_HEIGHT: f32 = 36.0;

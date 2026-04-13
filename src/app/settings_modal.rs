@@ -8,7 +8,8 @@ use iced::widget::{
     Space, Stack, button, checkbox, column, container, pick_list, radio, row,
     scrollable, slider, text, text_input,
 };
-use iced::{Border, Color, Element, Theme};
+use iced::{Border, Color, Element, Theme, Padding};
+use iced::border::Radius;
 
 use crate::session::{ProtocolType, SessionProfile, TransportConfig};
 use crate::settings::KnownHostRecord;
@@ -29,7 +30,7 @@ pub(crate) fn max_sub_tab(category: SettingsCategory) -> usize {
         SettingsCategory::General => 1,
         SettingsCategory::ColorScheme => 0,
         SettingsCategory::Terminal => 2,
-        SettingsCategory::Connection => 3,
+        SettingsCategory::Connection => 4,
         SettingsCategory::Security => 1,
         SettingsCategory::Backup => 0,
     }
@@ -71,11 +72,10 @@ pub(crate) fn modal_stack(state: &IcedState) -> Element<'_, Message> {
 }
 
 fn modal_card(state: &IcedState) -> Element<'_, Message> {
-    let i18n = &state.model.i18n;
     let tokens = settings_tokens(state);
     let sidebar = settings_sidebar(state, tokens);
     let body = column![
-        settings_header_row(i18n, tokens),
+        settings_header_row(tokens),
         settings_sub_tab_row(state, tokens),
         scrollable(settings_main_content(state, tokens))
             .direction(ScrollDirection::Vertical(Scrollbar::default()))
@@ -188,27 +188,32 @@ fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mess
         .width(iced::Length::Fixed(layout::SETTINGS_SIDEBAR_WIDTH))
         .height(iced::Length::Fill)
         .style(move |_t: &Theme| {
-            container::Style::default().background(bg_secondary)
+            container::Style::default()
+                .background(bg_secondary)
+                .border(Border {
+                    width: 3.0,
+                    color: bg_secondary,
+                    radius: Radius{
+                        top_left: 12.0,
+                        top_right: 0.0,
+                        bottom_right: 0.0,
+                        bottom_left: 12.0,
+                    },
+                })
         })
         .into()
 }
 
-fn settings_header_row(i18n: &crate::i18n::I18n, tokens: DesignTokens) -> Element<'_, Message> {
-    let text_primary = tokens.text_primary;
-    let btn_style = style_top_icon(tokens);
+fn settings_header_row(tokens: DesignTokens) -> Element<'static, Message> {
     container(
-        row![
-            text(i18n.tr("iced.settings.title")).size(16).style(move |_t: &Theme| text::Style {
-                color: Some(text_primary),
-            }),
-            Space::new().width(iced::Length::Fill),
-            icon_close_button(tokens, btn_style),
-        ]
-        .align_y(Alignment::Center),
+        row![]
+            .push(iced::widget::space::horizontal())
+            .push(icon_close_button(tokens))
+            .align_y(Alignment::Center),
     )
     .width(iced::Length::Fill)
     .height(iced::Length::Fixed(layout::SETTINGS_HEADER_HEIGHT))
-    .padding([4, 12])
+    .padding(0)
     .into()
 }
 
@@ -231,6 +236,7 @@ fn sub_tab_labels(category: SettingsCategory, i18n: &crate::i18n::I18n) -> Vec<S
             "iced.settings.sub.conn.telnet",
             "iced.settings.sub.conn.serial",
             "iced.settings.sub.conn.advanced",
+            "iced.settings.sub.conn.port_forward",
         ],
         SettingsCategory::Security => &[
             "iced.settings.sub.security.policy",
@@ -248,7 +254,7 @@ fn settings_sub_tab_row(state: &IcedState, tokens: DesignTokens) -> Element<'_, 
     let current = state.settings_sub_tab[cat_i].min(max_sub_tab(state.settings_category));
     let accent_base = tokens.accent_base;
     let text_secondary = tokens.text_secondary;
-    let border_subtle = tokens.border_subtle;
+    // let border_subtle = tokens.border_subtle;
 
     let mut r = row![].spacing(layout::SETTINGS_TAB_SPACING).align_y(Alignment::Center);
     for (idx, lab) in labels.iter().enumerate() {
@@ -257,16 +263,17 @@ fn settings_sub_tab_row(state: &IcedState, tokens: DesignTokens) -> Element<'_, 
         let btn_color = if active { accent_base } else { text_secondary };
         let btn = button(
             container(
-                text(lab_clone).size(13).style(move |_t: &Theme| text::Style {
+                text(lab_clone).size(18).style(move |_t: &Theme| text::Style {
                     color: Some(btn_color),
                 })
             )
         )
-            .on_press(Message::SettingsSubTabChanged(idx))
-            .style(move |theme: &Theme, status: iced::widget::button::Status| {
-                // 所有 Tab 按钮都使用极简样式，选中态通过文字颜色区分
-                style_tab_strip(tokens)(theme, status)
-            });
+        .padding(0)
+        .on_press(Message::SettingsSubTabChanged(idx))
+        .style(move |theme: &Theme, status: iced::widget::button::Status| {
+            // 所有 Tab 按钮都使用极简样式，选中态通过文字颜色区分
+            style_tab_strip(tokens)(theme, status)
+        });
         r = r.push(btn);
     }
 
@@ -274,15 +281,15 @@ fn settings_sub_tab_row(state: &IcedState, tokens: DesignTokens) -> Element<'_, 
     container(r)
         .width(iced::Length::Fill)
         .height(iced::Length::Fixed(layout::SETTINGS_TAB_HEIGHT))
-        .padding([8, 24])
-        .style(move |_t: &Theme| {
-            container::Style::default()
-                .border(Border {
-                    width: 1.0,
-                    color: border_subtle,
-                    radius: 0.0.into(),
-                })
-        })
+        .padding([8,layout::SETTINGS_CONTENT_PADDING as u16])
+        // .style(move |_t: &Theme| {
+        //     container::Style::default()
+        //         .border(Border {
+        //             width: 1.0,
+        //             color: border_subtle,
+        //             radius: 0.0.into(),
+        //         })
+        // })
         .into()
 }
 
@@ -668,6 +675,7 @@ fn connection_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Eleme
             .width(iced::Length::Fill)
             .into()
         }
+        4 => port_forward_pane(state, tokens),
         _ => Space::new().into(),
     }
 }
@@ -868,6 +876,54 @@ fn security_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
     }
 }
 
+/// 端口转发配置面板
+fn port_forward_pane<'a>(state: &'a IcedState, tokens: DesignTokens) -> Element<'a, Message> {
+    let i18n = &state.model.i18n;
+    let text_primary = tokens.text_primary;
+    let text_secondary = tokens.text_secondary;
+
+    // TODO: 从状态中获取端口转发配置
+    // 当前为占位 UI
+    let mut col = column![
+        section_title(i18n.tr("iced.settings.conn.port_forward.title"), tokens),
+        text(i18n.tr("iced.settings.conn.port_forward.description")).size(12).style(move |_t: &Theme| text::Style {
+            color: Some(text_secondary),
+        }),
+        Space::new().height(iced::Length::Fixed(16.0)),
+        section_title(i18n.tr("iced.settings.conn.port_forward.local_title"), tokens),
+    ]
+    .spacing(layout::SETTINGS_ITEM_SPACING)
+    .padding(layout::SETTINGS_CONTENT_PADDING as u16)
+    .width(iced::Length::Fill);
+
+    // 添加按钮
+    let add_btn = button(
+        container(
+            row![
+                text("+").size(16).style(move |_t: &Theme| text::Style { color: Some(tokens.accent_base) }),
+                text(i18n.tr("iced.settings.conn.port_forward.add")).size(13).style(move |_t: &Theme| text::Style { color: Some(tokens.accent_base) }),
+            ]
+            .spacing(4)
+            .align_y(iced::alignment::Vertical::Center)
+        )
+        .padding([8, 16])
+    )
+    .on_press(Message::SettingsFieldChanged(SettingsField::AddPortForward))
+    .style(style_chrome_primary(tokens));
+
+    col = col.push(add_btn);
+
+    // TODO: 后续添加端口转发列表渲染
+    // 目前为空列表提示
+    col = col.push(
+        text(i18n.tr("iced.settings.conn.port_forward.empty")).size(12).style(move |_t: &Theme| text::Style {
+            color: Some(text_secondary),
+        })
+    );
+
+    col.into()
+}
+
 /// 构建主机指纹列表面板（包含验证策略 + 主机列表）
 fn host_key_table_pane<'a>(state: &'a IcedState, tokens: DesignTokens) -> Element<'a, Message> {
     let i18n = &state.model.i18n;
@@ -982,7 +1038,7 @@ fn host_key_table_row<'a>(
     });
     let delete_btn = button(
         icon_view_with(
-            IconOptions::new(IconId::Close)
+            IconOptions::new(IconId::Delete)
                 .with_size(12)
                 .with_color(text_secondary),
             delete_msg.clone(),
@@ -1199,20 +1255,18 @@ fn restart_banner(state: &IcedState, tokens: DesignTokens) -> Element<'_, Messag
 // ============================================================================
 
 /// 创建关闭图标按钮
-fn icon_close_button(
-    tokens: DesignTokens,
-    btn_style: impl Fn(&Theme, button::Status) -> button::Style + 'static,
-) -> Element<'static, Message> {
+fn icon_close_button(tokens: DesignTokens) -> Element<'static, Message> {
     let close_icon = icon_view_with(
         IconOptions::new(IconId::Close)
             .with_size(14)
             .with_color(tokens.text_secondary),
         Message::SettingsDismiss,
     );
+    
     button(close_icon)
         .on_press(Message::SettingsDismiss)
-        .width(iced::Length::Fixed(28.0))
-        .height(iced::Length::Fixed(28.0))
-        .style(btn_style)
+        .width(iced::Length::Fixed(layout::BTN_HEIGHT_STANDARD))
+        .height(iced::Length::Fixed(layout::BTN_HEIGHT_STANDARD))
+        .style(style_top_icon(tokens))
         .into()
 }

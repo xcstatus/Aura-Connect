@@ -27,11 +27,10 @@ pub(crate) fn vault_unlock_modal(state: &IcedState) -> Element<'_, Message> {
 
     let i18n = &state.model.i18n;
     use secrecy::ExposeSecret;
-    let mut body = column![
+
+    let body = column![
         row![
             text(title).size(16),
-            Space::new().width(iced::Length::Fill),
-            icon_close_button(tokens),
         ]
         .align_y(Alignment::Center),
         text_input(state.model.i18n.tr("iced.vault_unlock.password_placeholder"), unlock.password.expose_secret())
@@ -40,6 +39,8 @@ pub(crate) fn vault_unlock_modal(state: &IcedState) -> Element<'_, Message> {
     ]
     .spacing(10)
     .width(iced::Length::Fill);
+
+    let mut body = column![body].spacing(10).width(iced::Length::Fill);
 
     if unlock.pending_save_credentials_profile_id.is_some() {
         body = body.push(text(state.model.i18n.tr("iced.vault_unlock.hint_save_credentials")).size(12));
@@ -61,17 +62,42 @@ pub(crate) fn vault_unlock_modal(state: &IcedState) -> Element<'_, Message> {
         .spacing(8),
     );
 
-    let card = container(body)
-        .width(iced::Length::Fixed(520.0))
-        .padding(16)
-        .style(top_bar_material_style(tokens));
+    use iced::widget::Stack;
+    // 关闭按钮使用 Stack 绝对定位到弹窗右上角，与弹窗边缘无间隙
+    let close_btn_overlay = container(
+        container(
+            icon_close_button(tokens)
+        )
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fixed(32.0))
+        .align_x(iced::alignment::Horizontal::Right)
+        .padding(0),
+    )
+    .width(iced::Length::Fill)
+    .height(iced::Length::Fixed(32.0));
+
+    let card = container(
+        Stack::with_children([
+            container(body)
+                .padding(iced::Padding {
+                    top: 16.0,
+                    right: 16.0,
+                    bottom: 16.0,
+                    left: 16.0,
+                })
+                .style(top_bar_material_style(tokens))
+                .into(),
+            close_btn_overlay.into(),
+        ])
+    )
+    .width(iced::Length::Fixed(520.0));
+
     let centered = container(card)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
         .align_x(iced::alignment::Horizontal::Center)
         .align_y(iced::alignment::Vertical::Center);
 
-    use iced::widget::Stack;
     Stack::with_children([scrim.into(), centered.into()])
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
@@ -82,7 +108,7 @@ pub(crate) fn vault_unlock_modal(state: &IcedState) -> Element<'_, Message> {
 // 辅助函数
 // ============================================================================
 
-/// 创建关闭图标按钮
+/// 创建关闭图标按钮（尺寸与弹窗 header 高度对齐）
 fn icon_close_button(tokens: crate::theme::DesignTokens) -> Element<'static, Message> {
     let close_icon = icon_view_with(
         IconOptions::new(IconId::Close)
@@ -92,8 +118,9 @@ fn icon_close_button(tokens: crate::theme::DesignTokens) -> Element<'static, Mes
     );
     button(close_icon)
         .on_press(Message::VaultUnlockClose)
-        .width(iced::Length::Fixed(28.0))
-        .height(iced::Length::Fixed(28.0))
+        .width(iced::Length::Fixed(32.0))
+        .height(iced::Length::Fixed(32.0))
+        .padding(0)
         .style(style_top_icon(tokens))
         .into()
 }
