@@ -35,14 +35,16 @@ fn compute_tick_ms(state: &IcedState) -> u32 {
 /// Handle Tick message: pump SSH sessions, update perf counters, cursor blink.
 pub(crate) fn handle_tick(state: &mut IcedState) -> Task<Message> {
     // 安全边界：欢迎页且无页签时，所有需要终端的操作都跳过
-    if state.tab_panes.is_empty() {
+    let is_empty = state.tab_panes.is_empty();
+    state.tick_count += 1;
+    if is_empty {
+        state.tick_modal_anims(tick_ms);
         return Task::none();
     }
 
     let now = settings::unix_time_ms();
     let tick_start = std::time::Instant::now();
 
-    state.tick_count += 1;
     state.perf.ticks += 1;
 
     // Ensure tab arrays match current tab count (grows with new tabs).

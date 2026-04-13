@@ -15,7 +15,7 @@ use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::style_chrome_primary;
 use crate::app::widgets::chrome_button::style_chrome_secondary;
-use crate::theme::icons::{icon_view, icon_view_with, IconId, IconOptions, IconState};
+use crate::theme::icons::{icon_view, icon_view_with, IconId, IconOptions};
 
 /// Quick connect new connection form: host/port, user, password, auth method, etc.
 /// Uses consistent i18n keys with the session editor (session_form.*)

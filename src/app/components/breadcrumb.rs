@@ -75,7 +75,7 @@ pub(crate) fn breadcrumb(state: &IcedState) -> Element<'_, Message> {
 
 /// 构建右侧操作按钮行。
 fn build_action_buttons(
-    state: &IcedState,
+    _state: &IcedState,
     tokens: crate::theme::DesignTokens,
     _i18n: &crate::i18n::I18n,
 ) -> Element<'static, Message> {
@@ -103,7 +103,7 @@ fn build_action_buttons(
 
     // 端口转发按钮
     let port_icon = icon_view_with(
-        IconOptions::new(IconId::QuickConnect)
+        IconOptions::new(IconId::PortForward)
             .with_size(15)
             .with_color(tokens.text_secondary),
         Message::BreadcrumbPortForward,

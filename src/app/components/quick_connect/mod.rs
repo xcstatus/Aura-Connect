@@ -2,10 +2,6 @@ pub mod form;
 pub mod modal;
 pub mod picker;
 
-pub(crate) use form::quick_connect_new_form;
-pub(crate) use modal::{quick_connect_modal_stack, quick_connect_panel_content};
-pub(crate) use picker::quick_connect_picker;
-
 use crate::session::{SessionProfile, TransportConfig};
 
 /// Groups SSH profiles by folder, returning Vec<(folder_name, profiles)>.

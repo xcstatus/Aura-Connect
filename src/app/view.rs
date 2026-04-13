@@ -25,7 +25,7 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
         let welcome_with_overlays: Element<'_, Message> = {
             let mut layers: Vec<Element<'_, Message>> = vec![welcome_content];
             if state.quick_connect_anim.phase != super::state::ModalAnimPhase::Closed {
-                layers.push(quick_connect::quick_connect_modal_stack(state));
+                layers.push(quick_connect::modal::quick_connect_modal_stack(state));
             }
             if state.settings_anim.phase != super::state::ModalAnimPhase::Closed {
                 layers.push(settings_modal::modal_stack(state));
@@ -121,7 +121,7 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
         // Render quick connect modal when anim phase is opening/open/closing
         // (not yet fully closed). This allows the close animation to play.
         if state.quick_connect_anim.phase != super::state::ModalAnimPhase::Closed {
-            layers.push(quick_connect::quick_connect_modal_stack(state));
+            layers.push(quick_connect::modal::quick_connect_modal_stack(state));
         }
         if state.settings_anim.phase != super::state::ModalAnimPhase::Closed {
             layers.push(settings_modal::modal_stack(state));

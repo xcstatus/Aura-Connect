@@ -1,9 +1,9 @@
 use iced::alignment::Alignment;
 use iced::widget::{button, column, container, mouse_area, row, scrollable, text, tooltip, Space};
-use iced::{Element, Theme, Padding};
+use iced::{Element, Theme};
 
 use crate::app::chrome::{
-    TOP_BAR_EDGE_PAD, TOP_BAR_H, TOP_CONTROL_GROUP_W, TOP_ICON_BTN,
+    TOP_BAR_H, TOP_CONTROL_GROUP_W, TOP_ICON_BTN,
     TRAFFIC_LIGHT_BAND_W, TRAFFIC_LIGHT_DIAMETER, tab_strip_width,
 };
 use crate::app::components::helpers::tokens_for_state;
@@ -271,7 +271,6 @@ fn build_action_group(state: &IcedState, tokens: crate::theme::DesignTokens) -> 
 
     let quick_tip = text(i18n.tr("iced.topbar.quick_connect")).size(12);
     let new_tip = text(i18n.tr("iced.topbar.new_tab")).size(12);
-    use iced::Color;
     container(
         row![
             tooltip(btn_quick, quick_tip, iced::widget::tooltip::Position::Bottom),
