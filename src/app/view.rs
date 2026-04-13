@@ -8,19 +8,20 @@ use super::components::overlays;
 use super::components::quick_connect;
 use super::message::Message;
 use super::settings_modal;
-use super::state::IcedState;
+use super::state::{IcedState, PageState};
 use super::terminal_viewport;
 
 pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
     let tick_ms = state.tick_ms();
-    let top_bar = if state.show_welcome {
+    let page = state.page_state();
+    let top_bar = if page == PageState::Welcome {
         components::top_bar::title_bar(state, tick_ms)
     } else {
         components::top_bar::top_bar(state, tick_ms)
     };
 
     // Welcome page: no terminal, just centered welcome content
-    if state.show_welcome {
+    if page == PageState::Welcome {
         let welcome_content = components::welcome::welcome_view(state);
         let welcome_with_overlays: Element<'_, Message> = {
             let mut layers: Vec<Element<'_, Message>> = vec![welcome_content];
@@ -55,7 +56,7 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
     }
 
     // 防御：欢迎页关闭但 tabs 尚未创建时（如连接消息到达但页签还在创建中），显示占位
-    if !state.show_welcome && state.tab_panes.is_empty() {
+    if page == PageState::Welcome && state.tab_panes.is_empty() {
         let tokens = tokens_for_state(state);
         let main_chrome = crate::app::chrome::main_chrome_style(tokens);
         return container(

@@ -245,6 +245,13 @@ impl Default for ModalAnimState {
     }
 }
 
+/// Page display state (derived from tabs.is_empty()).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PageState {
+    Welcome,
+    Tabs,
+}
+
 /// Per-tab terminal controller and runtime state (**1:1** with one [`IcedTab`]).
 ///
 /// SSH sessions are managed by [`SessionManager`] in [`IcedState`], shared across all tabs.
@@ -420,6 +427,32 @@ impl IcedState {
     pub(crate) fn is_quick_connect_visible(&self) -> bool {
         self.quick_connect_open
             || self.quick_connect_anim.phase != ModalAnimPhase::Closed
+    }
+
+    /// Get current page state (always in sync with tabs).
+    pub(crate) fn page_state(&self) -> PageState {
+        if self.tabs.is_empty() {
+            PageState::Welcome
+        } else {
+            PageState::Tabs
+        }
+    }
+
+    /// Close all modals and reset related states.
+    /// Call this when switching pages (e.g., add tab, close last tab).
+    pub(crate) fn close_all_modals(&mut self) {
+        self.quick_connect_open = false;
+        self.settings_modal_open = false;
+        self.quick_connect_anim = ModalAnimState::default();
+        self.settings_anim = ModalAnimState::default();
+        self.session_editor = None;
+        self.vault_flow = None;
+        self.vault_unlock = None;
+        self.host_key_prompt = None;
+        self.quick_connect_flow = QuickConnectFlow::Idle;
+        self.quick_connect_error_kind = None;
+        self.quick_connect_interactive = None;
+        self.connection_stage = ConnectionStage::None;
     }
 
     /// 计算指定 tab 的 chip 宽度（与 build_tab_strip 中的逻辑保持一致）。
@@ -998,4 +1031,45 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
         },
         Task::none(),
     )
+}
+
+#[cfg(test)]
+mod state_tests {
+    use super::*;
+
+    /// Test that PageState derives correctly.
+    #[test]
+    fn test_page_state_derives() {
+        assert_eq!(PageState::Welcome, PageState::Welcome);
+        assert_eq!(PageState::Tabs, PageState::Tabs);
+        assert_ne!(PageState::Welcome, PageState::Tabs);
+
+        // Test Copy trait
+        let ps = PageState::Welcome;
+        let _ = ps; // suppress unused warning
+    }
+
+    /// Test ModalAnimPhase transitions.
+    #[test]
+    fn test_modal_anim_state_default() {
+        let state = ModalAnimState::default();
+        assert_eq!(state.phase, ModalAnimPhase::Closed);
+        assert_eq!(state.enter_tick, 0);
+    }
+
+    /// Test ModalAnimState::opening creates correct state.
+    #[test]
+    fn test_modal_anim_state_opening() {
+        let state = ModalAnimState::opening(100);
+        assert_eq!(state.phase, ModalAnimPhase::Opening);
+        assert_eq!(state.enter_tick, 100);
+    }
+
+    /// Test ModalAnimState::closing creates correct state.
+    #[test]
+    fn test_modal_anim_state_closing() {
+        let state = ModalAnimState::closing(200);
+        assert_eq!(state.phase, ModalAnimPhase::Closing);
+        assert_eq!(state.enter_tick, 200);
+    }
 }
