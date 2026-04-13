@@ -410,6 +410,18 @@ impl IcedState {
             .is_some_and(|s| s.is_connected())
     }
 
+    /// Settings center visibility (considers animation state).
+    pub(crate) fn is_settings_visible(&self) -> bool {
+        self.settings_modal_open
+            || self.settings_anim.phase != ModalAnimPhase::Closed
+    }
+
+    /// Quick connect visibility (considers animation state).
+    pub(crate) fn is_quick_connect_visible(&self) -> bool {
+        self.quick_connect_open
+            || self.quick_connect_anim.phase != ModalAnimPhase::Closed
+    }
+
     /// 计算指定 tab 的 chip 宽度（与 build_tab_strip 中的逻辑保持一致）。
     fn chip_width_for_index(&self, _i: usize, available_w: f32) -> f32 {
         use crate::theme::layout::{TAB_CHIP_WIDTH, TAB_CHIP_MIN_WIDTH};

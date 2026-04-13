@@ -37,8 +37,11 @@ pub(crate) fn handle_tick(state: &mut IcedState) -> Task<Message> {
     // 安全边界：欢迎页且无页签时，所有需要终端的操作都跳过
     let is_empty = state.tab_panes.is_empty();
     state.tick_count += 1;
+
+    // Compute tick_ms before early return to ensure modal animations work in welcome page
+    let tick_ms = compute_tick_ms(state) as f32;
+    state.tick_modal_anims(tick_ms);
     if is_empty {
-        state.tick_modal_anims(tick_ms);
         return Task::none();
     }
 
@@ -50,7 +53,6 @@ pub(crate) fn handle_tick(state: &mut IcedState) -> Task<Message> {
     // Ensure tab arrays match current tab count (grows with new tabs).
     state.perf.ensure_tabs(state.tab_panes.len());
 
-    let tick_ms = compute_tick_ms(state) as f32;
     state.tick_tab_anims(tick_ms);
     state.tick_modal_anims(tick_ms);
 
