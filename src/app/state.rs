@@ -5,12 +5,83 @@ use crate::app::model::AppModel;
 use crate::app::ssh_session_manager::SessionManager;
 use crate::app::terminal_widget::RowWidgetCache;
 use crate::settings::TerminalSettings;
+use crate::sftp::RemoteFileEntry;
 use crate::utils::StorageManager;
 use crate::terminal::controller::TerminalController;
 use crate::theme::layout::{self, TAB_CHIP_WIDTH};
 use secrecy::SecretString;
 
 use super::message::{Message, SettingsCategory};
+
+/// 窗格布局类型（用于 SFTP 多窗格支持）
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum PaneLayout {
+    /// 仅显示终端
+    #[default]
+    TerminalOnly,
+    /// 终端在上，SFTP 在下
+    TerminalAboveSftp {
+        /// SFTP 面板高度比例（0.0 ~ 1.0）
+        sftp_ratio: f32,
+    },
+    /// SFTP 在左，终端在右
+    SftpBesideTerminal {
+        /// SFTP 面板宽度比例（0.0 ~ 1.0）
+        sftp_ratio: f32,
+    },
+}
+
+impl PaneLayout {
+    /// 获取默认的 SFTP 面板比例
+    pub fn default_sftp_ratio(&self) -> f32 {
+        match self {
+            PaneLayout::TerminalOnly => 0.5,
+            PaneLayout::TerminalAboveSftp { .. } => 0.5,
+            PaneLayout::SftpBesideTerminal { .. } => 0.4,
+        }
+    }
+}
+
+/// SFTP 面板状态
+#[derive(Debug, Clone, Default)]
+pub struct SftpPanel {
+    /// SFTP 会话（连接成功后初始化）
+    pub session: Option<std::sync::Arc<std::sync::Mutex<Option<crate::sftp::SftpSession>>>>,
+    /// 当前目录的文件列表
+    pub entries: Vec<RemoteFileEntry>,
+    /// 当前路径
+    pub current_path: String,
+    /// 面包屑导航历史
+    pub path_history: Vec<String>,
+    /// 排序字段
+    pub sort_by: crate::sftp::SftpSortBy,
+    /// 排序方向
+    pub sort_direction: crate::sftp::SortDirection,
+    /// 是否正在加载
+    pub is_loading: bool,
+    /// 错误信息
+    pub error: Option<String>,
+    /// 选中项索引
+    pub selected_index: Option<usize>,
+    /// 动画状态（面板展开/收起）
+    pub anim_state: ModalAnimState,
+    /// 本地下载目录
+    pub local_download_path: String,
+    /// 是否显示隐藏文件
+    pub show_hidden: bool,
+    /// 右键菜单状态
+    pub context_menu: Option<SftpContextMenuState>,
+}
+
+/// SFTP 右键菜单状态
+#[derive(Debug, Clone)]
+pub struct SftpContextMenuState {
+    /// 菜单位置（相对于面板）
+    pub x: f32,
+    pub y: f32,
+    /// 目标
+    pub target: crate::app::message::SftpContextMenuTarget,
+}
 
 /// Fixed-size circular buffer for sliding window statistics.
 #[derive(Debug, Clone)]
@@ -265,6 +336,11 @@ pub(crate) struct TabPane {
     /// Per-row Iced widget cache for dirty-row incremental rendering in Styled mode.
     /// Grows lazily to viewport rows and is invalidated on resize/render mode change.
     pub styled_row_cache: RowWidgetCache,
+
+    /// SFTP 面板布局
+    pub pane_layout: PaneLayout,
+    /// SFTP 面板状态（按需初始化）
+    pub sftp_panel: Option<SftpPanel>,
 }
 
 impl TabPane {
@@ -277,6 +353,8 @@ impl TabPane {
             last_terminal_focus_sent: None,
             last_pump_ms: 0,
             styled_row_cache: RowWidgetCache::new(),
+            pane_layout: PaneLayout::default(),
+            sftp_panel: None,
         }
     }
 }

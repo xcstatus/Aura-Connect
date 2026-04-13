@@ -88,16 +88,18 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
     };
 
     let bottom_bar = components::status_bar::status_bar(state);
-    let terminal_panel = components::terminal_view::terminal_panel(state);
 
-    // 构建主体内容区域（breadcrumb + 终端，终端弹性填满中间空间）
+    // 使用标签内容视图（终端 + 可选的 SFTP 面板）
+    let tab_content = components::sftp::pane_layout::tab_content(state);
+
+    // 构建主体内容区域（breadcrumb + 内容，终端/SFTP 弹性填满中间空间）
     let below_top_fill: Element<'_, Message> = if let Some(bc) = breadcrumb {
-        column![bc, terminal_panel]
+        column![bc, tab_content]
             .spacing(term_vp.main_column_spacing())
             .height(iced::Length::Fill)
             .into()
     } else {
-        terminal_panel.into()
+        tab_content
     };
 
     // 底栏固定在底部，主体区域填满剩余空间

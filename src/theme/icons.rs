@@ -24,11 +24,21 @@ pub enum IconId {
     Plus,         // plus.svg - 新建
     Gear,         // gear.svg - 设置
     Close,        // cross-2.svg - 关闭
+    Delete,       // trash.svg - 删除
 
     // Breadcrumb 图标
     Sftp,         // file.svg - SFTP 文件传输
     Pin,          // pin-top.svg - 固定 breadcrumb
     Unpin,        // pin-bottom.svg - 取消固定
+    PortForward,  // port-forward.svg - 端口转发
+
+    // 布局与导航图标
+    Layout,       // 切换布局
+    ArrowRight,   // 向右箭头（左右布局指示）
+    ArrowDown,    // 向下箭头（上下布局指示）
+    ArrowLeft,    // 向左箭头
+    Folder,       // 文件夹
+    Document,     // 文档/文件
 
     // 状态图标（后续扩展）
     Connected,     // 连接已建立
@@ -37,6 +47,8 @@ pub enum IconId {
     Error,         // 错误状态
     Locked,        // 锁定
     Unlocked,      // 解锁
+
+    Foldere,
 }
 
 /// 图标元数据
@@ -84,7 +96,7 @@ static ICON_REGISTRY: LazyLock<HashMap<IconId, IconMeta>> = LazyLock::new(|| {
 
     // Breadcrumb 图标
     map.insert(IconId::Sftp, IconMeta {
-        path: "assets/icon/file.svg",
+        path: "assets/icon/folder-open-fill.svg",
         width: 15,
         height: 15,
     });
@@ -95,6 +107,48 @@ static ICON_REGISTRY: LazyLock<HashMap<IconId, IconMeta>> = LazyLock::new(|| {
     });
     map.insert(IconId::Unpin, IconMeta {
         path: "assets/icon/pin-bottom.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::Delete, IconMeta {
+        path: "assets/icon/trash.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::PortForward, IconMeta {
+        path: "assets/icon/port-forward.svg",
+        width: 15,
+        height: 15,
+    });
+
+    // 布局与导航图标
+    map.insert(IconId::Layout, IconMeta {
+        path: "assets/icon/layout.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::ArrowRight, IconMeta {
+        path: "assets/icon/arrow-right.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::ArrowDown, IconMeta {
+        path: "assets/icon/arrow-down.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::ArrowLeft, IconMeta {
+        path: "assets/icon/arrow-left.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::Folder, IconMeta {
+        path: "assets/icon/folder-2-fill.svg",
+        width: 15,
+        height: 15,
+    });
+    map.insert(IconId::Document, IconMeta {
+        path: "assets/icon/document.svg",
         width: 15,
         height: 15,
     });
@@ -285,11 +339,12 @@ pub fn icon_view(options: IconOptions) -> iced::Element<'static, ()> {
 }
 
 /// 创建带泛型消息的图标视图
-pub fn icon_view_with<Message: 'static>(
+pub fn icon_view_with<Message: 'static + Clone>(
     options: IconOptions,
-    _msg: Message,
+    msg: Message,
 ) -> iced::Element<'static, Message> {
-    icon_view(options).map(|_| unreachable!("icon has no message"))
+    let msg = std::sync::Arc::new(msg);
+    icon_view(options).map(move |()| (*msg).clone())
 }
 
 // ============================================================================
