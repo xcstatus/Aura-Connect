@@ -14,6 +14,11 @@ pub const BTN_HEIGHT_COMPACT: f32 = 28.0;
 /// 标准按钮高度
 pub const BTN_HEIGHT_STANDARD: f32 = 32.0;
 
+/// 图标按钮尺寸
+pub const ICON_BUTTON_SIZE: f32 = 28.0;           // 标准图标按钮 28×28
+pub const ICON_BUTTON_SIZE_COMPACT: f32 = 24.0;   // 紧凑图标按钮 24×24
+pub const ICON_SIZE_COMPACT: f32 = 22.0;          // 紧凑按钮内图标视觉尺寸
+
 /// 按钮水平 / 垂直内边距（规范 8×12）
 pub const BTN_PADDING_H: f32 = 12.0;
 pub const BTN_PADDING_V: f32 = 8.0;
@@ -100,7 +105,7 @@ pub const SETTINGS_SIDEBAR_PADDING: f32 = 12.0;
 pub const SETTINGS_SIDEBAR_ITEM_SPACING: f32 = 4.0;
 
 /// 设置中心标题栏高度
-pub const SETTINGS_HEADER_HEIGHT: f32 = 36.0;
+pub const SETTINGS_HEADER_HEIGHT: f32 = 32.0;
 
 /// 设置中心 Tab 栏高度
 pub const SETTINGS_TAB_HEIGHT: f32 = 40.0;
@@ -158,3 +163,16 @@ pub const BREADCRUMB_BTN_GAP: f32 = 4.0;
 pub const BREADCRUMB_FLOAT_ICON_SIZE: f32 = 22.0;
 /// Breadcrumb 浮动图标与边缘距离
 pub const BREADCRUMB_FLOAT_ICON_MARGIN: f32 = 8.0;
+
+// ============ SFTP 布局常量 ============
+
+/// SFTP 面板顶栏高度
+pub const SFTP_TOP_BAR_HEIGHT: f32 = 36.0;
+/// SFTP 文件行高度
+pub const SFTP_FILE_ROW_HEIGHT: f32 = 28.0;
+/// SFTP 面板最小高度
+pub const SFTP_PANEL_MIN_HEIGHT: f32 = 150.0;
+/// SFTP 面板默认比例（上下布局）
+pub const SFTP_PANEL_DEFAULT_RATIO: f32 = 0.4;
+/// SFTP 左右布局比例
+pub const SFTP_PANEL_SIDE_RATIO: f32 = 0.4;
