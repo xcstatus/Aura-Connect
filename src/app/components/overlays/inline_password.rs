@@ -1,4 +1,4 @@
-use iced::alignment::{Alignment, Horizontal};
+use iced::alignment::Alignment;
 use iced::Element;
 use iced::widget::{button, column, container, row, text, stack,text_input, Space};
 use iced::padding::Padding;
@@ -10,6 +10,7 @@ use crate::app::state::IcedState;
 use crate::app::widgets::chrome_button::style_chrome_primary;
 use crate::app::widgets::chrome_button::style_top_icon;
 use crate::theme::icons::{icon_view_with, IconId, IconOptions};
+use crate::theme::layout;
 
 /// Terminal-inline overlay: shows a compact password/passphrase input form.
 pub(crate) fn inline_password_overlay(state: &IcedState) -> Element<'_, Message> {
@@ -31,7 +32,7 @@ pub(crate) fn inline_password_overlay(state: &IcedState) -> Element<'_, Message>
     let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
         .style(layered_scrim_style(tokens, 0));
 
-    // Password visibility toggle button (保持不变)
+    // Password visibility toggle button
     let visibility_toggle = {
         let icon = icon_view_with(
             if state.show_inline_password {
@@ -48,6 +49,7 @@ pub(crate) fn inline_password_overlay(state: &IcedState) -> Element<'_, Message>
             Message::QuickConnectInlinePasswordToggleVisibility,
         );
         button(icon)
+            .on_press(Message::QuickConnectInlinePasswordToggleVisibility)
             .padding(0)
             .width(iced::Length::Fixed(28.0))
             .height(iced::Length::Fixed(28.0))
@@ -74,18 +76,32 @@ pub(crate) fn inline_password_overlay(state: &IcedState) -> Element<'_, Message>
         password_input,
         container(visibility_toggle)
             .width(iced::Length::Fill)
-            // .height(28.0)
-            .align_x(iced::alignment::Horizontal::Right) // 右对齐
-            .align_y(iced::alignment::Vertical::Center)                                   // 垂直居中
-            .style(container::transparent)                // 透明背景
-            .padding(Padding{
-                left: 0.0,
+            .height(iced::Length::Fixed(36.0))
+            .align_x(iced::alignment::Horizontal::Right)
+            .align_y(iced::alignment::Vertical::Center)
+            .style(container::transparent)
+            .padding(Padding {
                 right: 8.0,
-                top: 0.0,
-                bottom: 0.0,
-            })        // 距离右侧边缘8px
+                ..Default::default()
+            })
     ]
     .width(iced::Length::Fill); 
+    // Close button for the overlay
+    let close_button = {
+        let icon = icon_view_with(
+            IconOptions::new(IconId::Close)
+                .with_size(12)
+                .with_color(tokens.text_secondary),
+            Message::QuickConnectInlinePasswordClose,
+        );
+        button(icon)
+            .on_press(Message::QuickConnectInlinePasswordClose)
+            .padding(0)
+            .width(iced::Length::Fixed(layout::ICON_BUTTON_SIZE_COMPACT))
+            .height(iced::Length::Fixed(layout::ICON_BUTTON_SIZE_COMPACT))
+            .style(style_top_icon(tokens))
+    };
+
     let input_form = container(
         column![
             row![
@@ -96,6 +112,7 @@ pub(crate) fn inline_password_overlay(state: &IcedState) -> Element<'_, Message>
                 })
                 .size(13),
                 Space::new().width(iced::Length::Fill),
+                close_button,
             ]
             .align_y(Alignment::Center),
             input_with_icon,
