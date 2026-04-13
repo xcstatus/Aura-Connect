@@ -15,11 +15,12 @@ use russh_sftp::client::fs::Metadata;
 use russh_sftp::client::SftpSession as RusshSftpSession;
 
 /// SFTP 会话，绑定到一个已建立的 SSH 连接
+#[derive(Clone)]
 pub struct SftpSession {
     /// russh-sftp 客户端会话
-    sftp: RusshSftpSession,
+    sftp: Arc<RusshSftpSession>,
     /// 当前工作目录（远程路径）
-    cwd: std::sync::Mutex<String>,
+    cwd: Arc<std::sync::Mutex<String>>,
 }
 
 impl std::fmt::Debug for SftpSession {
@@ -46,8 +47,8 @@ impl SftpSession {
             .map_err(|e| SftpError::ProtocolError(e.to_string()))?;
 
         Ok(Self {
-            sftp,
-            cwd: std::sync::Mutex::new("/".to_string()),
+            sftp: Arc::new(sftp),
+            cwd: Arc::new(std::sync::Mutex::new("/".to_string())),
         })
     }
 

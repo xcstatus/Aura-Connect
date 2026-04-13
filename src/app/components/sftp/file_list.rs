@@ -8,6 +8,7 @@ use crate::app::message::Message;
 use crate::app::state::{IcedState, SftpPanel};
 use crate::sftp::{RemoteFileEntry, SftpSortBy};
 use crate::theme::layout;
+use crate::theme::icons::{icon_view_with, IconId, IconOptions};
 use crate::theme::DesignTokens;
 
 /// 构建 SFTP 文件列表
@@ -87,9 +88,13 @@ fn build_file_row<'a>(state: &'a IcedState, entry: RemoteFileEntry) -> Element<'
     let modified_human = entry.modified_human();
     let is_dir = entry.is_dir;
     let is_hidden = entry.is_hidden();
+    let permissions = entry.permissions.clone();
 
     // 获取 tokens
     let tokens = tokens_for_state(state);
+
+    // 判断是否为上一级目录
+    let is_parent_dir = name == "..";
 
     // 文件名颜色
     let name_color = if is_hidden { tokens.text_secondary } else { tokens.text_primary };
@@ -98,19 +103,38 @@ fn build_file_row<'a>(state: &'a IcedState, entry: RemoteFileEntry) -> Element<'
     let size_text = if is_dir { "-".to_string() } else { size_human };
 
     // 创建消息
-    let msg = if is_dir {
+    let msg: Message = if is_dir {
         Message::SftpTab(crate::app::message::SftpTabMessage::SftpNavigate(path_str.clone()))
     } else {
         Message::SftpTab(crate::app::message::SftpTabMessage::SftpDownload(path_str.clone()))
     };
 
-    // 文件图标（目录显示文件夹图标，文件显示文档图标）
-    let icon_text = if is_dir { "📁" } else { "📄" };
+    // 文件图标（上一级显示左箭头，目录显示文件夹，文件显示文档）
+    let icon_elem: Element<'a, Message> = if is_parent_dir {
+        icon_view_with(IconOptions::new(IconId::ArrowLeft).with_size(15), msg.clone())
+    } else if is_dir {
+        icon_view_with(IconOptions::new(IconId::Folder).with_size(15), msg.clone())
+    } else {
+        icon_view_with(IconOptions::new(IconId::File).with_size(15), msg.clone())
+    };
 
     // 文件名
-    let name_elem: Element<'a, Message> = text(format!("{} {}", icon_text, name))
+    let name_elem: Element<'a, Message> = text(name)
         .size(12)
         .color(name_color)
+        .into();
+
+    // 权限文本（隐藏文件显示空字符串）
+    let perm_text = if is_hidden || permissions.is_empty() {
+        String::new()
+    } else {
+        permissions
+    };
+
+    // 权限
+    let perm_elem: Element<'a, Message> = text(perm_text)
+        .size(11)
+        .color(tokens.text_secondary)
         .into();
 
     // 大小
@@ -127,9 +151,13 @@ fn build_file_row<'a>(state: &'a IcedState, entry: RemoteFileEntry) -> Element<'
 
     // 整体布局（行）
     let row_elem: Element<'a, Message> = row![
+        icon_elem,
+        Space::new().width(Length::Fixed(6.0)),
         name_elem,
         Space::new().width(Length::Fill),
-        size_elem,
+        container(perm_elem).width(Length::Fixed(80.0)),
+        Space::new().width(Length::Fixed(8.0)),
+        container(size_elem).width(Length::Fixed(60.0)),
         Space::new().width(Length::Fixed(8.0)),
         container(modified_elem).width(Length::Fixed(120.0)),
     ]
@@ -137,14 +165,24 @@ fn build_file_row<'a>(state: &'a IcedState, entry: RemoteFileEntry) -> Element<'
     .align_y(iced::alignment::Vertical::Center)
     .into();
 
-    // 可点击的行
-    button(row_elem)
-        .padding([4, 12])
-        .width(Length::Fill)
-        .height(Length::Fixed(layout::SFTP_FILE_ROW_HEIGHT))
-        .style(flat_button_style(tokens))
-        .on_press(msg)
-        .into()
+    // 可点击的行（上一级条目使用特殊样式）
+    if is_parent_dir {
+        button(row_elem)
+            .padding([4, 12])
+            .width(Length::Fill)
+            .height(Length::Fixed(layout::SFTP_FILE_ROW_HEIGHT))
+            .on_press(msg)
+            .style(parent_dir_button_style(tokens))
+            .into()
+    } else {
+        button(row_elem)
+            .padding([4, 12])
+            .width(Length::Fill)
+            .height(Length::Fixed(layout::SFTP_FILE_ROW_HEIGHT))
+            .on_press(msg)
+            .style(flat_button_style(tokens))
+            .into()
+    }
 }
 
 /// 根据排序规则排序文件列表
@@ -197,6 +235,27 @@ fn flat_button_style(tokens: DesignTokens) -> impl Fn(&iced::Theme, button::Stat
         match status {
             button::Status::Hovered => {
                 style.background = Some(iced::Background::Color(surface_2));
+            }
+            button::Status::Pressed => {
+                style.background = Some(iced::Background::Color(surface_3));
+            }
+            _ => {}
+        }
+        style
+    }
+}
+
+/// 父目录按钮样式（更明显的悬停效果）
+fn parent_dir_button_style(tokens: DesignTokens) -> impl Fn(&iced::Theme, button::Status) -> iced::widget::button::Style + 'static {
+    let surface_1 = tokens.surface_1;
+    let surface_3 = tokens.surface_3;
+    let accent_base = tokens.accent_base;
+    move |_: &iced::Theme, status: button::Status| {
+        let mut style = iced::widget::button::Style::default();
+        match status {
+            button::Status::Hovered => {
+                style.background = Some(iced::Background::Color(surface_1));
+                style.text_color = accent_base;
             }
             button::Status::Pressed => {
                 style.background = Some(iced::Background::Color(surface_3));

@@ -43,6 +43,8 @@ pub struct TabSession {
     pub tab_id: usize,
     /// 连接键：用于多路复用追踪
     pub connection_key: Option<crate::backend::shared_ssh_session::ConnectionKey>,
+    /// SSH channel 的克隆（用于 SFTP 初始化等需要访问底层连接的场景）
+    pub channel: Option<Arc<SshChannel>>,
 }
 
 impl Debug for TabSession {
@@ -50,6 +52,7 @@ impl Debug for TabSession {
         f.debug_struct("TabSession")
             .field("tab_id", &self.tab_id)
             .field("connection_key", &self.connection_key)
+            .field("channel", &self.channel.is_some())
             .finish()
     }
 }
@@ -89,6 +92,7 @@ impl SessionManager {
             session,
             tab_id: tab_index,
             connection_key,
+            channel: None,
         });
     }
 
@@ -96,9 +100,10 @@ impl SessionManager {
     pub fn attach_session_arc(&mut self, tab_index: usize, session: std::sync::Arc<SshChannel>, connection_key: Option<crate::backend::shared_ssh_session::ConnectionKey>) {
         self.ensure_capacity(tab_index);
         self.sessions[tab_index] = Some(TabSession {
-            session: Box::new(SessionBox::new(session)),
+            session: Box::new(SessionBox::new(session.clone())),
             tab_id: tab_index,
             connection_key,
+            channel: Some(session),
         });
     }
 
@@ -149,6 +154,14 @@ impl SessionManager {
     /// Mutable access to the active tab's session.
     pub fn active_session_mut(&mut self) -> Option<&mut dyn AsyncSession> {
         self.session_mut(self.active_tab)
+    }
+
+    /// Get the SSH channel for a specific tab (for SFTP initialization).
+    pub fn get_channel(&self, tab_index: usize) -> Option<Arc<SshChannel>> {
+        self.sessions
+            .get(tab_index)
+            .and_then(|s| s.as_ref())
+            .and_then(|ts| ts.channel.clone())
     }
 
     /// Number of tabs currently registered.
