@@ -31,7 +31,10 @@ impl TerminalHost {
     ) -> Option<R> {
         let tab = state.active_tab;
         let session = state.tab_manager.session_mut(tab)?;
-        Some(f(session, &mut EngineAdapterMut::new(&mut state.tab_panes[tab].terminal)))
+        Some(f(
+            session,
+            &mut EngineAdapterMut::new(&mut state.tab_panes[tab].terminal),
+        ))
     }
 
     #[inline]
@@ -224,7 +227,7 @@ impl TerminalHost {
                     &state.model.settings.terminal,
                 );
                 // 确保坐标计算与视图 breadcrumb 状态一致
-                spec.breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+                spec.breadcrumb_visible = state.breadcrumb_pinned;
                 let (cols, rows): (u16, u16) = {
                     let pane = state.active_pane_mut();
                     let engine = EngineAdapterMut::new(&mut pane.terminal);
@@ -306,7 +309,7 @@ impl TerminalHost {
                     &state.model.settings.terminal,
                 );
                 // 确保坐标计算与视图 breadcrumb 状态一致
-                spec.breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+                spec.breadcrumb_visible = state.breadcrumb_pinned;
                 let window = state.window_size;
                 let (cols, rows): (u16, u16) = {
                     let pane = state.active_pane_mut();
@@ -341,7 +344,7 @@ impl TerminalHost {
                     &state.model.settings.terminal,
                 );
                 // 确保坐标计算与视图 breadcrumb 状态一致
-                spec.breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+                spec.breadcrumb_visible = state.breadcrumb_pinned;
                 let (cols, rows): (u16, u16) = {
                     let pane = state.active_pane_mut();
                     let engine = EngineAdapterMut::new(&mut pane.terminal);
@@ -370,7 +373,7 @@ impl TerminalHost {
                     &state.model.settings.terminal,
                 );
                 // 确保坐标计算与视图 breadcrumb 状态一致
-                spec.breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+                spec.breadcrumb_visible = state.breadcrumb_pinned;
                 let (cols, rows): (u16, u16) = {
                     let pane = state.active_pane_mut();
                     let engine = EngineAdapterMut::new(&mut pane.terminal);
@@ -455,12 +458,14 @@ mod tests {
     }
 
     fn attach_dummy_session(state: &mut IcedState) {
-        state
-            .tab_manager
-            .attach_session(state.active_tab, Box::new(DummySession {
+        state.tab_manager.attach_session(
+            state.active_tab,
+            Box::new(DummySession {
                 writes: Vec::new(),
                 connected: true,
-            }), None);
+            }),
+            None,
+        );
     }
 
     #[test]
@@ -660,7 +665,8 @@ pub fn detect_remote_cwd(output: &str) -> Option<String> {
             if let Some(colon_pos) = trimmed[at_pos..].find(':') {
                 let after_colon = &trimmed[at_pos + colon_pos + 1..];
                 // 去掉结尾的 $ 或 #
-                let path = after_colon.trim_end_matches(|c| c == '$' || c == '#' || c == '>' || c == ' ');
+                let path =
+                    after_colon.trim_end_matches(|c| c == '$' || c == '#' || c == '>' || c == ' ');
 
                 // 检查是否是有效路径
                 if is_valid_path(path) {

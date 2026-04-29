@@ -1,7 +1,6 @@
 use argon2::{
-    Argon2,
+    Argon2, Params,
     password_hash::{PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
-    Params,
 };
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
@@ -19,10 +18,10 @@ pub const KDF_ARGON2_P_COST: u32 = 1;
 /// 根据内存级别构建 Argon2id 实例
 pub fn kdf_argon2id_for_level(level: KdfMemoryLevel) -> Argon2<'static> {
     let (mem_kib, t) = match level {
-        KdfMemoryLevel::Balanced => (16384u32, 2u32),  // 16MiB, t=2
-        KdfMemoryLevel::Security => (65536u32, 3u32),    // 64MiB, t=3
+        KdfMemoryLevel::Balanced => (16384u32, 2u32), // 16MiB, t=2
+        KdfMemoryLevel::Security => (65536u32, 3u32), // 64MiB, t=3
     };
-    let params = Params::new(mem_kib, t, KDF_ARGON2_T_COST, Some(32))
+    let params = Params::new(mem_kib, t, KDF_ARGON2_P_COST, Some(32))
         .expect("KDF params are hardcoded and should always be valid");
     Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params)
 }
@@ -51,7 +50,10 @@ impl VaultManager {
     }
 
     /// 初始化保险箱元数据（指定内存级别）
-    pub fn setup_vault_with_level(password: &SecretString, level: KdfMemoryLevel) -> anyhow::Result<VaultMeta> {
+    pub fn setup_vault_with_level(
+        password: &SecretString,
+        level: KdfMemoryLevel,
+    ) -> anyhow::Result<VaultMeta> {
         let salt = SaltString::generate(&mut OsRng);
         let argon2 = kdf_argon2id_for_level(level);
 
@@ -75,7 +77,11 @@ impl VaultManager {
     }
 
     /// 验证主密码是否正确（指定内存级别）
-    pub fn verify_password_with_level(password: &SecretString, meta: &VaultMeta, level: KdfMemoryLevel) -> bool {
+    pub fn verify_password_with_level(
+        password: &SecretString,
+        meta: &VaultMeta,
+        level: KdfMemoryLevel,
+    ) -> bool {
         use argon2::password_hash::PasswordHash;
 
         let Ok(parsed_hash) = PasswordHash::new(&meta.verifier_hash) else {
@@ -88,12 +94,19 @@ impl VaultManager {
     }
 
     /// 派生出用于加密数据的根密钥 (Master Key)（使用默认内存级别）
-    pub fn derive_master_key(password: &SecretString, salt: &str) -> anyhow::Result<Zeroizing<[u8; 32]>> {
+    pub fn derive_master_key(
+        password: &SecretString,
+        salt: &str,
+    ) -> anyhow::Result<Zeroizing<[u8; 32]>> {
         Self::derive_master_key_with_level(password, salt, KdfMemoryLevel::default())
     }
 
     /// 派生出用于加密数据的根密钥 (Master Key)（指定内存级别）
-    pub fn derive_master_key_with_level(password: &SecretString, salt: &str, level: KdfMemoryLevel) -> anyhow::Result<Zeroizing<[u8; 32]>> {
+    pub fn derive_master_key_with_level(
+        password: &SecretString,
+        salt: &str,
+        level: KdfMemoryLevel,
+    ) -> anyhow::Result<Zeroizing<[u8; 32]>> {
         let salt_bytes = salt.as_bytes();
         let argon2 = kdf_argon2id_for_level(level);
         let mut output_key = [0u8; 32];
@@ -109,13 +122,22 @@ impl VaultManager {
     }
 
     /// 派生出独立的加密密钥（使用默认内存级别）
-    pub fn derive_encryption_key(password: &SecretString, meta: &VaultMeta) -> anyhow::Result<Zeroizing<[u8; 32]>> {
+    pub fn derive_encryption_key(
+        password: &SecretString,
+        meta: &VaultMeta,
+    ) -> anyhow::Result<Zeroizing<[u8; 32]>> {
         Self::derive_encryption_key_with_level(password, meta, KdfMemoryLevel::default())
     }
 
     /// 派生出独立的加密密钥（指定内存级别）
-    pub fn derive_encryption_key_with_level(password: &SecretString, meta: &VaultMeta, level: KdfMemoryLevel) -> anyhow::Result<Zeroizing<[u8; 32]>> {
-        let enc_salt = meta.encryption_salt.as_deref()
+    pub fn derive_encryption_key_with_level(
+        password: &SecretString,
+        meta: &VaultMeta,
+        level: KdfMemoryLevel,
+    ) -> anyhow::Result<Zeroizing<[u8; 32]>> {
+        let enc_salt = meta
+            .encryption_salt
+            .as_deref()
             .ok_or_else(|| anyhow::anyhow!("No encryption salt in vault metadata"))?;
         Self::derive_master_key_with_level(password, enc_salt, level)
     }
@@ -126,7 +148,10 @@ impl fmt::Debug for VaultMeta {
         f.debug_struct("VaultMeta")
             .field("salt", &self.salt)
             .field("verifier_hash", &"[REDACTED]")
-            .field("encryption_salt", &self.encryption_salt.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "encryption_salt",
+                &self.encryption_salt.as_ref().map(|_| "[REDACTED]"),
+            )
             .finish()
     }
 }

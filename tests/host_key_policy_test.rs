@@ -73,7 +73,8 @@ fn test_strict_policy_rejects_host_key_mismatch() {
     let port = 22;
     let server_fingerprint = "AAAAC3NzaC1lZDI1NTE5AAAAnew";
 
-    let should_reject = should_reject_for_mismatch(policy, host, port, &known_hosts, server_fingerprint);
+    let should_reject =
+        should_reject_for_mismatch(policy, host, port, &known_hosts, server_fingerprint);
     assert!(should_reject, "已知主机但指纹不匹配应该被拒绝");
 }
 
@@ -104,7 +105,8 @@ fn test_accept_new_policy_rejects_host_key_mismatch() {
     let port = 22;
     let server_fingerprint = "AAAAC3NzaC1lZDI1NTE5AAAAnew";
 
-    let should_reject = should_reject_for_mismatch(policy, host, port, &known_hosts, server_fingerprint);
+    let should_reject =
+        should_reject_for_mismatch(policy, host, port, &known_hosts, server_fingerprint);
     assert!(should_reject, "AcceptNew 策略对已知主机指纹不匹配仍应拒绝");
 }
 
@@ -156,12 +158,18 @@ fn test_authentication_never_transmitted_before_host_key_verified() {
 
     // AcceptNew 允许未知主机 → check_server_key 返回 Ok → 可以继续认证
     let should_reject = should_reject_for_policy(policy, host, port, &known_hosts);
-    assert!(!should_reject, "AcceptNew 策略允许未知主机意味着认证可以继续");
+    assert!(
+        !should_reject,
+        "AcceptNew 策略允许未知主机意味着认证可以继续"
+    );
 
     // Strict 拒绝未知主机 → check_server_key 返回 Err → 认证不会执行
     let strict_policy = HostKeyPolicy::Strict;
     let should_reject_strict = should_reject_for_policy(strict_policy, host, port, &known_hosts);
-    assert!(should_reject_strict, "Strict 策略拒绝未知主机意味着认证不会执行");
+    assert!(
+        should_reject_strict,
+        "Strict 策略拒绝未知主机意味着认证不会执行"
+    );
 }
 
 /// 验证所有策略在已知主机且指纹匹配时的行为一致性
@@ -204,7 +212,9 @@ fn should_reject_for_policy(
     known_hosts: &[KnownHostRecord],
 ) -> bool {
     // 查找 known_hosts 中是否有该主机的记录
-    let known_record = known_hosts.iter().find(|r| r.host == host && r.port == port);
+    let known_record = known_hosts
+        .iter()
+        .find(|r| r.host == host && r.port == port);
 
     match known_record {
         Some(_) => {
@@ -231,7 +241,9 @@ fn should_reject_for_mismatch(
     _server_fingerprint: &str,
 ) -> bool {
     // 查找 known_hosts 中是否有该主机的记录
-    let known_record = known_hosts.iter().find(|r| r.host == host && r.port == port);
+    let known_record = known_hosts
+        .iter()
+        .find(|r| r.host == host && r.port == port);
 
     match known_record {
         Some(_) => {

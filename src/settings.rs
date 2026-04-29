@@ -5,6 +5,44 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::theme::tokens::ColorScheme;
 use crate::theme::user_scheme::UserColorSchemes;
 
+/// 端口转发配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PortForwardConfig {
+    /// 转发类型：Local 或 Remote
+    pub forward_type: PortForwardType,
+    /// 本地绑定地址
+    pub bind_addr: String,
+    /// 本地端口 (0 表示自动分配)
+    pub bind_port: u16,
+    /// 远程目标地址
+    pub target_addr: String,
+    /// 远程目标端口
+    pub target_port: u16,
+    /// 是否启用
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PortForwardType {
+    Local,
+    Remote,
+}
+
+impl Default for PortForwardConfig {
+    fn default() -> Self {
+        Self {
+            forward_type: PortForwardType::Local,
+            bind_addr: "127.0.0.1".to_string(),
+            bind_port: 0,
+            target_addr: "127.0.0.1".to_string(),
+            target_port: 80,
+            enabled: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -267,7 +305,8 @@ impl Settings {
             if let Some(user_scheme) = self.user_color_schemes.find_by_id(&self.color_scheme) {
                 // 获取基础预设
                 if let Some(base_scheme) = ColorScheme::from_id(&user_scheme.based_on) {
-                    return base_scheme;
+                    // 应用用户覆盖
+                    return base_scheme.apply_overrides(&user_scheme.overrides);
                 }
             }
             // 找不到则返回默认

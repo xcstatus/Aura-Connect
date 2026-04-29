@@ -2,22 +2,22 @@
 //! 统一的新建/编辑会话表单组件，支持快速连接和设置中心两种入口模式
 
 use iced::alignment::{Alignment, Horizontal};
-use iced::widget::{
-    button, column, container, pick_list, row, text, text_input, Space,
-};
+use iced::widget::{Space, button, column, container, pick_list, row, text, text_input};
 use iced::{Element, Length};
 use secrecy::ExposeSecret;
 
-use crate::app::components::helpers::{layered_scrim_style, top_bar_material_style};
+use crate::app::components::helpers::{
+    layered_scrim_style, lg_modal_container_style, lg_panel_container_style,
+};
 use crate::app::message::Message;
 use crate::app::state::IcedState;
-use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
+use crate::app::widgets::chrome_button::{lg_icon_button, lg_primary_button, lg_secondary_button};
 use crate::i18n::I18n;
 use crate::session::AuthMethod;
 use crate::theme::DesignTokens;
-use crate::theme::icons::{icon_view_with, IconId, IconOptions};
+use crate::theme::icons::{IconId, IconOptions, icon_view_with};
 
-use super::sidebar::{sidebar, SidebarPage};
+use super::sidebar::{SidebarPage, sidebar};
 
 /// 会话表单入口模式
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,8 +49,12 @@ pub fn session_form_dialog(state: &IcedState) -> Element<'_, Message> {
         SessionFormMode::SettingsCenter
     };
 
-    let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-        .style(layered_scrim_style(tokens.clone(), 0));
+    let scrim = container(
+        Space::new()
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill),
+    )
+    .style(layered_scrim_style(tokens.clone(), 0));
 
     // 根据模式构建表单
     let form_body = match mode {
@@ -67,7 +71,7 @@ pub fn session_form_dialog(state: &IcedState) -> Element<'_, Message> {
     let card = container(form_body)
         .width(dialog_width)
         .padding(16)
-        .style(top_bar_material_style(tokens.clone()));
+        .style(lg_modal_container_style(tokens.clone()));
 
     let centered = container(card)
         .width(iced::Length::Fill)
@@ -98,7 +102,9 @@ fn quick_connect_form_body<'a>(
         AuthMethod::Password,
         AuthMethod::Agent,
         AuthMethod::Interactive,
-        AuthMethod::Key { private_key_path: String::new() },
+        AuthMethod::Key {
+            private_key_path: String::new(),
+        },
     ];
 
     let mut body = column![
@@ -109,7 +115,6 @@ fn quick_connect_form_body<'a>(
             icon_close_button(tokens.clone()),
         ]
         .align_y(Alignment::Center),
-
         // 主机 + 端口
         row![
             text_input(i18n.tr("session_form.field.host"), &ed.host)
@@ -121,12 +126,10 @@ fn quick_connect_form_body<'a>(
         ]
         .spacing(10)
         .align_y(Alignment::Center),
-
         // 用户名
         text_input(i18n.tr("session_form.field.user"), &ed.user)
             .on_input(Message::SessionEditorUserChanged)
             .width(Length::Fill),
-
         // 认证方式
         pick_list(
             auth_options,
@@ -142,23 +145,32 @@ fn quick_connect_form_body<'a>(
     match &ed.auth {
         AuthMethod::Password => {
             body = body.push(
-                text_input(i18n.tr("session_form.field.password"), ed.password.expose_secret())
-                    .secure(true)
-                    .on_input(Message::SessionEditorPasswordChanged)
-                    .width(Length::Fill),
+                text_input(
+                    i18n.tr("session_form.field.password"),
+                    ed.password.expose_secret(),
+                )
+                .secure(true)
+                .on_input(Message::SessionEditorPasswordChanged)
+                .width(Length::Fill),
             );
         }
         AuthMethod::Key { .. } => {
             body = body.push(
-                text_input(i18n.tr("session_form.field.private_key"), &ed.private_key_path)
-                    .on_input(Message::SessionEditorPrivateKeyPathChanged)
-                    .width(Length::Fill),
+                text_input(
+                    i18n.tr("session_form.field.private_key"),
+                    &ed.private_key_path,
+                )
+                .on_input(Message::SessionEditorPrivateKeyPathChanged)
+                .width(Length::Fill),
             );
             body = body.push(
-                text_input(i18n.tr("session_form.field.passphrase"), ed.passphrase.expose_secret())
-                    .secure(true)
-                    .on_input(Message::SessionEditorPassphraseChanged)
-                    .width(Length::Fill),
+                text_input(
+                    i18n.tr("session_form.field.passphrase"),
+                    ed.passphrase.expose_secret(),
+                )
+                .secure(true)
+                .on_input(Message::SessionEditorPassphraseChanged)
+                .width(Length::Fill),
             );
         }
         _ => {}
@@ -167,9 +179,9 @@ fn quick_connect_form_body<'a>(
     // 错误提示
     if let Some(err) = &ed.error {
         body = body.push(
-            container(text(err).size(12))
+            container(text(err).size(12).color(tokens.error))
                 .padding(10)
-                .style(top_bar_material_style(tokens.clone())),
+                .style(lg_panel_container_style(tokens.clone())),
         );
     }
 
@@ -177,10 +189,10 @@ fn quick_connect_form_body<'a>(
     let actions = row![
         button(text(i18n.tr("session_form.btn.save")).size(13))
             .on_press(Message::SessionEditorSave)
-            .style(style_chrome_primary(tokens.clone())),
+            .style(lg_primary_button(tokens.clone())),
         button(text(i18n.tr("session_form.btn.cancel")).size(13))
             .on_press(Message::SessionEditorClose)
-            .style(style_chrome_secondary(tokens.clone())),
+            .style(lg_secondary_button(tokens.clone())),
     ]
     .spacing(8)
     .align_y(Alignment::Center);
@@ -205,7 +217,9 @@ fn settings_center_form_body<'a>(
         AuthMethod::Password,
         AuthMethod::Agent,
         AuthMethod::Interactive,
-        AuthMethod::Key { private_key_path: String::new() },
+        AuthMethod::Key {
+            private_key_path: String::new(),
+        },
     ];
 
     // 左侧边栏（使用 clone 避免生命周期问题）
@@ -220,12 +234,10 @@ fn settings_center_form_body<'a>(
             icon_close_button(tokens.clone()),
         ]
         .align_y(Alignment::Center),
-
         // 名称输入框
         text_input(i18n.tr("session_form.field.name"), &ed.name)
             .on_input(Message::SessionEditorNameChanged)
             .width(Length::Fill),
-
         // 主机 + 端口
         row![
             text_input(i18n.tr("session_form.field.host"), &ed.host)
@@ -237,12 +249,10 @@ fn settings_center_form_body<'a>(
         ]
         .spacing(10)
         .align_y(Alignment::Center),
-
         // 用户名
         text_input(i18n.tr("session_form.field.user"), &ed.user)
             .on_input(Message::SessionEditorUserChanged)
             .width(Length::Fill),
-
         // 认证方式
         pick_list(
             auth_options,
@@ -258,23 +268,32 @@ fn settings_center_form_body<'a>(
     match &ed.auth {
         AuthMethod::Password => {
             content = content.push(
-                text_input(i18n.tr("session_form.field.password"), ed.password.expose_secret())
-                    .secure(true)
-                    .on_input(Message::SessionEditorPasswordChanged)
-                    .width(Length::Fill),
+                text_input(
+                    i18n.tr("session_form.field.password"),
+                    ed.password.expose_secret(),
+                )
+                .secure(true)
+                .on_input(Message::SessionEditorPasswordChanged)
+                .width(Length::Fill),
             );
         }
         AuthMethod::Key { .. } => {
             content = content.push(
-                text_input(i18n.tr("session_form.field.private_key"), &ed.private_key_path)
-                    .on_input(Message::SessionEditorPrivateKeyPathChanged)
-                    .width(Length::Fill),
+                text_input(
+                    i18n.tr("session_form.field.private_key"),
+                    &ed.private_key_path,
+                )
+                .on_input(Message::SessionEditorPrivateKeyPathChanged)
+                .width(Length::Fill),
             );
             content = content.push(
-                text_input(i18n.tr("session_form.field.passphrase"), ed.passphrase.expose_secret())
-                    .secure(true)
-                    .on_input(Message::SessionEditorPassphraseChanged)
-                    .width(Length::Fill),
+                text_input(
+                    i18n.tr("session_form.field.passphrase"),
+                    ed.passphrase.expose_secret(),
+                )
+                .secure(true)
+                .on_input(Message::SessionEditorPassphraseChanged)
+                .width(Length::Fill),
             );
         }
         _ => {}
@@ -283,9 +302,9 @@ fn settings_center_form_body<'a>(
     // 错误提示
     if let Some(err) = &ed.error {
         content = content.push(
-            container(text(err).size(12))
+            container(text(err).size(12).color(tokens.error))
                 .padding(10)
-                .style(top_bar_material_style(tokens.clone())),
+                .style(lg_panel_container_style(tokens.clone())),
         );
     }
 
@@ -293,14 +312,14 @@ fn settings_center_form_body<'a>(
     let actions = row![
         button(text(i18n.tr("session_form.btn.test_connection")).size(13))
             .on_press(Message::SessionEditorTestConnection)
-            .style(style_chrome_secondary(tokens.clone())),
+            .style(lg_secondary_button(tokens.clone())),
         Space::new().width(Length::Fill),
         button(text(i18n.tr("session_form.btn.cancel")).size(13))
             .on_press(Message::SessionEditorClose)
-            .style(style_chrome_secondary(tokens.clone())),
+            .style(lg_secondary_button(tokens.clone())),
         button(text(i18n.tr("session_form.btn.save")).size(13))
             .on_press(Message::SessionEditorSave)
-            .style(style_chrome_primary(tokens.clone())),
+            .style(lg_primary_button(tokens.clone())),
     ]
     .spacing(8)
     .align_y(Alignment::Center);
@@ -308,9 +327,12 @@ fn settings_center_form_body<'a>(
     content = content.push(actions).spacing(16);
 
     // 左右分栏布局
-    row![sidebar_elem, container(content).padding(24).width(Length::Fill)]
-        .spacing(0)
-        .into()
+    row![
+        sidebar_elem,
+        container(content).padding(24).width(Length::Fill)
+    ]
+    .spacing(0)
+    .into()
 }
 
 // ============================================================================
@@ -320,7 +342,7 @@ fn settings_center_form_body<'a>(
 /// 创建关闭图标按钮
 fn icon_close_button(tokens: DesignTokens) -> Element<'static, Message> {
     let close_icon = icon_view_with(
-        IconOptions::new(IconId::Close)
+        IconOptions::new(IconId::FnClose)
             .with_size(14)
             .with_color(tokens.text_secondary),
         Message::SessionEditorClose,
@@ -329,6 +351,6 @@ fn icon_close_button(tokens: DesignTokens) -> Element<'static, Message> {
         .on_press(Message::SessionEditorClose)
         .width(Length::Fixed(28.0))
         .height(Length::Fixed(28.0))
-        .style(style_top_icon(tokens))
+        .style(lg_icon_button(tokens))
         .into()
 }

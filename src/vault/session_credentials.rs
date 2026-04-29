@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
-use secrecy::ExposeSecret;
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 use crate::settings::KdfMemoryLevel;
 use crate::utils::StorageManager;
@@ -8,28 +9,27 @@ use crate::vault::core::CredentialVault;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SshCredentialPayload {
-    pub password: Option<String>,
-    pub passphrase: Option<String>,
+    pub password: Option<Zeroizing<String>>,
+    pub passphrase: Option<Zeroizing<String>>,
 }
 
 /// 加载并解锁 vault（使用显式 master_password 和 KDF 内存级别）。
 /// 若 vault 文件不存在但 settings 中存在 vault 元数据，则自动初始化一个新的空 vault。
 pub(crate) fn load_unlocked_vault(
-    master_password: &str,
+    master_password: &SecretString,
     kdf_level: KdfMemoryLevel,
 ) -> Result<CredentialVault> {
-    use secrecy::SecretString;
     let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
 
     if path.exists() {
         let mut vault = CredentialVault::load_from_file(&path)?;
-        vault.unlock_with_level(&SecretString::from(master_password.to_owned()), kdf_level)?;
+        vault.unlock_with_level(master_password, kdf_level)?;
         Ok(vault)
     } else {
         // Vault 文件不存在时，生成随机 salt 并初始化。
         let salt = crate::vault::crypto::generate_salt();
         let vault = CredentialVault::initialize_with_level(
-            &SecretString::from(master_password.to_owned()),
+            master_password,
             salt,
             kdf_level,
         )?;
@@ -45,14 +45,18 @@ pub(crate) fn load_unlocked_vault(
 ///
 /// 需要 vault 处于解锁态（即调用方持有有效的 master_password）。
 pub fn save_ssh_credentials(
-    master_password: &str,
+    master_password: &SecretString,
     session_id: &str,
     password: Option<&str>,
     passphrase: Option<&str>,
     kdf_level: KdfMemoryLevel,
 ) -> Result<Option<String>> {
-    let pwd = password.filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_owned());
-    let pph = passphrase.filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_owned());
+    let pwd = password
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| Zeroizing::new(s.trim().to_owned()));
+    let pph = passphrase
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| Zeroizing::new(s.trim().to_owned()));
 
     let mut vault = load_unlocked_vault(master_password, kdf_level)?;
     let path = StorageManager::get_vault_path().ok_or_else(|| anyhow!("无法定位 vault 路径"))?;
@@ -78,7 +82,7 @@ pub fn save_ssh_credentials(
 ///
 /// 需要 vault 处于解锁态。
 pub fn sync_ssh_credentials(
-    master_password: &str,
+    master_password: &SecretString,
     session_id: &str,
     password: Option<&str>,
     passphrase: Option<&str>,
@@ -91,7 +95,7 @@ pub fn sync_ssh_credentials(
 ///
 /// 需要 vault 处于解锁态（即调用方持有有效的 master_password）。
 pub fn load_ssh_credentials(
-    master_password: &str,
+    master_password: &SecretString,
     credential_id: &str,
     kdf_level: KdfMemoryLevel,
 ) -> Result<Option<SshCredentialPayload>> {
@@ -108,7 +112,7 @@ pub fn load_ssh_credentials(
 ///
 /// 需要 vault 处于解锁态。
 pub fn delete_credential(
-    master_password: &str,
+    master_password: &SecretString,
     credential_id: &str,
     kdf_level: KdfMemoryLevel,
 ) -> Result<()> {
@@ -123,8 +127,6 @@ pub fn delete_credential(
 // 兼容性别名（deprecated），指向新的统一 API
 // ============================================================================
 
-use secrecy::SecretString;
-
 /// [已废弃] 请使用 [`save_ssh_credentials`]。
 #[deprecated(since = "1.0", note = "使用 save_ssh_credentials 替代")]
 pub fn save_ssh_credentials_with_master(
@@ -135,7 +137,7 @@ pub fn save_ssh_credentials_with_master(
     passphrase: Option<&SecretString>,
 ) -> Result<Option<String>> {
     save_ssh_credentials(
-        master_password.expose_secret(),
+        master_password,
         session_id,
         password.map(|s| s.expose_secret()),
         passphrase.map(|s| s.expose_secret()),
@@ -153,7 +155,7 @@ pub fn sync_ssh_credentials_with_master(
     passphrase: Option<&SecretString>,
 ) -> Result<Option<String>> {
     sync_ssh_credentials(
-        master_password.expose_secret(),
+        master_password,
         session_id,
         password.map(|s| s.expose_secret()),
         passphrase.map(|s| s.expose_secret()),
@@ -168,7 +170,11 @@ pub fn load_ssh_credentials_with_master(
     master_password: &SecretString,
     credential_id: &str,
 ) -> Result<Option<SshCredentialPayload>> {
-    load_ssh_credentials(master_password.expose_secret(), credential_id, KdfMemoryLevel::default())
+    load_ssh_credentials(
+        master_password,
+        credential_id,
+        KdfMemoryLevel::default(),
+    )
 }
 
 /// [已废弃] 请使用 [`delete_credential`]。
@@ -178,5 +184,9 @@ pub fn delete_credential_with_master(
     master_password: &SecretString,
     credential_id: &str,
 ) -> Result<()> {
-    delete_credential(master_password.expose_secret(), credential_id, KdfMemoryLevel::default())
+    delete_credential(
+        master_password,
+        credential_id,
+        KdfMemoryLevel::default(),
+    )
 }

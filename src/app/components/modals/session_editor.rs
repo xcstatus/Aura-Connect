@@ -5,6 +5,8 @@ use crate::app::components::session_form_fields::session_form_dialog;
 
 /// Build the session editor modal for creating/editing SSH session profiles.
 /// This delegates to the unified session_form_dialog component.
-pub(crate) fn session_editor_modal(state: &crate::app::state::IcedState) -> iced::Element<'_, crate::app::message::Message> {
+pub(crate) fn session_editor_modal(
+    state: &crate::app::state::IcedState,
+) -> iced::Element<'_, crate::app::message::Message> {
     session_form_dialog(state)
 }

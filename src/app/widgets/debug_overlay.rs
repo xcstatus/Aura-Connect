@@ -3,10 +3,10 @@
 //! Displays real-time tick/pump/VT timing statistics in a semi-transparent panel.
 //! Toggle visibility with the `ToggleDebugOverlay` message (keyboard shortcut: Ctrl+Shift+D).
 
-use iced::widget::text;
+use iced::widget::Column;
 use iced::widget::Container;
 use iced::widget::Space;
-use iced::widget::Column;
+use iced::widget::text;
 
 use crate::app::message::Message;
 use crate::app::state::IcedState;
@@ -95,7 +95,11 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
             let pump_calls = (*perf.tab_pump_calls.get(i).unwrap_or(&0)).max(1) as f64;
             let vt_ns = *perf.tab_vt_ns.get(i).unwrap_or(&0) as f64;
             let frame_ns = *perf.tab_vt_frame_ns.get(i).unwrap_or(&0) as f64;
-            let color = if i == 0 { debug_tab_first } else { debug_tab_other };
+            let color = if i == 0 {
+                debug_tab_first
+            } else {
+                debug_tab_other
+            };
 
             text(format!(
                 "[{}] pump={} bytes={} vt={:.1}ms frame={:.1}ms",
@@ -113,13 +117,18 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
         })
         .collect();
 
-    let hist_vals: Vec<String> = perf.tick_histogram_ms().iter().map(|v| format!("{:.1}", v)).collect();
-    let hist_text = text(hist_vals.join(" "))
-        .size(10.0)
-        .style(move |_| iced::widget::text::Style {
-            color: Some(debug_muted),
-            ..Default::default()
-        });
+    let hist_vals: Vec<String> = perf
+        .tick_histogram_ms()
+        .iter()
+        .map(|v| format!("{:.1}", v))
+        .collect();
+    let hist_text =
+        text(hist_vals.join(" "))
+            .size(10.0)
+            .style(move |_| iced::widget::text::Style {
+                color: Some(debug_muted),
+                ..Default::default()
+            });
 
     let mut col = Column::new()
         .push(
@@ -165,12 +174,10 @@ pub(crate) fn make_debug_overlay(state: &IcedState) -> iced::Element<'_, Message
             }),
         )
         .push(Space::new())
-        .push(
-            text("Per-tab:").style(move |_| iced::widget::text::Style {
-                color: Some(debug_title),
-                ..Default::default()
-            }),
-        )
+        .push(text("Per-tab:").style(move |_| iced::widget::text::Style {
+            color: Some(debug_title),
+            ..Default::default()
+        }))
         .push(Space::new());
 
     for line in tab_lines {

@@ -3,25 +3,37 @@ use iced::Task;
 use secrecy::{ExposeSecret, SecretString};
 
 use super::super::message::Message;
-use super::super::state::{IcedState, IcedTab, ProxyType, SessionEditorState, TabPane, VaultStatus};
+use super::super::state::{
+    IcedState, IcedTab, ProxyType, SessionEditorState, TabPane, VaultStatus,
+};
 
 /// Handle TopAddTab message.
 pub(crate) fn handle_add_tab(state: &mut IcedState) -> Task<Message> {
-    state.quick_connect_open = false;
-    state.settings_modal_open = false;
+    state.close_all_modals();
+    state.show_welcome = false;
     let title = state.model.i18n.tr("iced.tab.new").to_string();
+    let pane = match TabPane::new(
+        &state.model.settings.terminal,
+        &state.model.settings.color_scheme,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            log::error!("Failed to create tab pane: {e}");
+            return Task::none();
+        }
+    };
     state.tabs.push(IcedTab {
         title,
         profile_id: None,
     });
-    state
-        .tab_panes
-        .push(TabPane::new(&state.model.settings.terminal, &state.model.settings.color_scheme));
+    state.tab_panes.push(pane);
     state.tab_manager.add_tab();
     state.active_tab = state.tabs.len() - 1;
     // Start new tab width animation (expands from 0).
-    state.tab_anims.push(crate::app::state::TabAnimEntry::new(crate::app::chrome::TAB_CHIP_WIDTH, state.tick_count));
-    state.model.status = "New tab: use Quick connect (⚡) to open a session".to_string();
+    state.tab_anims.push(crate::app::state::TabAnimEntry::new(
+        crate::app::chrome::TAB_CHIP_WIDTH,
+        state.tick_count,
+    ));
     Task::none()
 }
 
@@ -52,7 +64,8 @@ pub(crate) fn handle_tab_selected(state: &mut IcedState, i: usize) -> Task<Messa
 
 /// Handle TabClose message.
 pub(crate) fn handle_tab_close(state: &mut IcedState, i: usize) -> Task<Message> {
-    if state.tabs.len() <= 1 {
+    // 欢迎页模式下不允许关闭标签（欢迎页不是标签，不能被关闭）
+    if state.show_welcome {
         return Task::none();
     }
     if i >= state.tabs.len() {
@@ -62,7 +75,6 @@ pub(crate) fn handle_tab_close(state: &mut IcedState, i: usize) -> Task<Message>
     let was_active = i == state.active_tab;
     state.tabs.remove(i);
     state.tab_panes.remove(i);
-    // Also remove from session manager (returns the dropped session, if any).
     let _ = state.tab_manager.remove_tab(i);
 
     let len = state.tabs.len();
@@ -71,6 +83,14 @@ pub(crate) fn handle_tab_close(state: &mut IcedState, i: usize) -> Task<Message>
     } else if i < state.active_tab {
         state.active_tab -= 1;
     }
+
+    // 关闭所有页签后显示欢迎页
+    if state.tabs.is_empty() {
+        state.show_welcome = true;
+        state.close_all_modals();
+        return Task::none();
+    }
+
     state.tab_manager.set_active_tab(state.active_tab);
 
     if let Some(pid) = state.tabs[state.active_tab].profile_id.clone() {
@@ -79,6 +99,46 @@ pub(crate) fn handle_tab_close(state: &mut IcedState, i: usize) -> Task<Message>
 
     super::super::update::sync_terminal_grid_to_session(state);
     super::super::terminal_host::TerminalHost::sync_focus_report(state);
+    Task::none()
+}
+
+/// Handle SessionExited message: SSH session terminated normally (user ran `exit`).
+/// Auto-closes the corresponding tab. If it was the last tab, shows the welcome page.
+pub(crate) fn handle_session_exited(state: &mut IcedState, tab_index: usize) -> Task<Message> {
+    if tab_index >= state.tabs.len() {
+        return Task::none();
+    }
+
+    // Detach the session (notifies shared_manager via remove_tab in the caller if needed,
+    // here we only detach since the session already exited gracefully).
+    // We use remove_tab to also trigger shared_manager close.
+    let was_active = tab_index == state.active_tab;
+    state.tabs.remove(tab_index);
+    state.tab_panes.remove(tab_index);
+    let _ = state.tab_manager.remove_tab(tab_index);
+
+    let len = state.tabs.len();
+    if was_active {
+        state.active_tab = state.active_tab.min(len.saturating_sub(1));
+    } else if tab_index < state.active_tab {
+        state.active_tab -= 1;
+    }
+
+    if state.tabs.is_empty() {
+        state.show_welcome = true;
+        state.close_all_modals();
+    } else {
+        state.tab_manager.set_active_tab(state.active_tab);
+        if let Some(pid) = state
+            .tabs
+            .get(state.active_tab)
+            .and_then(|t| t.profile_id.clone())
+        {
+            state.model.select_profile(pid);
+        }
+        super::super::update::sync_terminal_grid_to_session(state);
+        super::super::terminal_host::TerminalHost::sync_focus_report(state);
+    }
     Task::none()
 }
 
@@ -255,10 +315,7 @@ pub(crate) fn handle_session_editor_private_key_path(
 }
 
 /// Handle SessionEditorPassphraseChanged message.
-pub(crate) fn handle_session_editor_passphrase(
-    state: &mut IcedState,
-    v: String,
-) -> Task<Message> {
+pub(crate) fn handle_session_editor_passphrase(state: &mut IcedState, v: String) -> Task<Message> {
     if let Some(ed) = state.session_editor.as_mut() {
         ed.passphrase = SecretString::from(v);
         ed.error = None;
@@ -267,10 +324,8 @@ pub(crate) fn handle_session_editor_passphrase(
 }
 
 /// Handle SessionEditorTestConnection message.
-pub(crate) fn handle_session_editor_test_connection(
-    state: &mut IcedState,
-) -> Task<Message> {
-    let Some(ed) = state.session_editor.as_ref() else {
+pub(crate) fn handle_session_editor_test_connection(state: &mut IcedState) -> Task<Message> {
+    let Some(_ed) = state.session_editor.as_ref() else {
         return Task::none();
     };
 
@@ -344,7 +399,7 @@ pub(crate) fn handle_session_editor_save(state: &mut IcedState) -> Task<Message>
         if ed.clear_saved_password {
             if let Some(cid) = ed.existing_credential_id.as_deref() {
                 if let Err(e) = crate::vault::session_credentials::delete_credential(
-                    master.expose_secret(),
+                    master,
                     cid,
                     state.model.settings.security.kdf_memory_level,
                 ) {
@@ -356,7 +411,7 @@ pub(crate) fn handle_session_editor_save(state: &mut IcedState) -> Task<Message>
         } else {
             let pw = ed.password.expose_secret().trim();
             match crate::vault::session_credentials::sync_ssh_credentials(
-                master.expose_secret(),
+                master,
                 &id,
                 Some(pw),
                 None,
@@ -402,12 +457,10 @@ pub(crate) fn handle_session_editor_save(state: &mut IcedState) -> Task<Message>
         }),
     };
 
-    let res = state.rt.block_on(state.model.tab_manager.upsert_session(profile));
+    let _res = state
+        .rt
+        .block_on(state.model.tab_manager.upsert_session(profile));
 
-    state.model.status = match res {
-        Ok(()) => "Session saved".to_string(),
-        Err(e) => format!("Save failed: {e}"),
-    };
     state.session_editor = None;
     Task::none()
 }
@@ -427,11 +480,9 @@ pub(crate) fn handle_quick_connect_save_session(state: &mut IcedState) -> Task<M
         .is_some_and(|p| p >= 1 && p <= 65535);
 
     if host.is_empty() || user.is_empty() {
-        state.model.status = "Host 和 User 为必填项".to_string();
         return Task::none();
     }
     if !port_ok {
-        state.model.status = "端口范围 1–65535".to_string();
         return Task::none();
     }
 
@@ -446,7 +497,6 @@ pub(crate) fn handle_quick_connect_save_session(state: &mut IcedState) -> Task<M
 
     if needs_vault {
         if state.model.settings.security.vault.is_none() {
-            state.model.status = "请先在设置中初始化 Vault，再保存密码凭据".to_string();
             return Task::none();
         }
         if state.model.vault_master_password.is_none() {
@@ -459,26 +509,21 @@ pub(crate) fn handle_quick_connect_save_session(state: &mut IcedState) -> Task<M
                 password: secrecy::SecretString::from(String::new()),
                 error: None,
             });
-            state.model.status = "需要解锁 Vault 以保存密码".to_string();
             return Task::none();
         }
         // Save password to vault
         let master = state.model.vault_master_password.as_ref().unwrap();
         match crate::vault::session_credentials::sync_ssh_credentials(
-            master.expose_secret(),
+            master,
             &profile_id,
             Some(&*password),
             None,
             state.model.settings.security.kdf_memory_level,
         ) {
             Ok(_) => {
-                state.vault_status = VaultStatus::compute(
-                    &state.model.settings,
-                    true,
-                );
+                state.vault_status = VaultStatus::compute(&state.model.settings, true);
             }
-            Err(e) => {
-                state.model.status = format!("保存密码失败：{e}");
+            Err(_e) => {
                 return Task::none();
             }
         }
@@ -495,22 +540,23 @@ pub(crate) fn handle_quick_connect_save_session(state: &mut IcedState) -> Task<M
             port,
             user,
             auth,
-            credential_id: if needs_vault { Some(profile_id.clone()) } else { None },
+            credential_id: if needs_vault {
+                Some(profile_id.clone())
+            } else {
+                None
+            },
         }),
     };
 
-    let res = state.rt.block_on(state.model.tab_manager.upsert_session(profile));
-    state.model.status = match res {
-        Ok(()) => "Session saved".to_string(),
-        Err(e) => format!("Save failed: {e}"),
-    };
+    let _res = state
+        .rt
+        .block_on(state.model.tab_manager.upsert_session(profile));
     Task::none()
 }
 
 /// Handle DeleteSessionProfile message.
 pub(crate) fn handle_delete_session(state: &mut IcedState, id: String) -> Task<Message> {
     // Cleanup for SSH credential stored in vault (requires runtime unlock when vault is initialized).
-    let mut vault_cleanup_err: Option<String> = None;
     if let Some(p) = state.model.profiles().iter().find(|p| p.id == id) {
         if let crate::session::TransportConfig::Ssh(ssh) = &p.transport {
             if let Some(cid) = ssh.credential_id.as_deref() {
@@ -520,13 +566,11 @@ pub(crate) fn handle_delete_session(state: &mut IcedState, id: String) -> Task<M
                     return super::super::update::update(state, Message::VaultUnlockOpenDelete(id));
                 }
                 if let Some(ref master) = state.model.vault_master_password {
-                    if let Err(e) = crate::vault::session_credentials::delete_credential(
-                        master.expose_secret(),
+                    let _ = crate::vault::session_credentials::delete_credential(
+                        master,
                         cid,
                         state.model.settings.security.kdf_memory_level,
-                    ) {
-                        vault_cleanup_err = Some(format!("Vault 凭据清理失败（{e}）"));
-                    }
+                    );
                 }
             }
         }
@@ -537,24 +581,8 @@ pub(crate) fn handle_delete_session(state: &mut IcedState, id: String) -> Task<M
         state.model.vault_master_password.is_some(),
     );
 
-    let res = state.rt.block_on(state.model.tab_manager.delete_session(&id));
-
-    state.model.status = match res {
-        Ok(()) => vault_cleanup_err.unwrap_or_else(|| {
-            state
-                .model
-                .i18n
-                .tr("iced.settings.conn.deleted")
-                .to_string()
-        }),
-        Err(e) => {
-            let base = format!("Delete failed: {e}");
-            if let Some(warn) = vault_cleanup_err {
-                format!("{base}. {warn}")
-            } else {
-                base
-            }
-        }
-    };
+    let _ = state
+        .rt
+        .block_on(state.model.tab_manager.delete_session(&id));
     Task::none()
 }

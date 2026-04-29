@@ -1,15 +1,13 @@
-use iced::alignment::Alignment;
-use iced::widget::{
-    button, column, container, row, scrollable, text, text_input,
-};
 use iced::Element;
 use iced::Theme;
+use iced::alignment::Alignment;
+use iced::widget::{button, column, container, row, scrollable, text, text_input};
 
-use crate::app::components::helpers::{top_bar_material_style, quick_connect_group_header_style, tokens_for_state};
+use crate::app::components::helpers::{lg_panel_container_style, tokens_for_state};
 use crate::app::message::Message;
 use crate::app::state::IcedState;
-use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
-use crate::theme::icons::{icon_view_with, IconId, IconOptions};
+use crate::app::widgets::chrome_button::{lg_icon_button, lg_primary_button, lg_secondary_button};
+use crate::theme::icons::{IconId, IconOptions, icon_view_with};
 
 use super::grouped_ssh_profiles;
 use crate::session::{SessionProfile, TransportConfig};
@@ -38,7 +36,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
         .on_press(Message::QuickConnectDirectSubmit)
         .width(iced::Length::Fill)
         .padding([8, 12])
-        .style(style_chrome_primary(tokens))
+        .style(lg_primary_button(tokens))
         .into()
     } else {
         iced::widget::Space::new().into()
@@ -89,7 +87,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
                 .on_press(Message::QuickConnectPickRecent(rec))
                 .width(iced::Length::Fill)
                 .padding([6, 10])
-                .style(style_chrome_secondary(tokens)),
+                .style(lg_secondary_button(tokens)),
             );
         }
     }
@@ -103,7 +101,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
             .on_press(Message::QuickConnectNewConnection)
             .width(iced::Length::Fill)
             .padding([8, 12])
-            .style(style_chrome_primary(tokens)),
+            .style(lg_primary_button(tokens)),
     );
 
     let q_lower = query.to_lowercase();
@@ -151,7 +149,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
                     bottom: 4.0,
                     left: 4.0,
                 })
-                .style(quick_connect_group_header_style(tokens))
+                .style(lg_panel_container_style(tokens))
                 .width(iced::Length::Fill),
         );
         for p in sessions {
@@ -183,7 +181,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
                 .on_press(Message::ProfileConnect(prof))
                 .width(iced::Length::Fill)
                 .padding([6, 10])
-                .style(style_chrome_secondary(tokens)),
+                .style(lg_secondary_button(tokens)),
             );
         }
     }
@@ -217,7 +215,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
     container(body)
         .width(iced::Length::Fill)
         .padding(16)
-        .style(top_bar_material_style(tokens))
+        .style(lg_panel_container_style(tokens))
         .into()
 }
 
@@ -228,7 +226,7 @@ pub(crate) fn quick_connect_picker(state: &IcedState) -> Element<'_, Message> {
 /// 创建关闭图标按钮
 fn icon_close_button(tokens: crate::theme::DesignTokens) -> Element<'static, Message> {
     let close_icon = icon_view_with(
-        IconOptions::new(IconId::Close)
+        IconOptions::new(IconId::FnClose)
             .with_size(14)
             .with_color(tokens.text_secondary),
         Message::QuickConnectDismiss,
@@ -237,6 +235,6 @@ fn icon_close_button(tokens: crate::theme::DesignTokens) -> Element<'static, Mes
         .on_press(Message::QuickConnectDismiss)
         .width(iced::Length::Fixed(28.0))
         .height(iced::Length::Fixed(28.0))
-        .style(style_top_icon(tokens))
+        .style(lg_icon_button(tokens))
         .into()
 }

@@ -1,7 +1,7 @@
 //! SFTP 文件传输任务管理
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use uuid::Uuid;
 
@@ -82,8 +82,7 @@ impl SftpTransfer {
     pub fn complete(&mut self) {
         self.status = TransferStatus::Completed;
         self.end_time = Some(std::time::Instant::now());
-        self.transferred
-            .store(self.total_size, Ordering::Relaxed);
+        self.transferred.store(self.total_size, Ordering::Relaxed);
     }
 
     /// 标记传输失败

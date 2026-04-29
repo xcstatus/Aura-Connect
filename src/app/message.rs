@@ -38,9 +38,15 @@ pub(crate) enum SettingsField {
     KdfMemoryLevel(crate::settings::KdfMemoryLevel),
     HostKeyPolicy(crate::settings::HostKeyPolicy),
     /// 删除已信任主机
-    DeleteKnownHost { host: String, port: u16 },
+    DeleteKnownHost {
+        host: String,
+        port: u16,
+    },
     /// 展开/折叠主机详情
-    ToggleKnownHostDetail { host: String, port: u16 },
+    ToggleKnownHostDetail {
+        host: String,
+        port: u16,
+    },
     ConnectionSearch(String),
     /// When true: only one tab may hold SSH; switching tabs disconnects the previous session.
     SingleSharedSession(bool),
@@ -54,10 +60,87 @@ pub(crate) enum SettingsField {
     ReconnectExponential(bool),
     /// 启动时恢复上次会话
     RestoreLastSession(bool),
+    /// 添加端口转发配置
+    AddPortForward,
+    /// 删除端口转发配置
+    RemovePortForward(usize),
 }
 
 /// Type alias for connect result error info (error kind + optional host key error details).
-pub type ConnectResultError = (crate::app::model::ConnectErrorKind, Option<crate::app::model::HostKeyErrorInfo>);
+pub type ConnectResultError = (
+    crate::app::model::ConnectErrorKind,
+    Option<crate::app::model::HostKeyErrorInfo>,
+);
+
+/// SFTP 右键菜单目标
+#[derive(Debug, Clone)]
+pub enum SftpContextMenuTarget {
+    /// 文件
+    File {
+        name: String,
+        path: String,
+        is_dir: bool,
+    },
+    /// 空白区域
+    EmptyArea,
+}
+
+/// SFTP 面板标签级消息
+#[derive(Debug, Clone)]
+pub enum SftpTabMessage {
+    /// 切换面板显隐
+    SftpToggle,
+    /// 切换布局（上下 ↔ 左右）
+    SftpToggleLayout,
+    /// 进入目录
+    SftpNavigate(String),
+    /// 返回上级目录
+    SftpNavigateToParent,
+    /// 下载文件
+    SftpDownload(String),
+    /// 下载文件夹
+    SftpDownloadFolder(String),
+    /// 删除文件/文件夹
+    SftpDelete(String),
+    /// 创建文件夹
+    SftpCreateFolder,
+    /// 复制路径到剪贴板
+    SftpCopyPath(String),
+    /// 排序字段变更
+    SftpSortBy(crate::sftp::SftpSortBy),
+    /// 排序方向变更
+    SftpSortDirection(crate::sftp::SortDirection),
+    /// 切换隐藏文件显示
+    SftpToggleHidden,
+    /// 刷新目录
+    SftpRefresh,
+    /// 显示右键菜单
+    ShowContextMenu {
+        x: f32,
+        y: f32,
+        target: SftpContextMenuTarget,
+    },
+    /// 隐藏右键菜单
+    HideContextMenu,
+    /// 确认删除
+    SftpDeleteConfirm,
+    /// 取消删除
+    SftpDeleteCancel,
+    /// 确认创建文件夹
+    SftpCreateFolderConfirm,
+    /// 取消创建文件夹
+    SftpCreateFolderCancel,
+    /// 新建文件夹名称变更
+    SftpCreateFolderNameChanged(String),
+    /// 上传文件
+    SftpUpload,
+    /// 切换传输列表显示
+    SftpToggleTransferList,
+    /// 打开下载目录
+    SftpOpenDownloadDir,
+    /// 清除已完成的传输任务
+    SftpClearCompletedTransfers,
+}
 
 /// Wrapped session type for async connection result.
 pub type ConnectSession = std::sync::Arc<crate::backend::ssh_session::SshChannel>;
@@ -65,6 +148,8 @@ pub type ConnectSession = std::sync::Arc<crate::backend::ssh_session::SshChannel
 /// Message type - manually implement Debug since AsyncSession doesn't implement it.
 #[derive(Clone)]
 pub(crate) enum Message {
+    /// 无操作（用于异步任务取消等场景）
+    Noop,
     Tick,
     /// 主窗口尺寸（逻辑像素），用于判断标签条是否横向溢出。
     WindowResized(iced::Size),
@@ -170,6 +255,10 @@ pub(crate) enum Message {
     QuickConnectInlinePasswordSubmit(String),
     /// Inline password field changed (live update while typing).
     QuickConnectInlinePasswordChanged(String),
+    /// Toggle inline password visibility.
+    QuickConnectInlinePasswordToggleVisibility,
+    /// Close inline password overlay (e.g., cancel auth).
+    QuickConnectInlinePasswordClose,
     /// Host key confirmation (Ask policy).
     HostKeyAcceptOnce,
     HostKeyAlwaysTrust,
@@ -206,7 +295,15 @@ pub(crate) enum Message {
     /// 自动重连倒计时更新（每秒触发一次）
     ReconnectTick,
     /// 自动重连结果（异步任务回调）
-    ReconnectResult(Result<std::sync::Arc<crate::backend::ssh_session::SshChannel>, (crate::app::model::ConnectErrorKind, Option<crate::app::model::HostKeyErrorInfo>)>),
+    ReconnectResult(
+        Result<
+            std::sync::Arc<crate::backend::ssh_session::SshChannel>,
+            (
+                crate::app::model::ConnectErrorKind,
+                Option<crate::app::model::HostKeyErrorInfo>,
+            ),
+        >,
+    ),
     /// 用户手动取消重连
     ReconnectCancel,
     /// 重启后恢复会话弹窗：确认恢复
@@ -220,7 +317,52 @@ pub(crate) enum Message {
     /// 预热 tick（每 500ms 检查）
     PrewarmTick,
     /// 预热结果回调
-    PrewarmResult(Result<std::sync::Arc<crate::backend::ssh_session::SshChannel>, (crate::app::model::ConnectErrorKind, Option<crate::app::model::HostKeyErrorInfo>)>),
+    PrewarmResult(
+        Result<
+            std::sync::Arc<crate::backend::ssh_session::SshChannel>,
+            (
+                crate::app::model::ConnectErrorKind,
+                Option<crate::app::model::HostKeyErrorInfo>,
+            ),
+        >,
+    ),
+    /// SFTP 标签消息
+    SftpTab(SftpTabMessage),
+    /// SFTP session 初始化完成
+    SftpInitComplete {
+        tab_index: usize,
+        session: std::sync::Arc<std::sync::Mutex<Option<crate::sftp::SftpSession>>>,
+    },
+    /// SFTP session 初始化失败
+    SftpInitError {
+        tab_index: usize,
+        error: String,
+    },
+    /// SFTP 目录加载完成回调（异步任务返回）
+    SftpDirLoaded {
+        tab_index: usize,
+        entries: Vec<crate::sftp::RemoteFileEntry>,
+    },
+    /// SFTP 目录加载失败回调
+    SftpDirError {
+        tab_index: usize,
+        error: String,
+    },
+    /// SFTP 操作完成，需要刷新目录
+    SftpRefreshComplete {
+        tab_index: usize,
+    },
+    /// SFTP 传输完成
+    SftpTransferComplete {
+        tab_index: usize,
+        transfer_id: uuid::Uuid,
+    },
+    /// SFTP 传输失败
+    SftpTransferFailed {
+        tab_index: usize,
+        transfer_id: uuid::Uuid,
+        error: String,
+    },
 }
 
 impl std::fmt::Debug for Message {
@@ -235,36 +377,74 @@ impl std::fmt::Debug for Message {
             Message::QuickConnectNewConnection => write!(f, "Message::QuickConnectNewConnection"),
             Message::QuickConnectSaveSession => write!(f, "Message::QuickConnectSaveSession"),
             Message::QuickConnectBackToList => write!(f, "Message::QuickConnectBackToList"),
-            Message::QuickConnectQueryChanged(q) => write!(f, "Message::QuickConnectQueryChanged({})", q),
+            Message::QuickConnectQueryChanged(q) => {
+                write!(f, "Message::QuickConnectQueryChanged({})", q)
+            }
             Message::QuickConnectDirectSubmit => write!(f, "Message::QuickConnectDirectSubmit"),
-            Message::QuickConnectPickRecent(rec) => write!(f, "Message::QuickConnectPickRecent({:?})", rec),
+            Message::QuickConnectPickRecent(rec) => {
+                write!(f, "Message::QuickConnectPickRecent({:?})", rec)
+            }
             Message::TopOpenSettings => write!(f, "Message::TopOpenSettings"),
             Message::SettingsDismiss => write!(f, "Message::SettingsDismiss"),
-            Message::SettingsCategoryChanged(cat) => write!(f, "Message::SettingsCategoryChanged({:?})", cat),
+            Message::SettingsCategoryChanged(cat) => {
+                write!(f, "Message::SettingsCategoryChanged({:?})", cat)
+            }
             Message::SettingsSubTabChanged(i) => write!(f, "Message::SettingsSubTabChanged({})", i),
-            Message::SettingsFieldChanged(field) => write!(f, "Message::SettingsFieldChanged({:?})", field),
+            Message::SettingsFieldChanged(field) => {
+                write!(f, "Message::SettingsFieldChanged({:?})", field)
+            }
             Message::BiometricsToggle(v) => write!(f, "Message::BiometricsToggle({})", v),
-            Message::SettingsRestartAcknowledged => write!(f, "Message::SettingsRestartAcknowledged"),
+            Message::SettingsRestartAcknowledged => {
+                write!(f, "Message::SettingsRestartAcknowledged")
+            }
             Message::VaultOpen => write!(f, "Message::VaultOpen"),
             Message::VaultClose => write!(f, "Message::VaultClose"),
-            Message::VaultOldPasswordChanged(_) => write!(f, "Message::VaultOldPasswordChanged(...)"),
-            Message::VaultNewPasswordChanged(_) => write!(f, "Message::VaultNewPasswordChanged(...)"),
-            Message::VaultConfirmPasswordChanged(_) => write!(f, "Message::VaultConfirmPasswordChanged(...)"),
+            Message::VaultOldPasswordChanged(_) => {
+                write!(f, "Message::VaultOldPasswordChanged(...)")
+            }
+            Message::VaultNewPasswordChanged(_) => {
+                write!(f, "Message::VaultNewPasswordChanged(...)")
+            }
+            Message::VaultConfirmPasswordChanged(_) => {
+                write!(f, "Message::VaultConfirmPasswordChanged(...)")
+            }
             Message::VaultSubmit => write!(f, "Message::VaultSubmit"),
             Message::DeleteSessionProfile(id) => write!(f, "Message::DeleteSessionProfile({})", id),
             Message::OpenSessionEditor(id) => write!(f, "Message::OpenSessionEditor({:?})", id),
             Message::SessionEditorClose => write!(f, "Message::SessionEditorClose"),
-            Message::SessionEditorHostChanged(v) => write!(f, "Message::SessionEditorHostChanged({})", v),
-            Message::SessionEditorPortChanged(v) => write!(f, "Message::SessionEditorPortChanged({})", v),
-            Message::SessionEditorUserChanged(v) => write!(f, "Message::SessionEditorUserChanged({})", v),
-            Message::SessionEditorAuthChanged(a) => write!(f, "Message::SessionEditorAuthChanged({:?})", a),
-            Message::SessionEditorPasswordChanged(_) => write!(f, "Message::SessionEditorPasswordChanged(...)"),
-            Message::SessionEditorClearPasswordToggled(v) => write!(f, "Message::SessionEditorClearPasswordToggled({})", v),
-            Message::SessionEditorNameChanged(v) => write!(f, "Message::SessionEditorNameChanged({})", v),
-            Message::SessionEditorGroupChanged(v) => write!(f, "Message::SessionEditorGroupChanged({:?})", v),
-            Message::SessionEditorPrivateKeyPathChanged(v) => write!(f, "Message::SessionEditorPrivateKeyPathChanged({})", v),
-            Message::SessionEditorPassphraseChanged(_) => write!(f, "Message::SessionEditorPassphraseChanged(...)"),
-            Message::SessionEditorTestConnection => write!(f, "Message::SessionEditorTestConnection"),
+            Message::SessionEditorHostChanged(v) => {
+                write!(f, "Message::SessionEditorHostChanged({})", v)
+            }
+            Message::SessionEditorPortChanged(v) => {
+                write!(f, "Message::SessionEditorPortChanged({})", v)
+            }
+            Message::SessionEditorUserChanged(v) => {
+                write!(f, "Message::SessionEditorUserChanged({})", v)
+            }
+            Message::SessionEditorAuthChanged(a) => {
+                write!(f, "Message::SessionEditorAuthChanged({:?})", a)
+            }
+            Message::SessionEditorPasswordChanged(_) => {
+                write!(f, "Message::SessionEditorPasswordChanged(...)")
+            }
+            Message::SessionEditorClearPasswordToggled(v) => {
+                write!(f, "Message::SessionEditorClearPasswordToggled({})", v)
+            }
+            Message::SessionEditorNameChanged(v) => {
+                write!(f, "Message::SessionEditorNameChanged({})", v)
+            }
+            Message::SessionEditorGroupChanged(v) => {
+                write!(f, "Message::SessionEditorGroupChanged({:?})", v)
+            }
+            Message::SessionEditorPrivateKeyPathChanged(v) => {
+                write!(f, "Message::SessionEditorPrivateKeyPathChanged({})", v)
+            }
+            Message::SessionEditorPassphraseChanged(_) => {
+                write!(f, "Message::SessionEditorPassphraseChanged(...)")
+            }
+            Message::SessionEditorTestConnection => {
+                write!(f, "Message::SessionEditorTestConnection")
+            }
             Message::SessionEditorSave => write!(f, "Message::SessionEditorSave"),
             Message::TabSelected(i) => write!(f, "Message::TabSelected({})", i),
             Message::TabClose(i) => write!(f, "Message::TabClose({})", i),
@@ -284,9 +464,15 @@ impl std::fmt::Debug for Message {
             Message::PortChanged(v) => write!(f, "Message::PortChanged({})", v),
             Message::UserChanged(v) => write!(f, "Message::UserChanged({})", v),
             Message::PasswordChanged(_) => write!(f, "Message::PasswordChanged(...)"),
-            Message::QuickConnectAuthChanged(a) => write!(f, "Message::QuickConnectAuthChanged({:?})", a),
-            Message::QuickConnectKeyPathChanged(v) => write!(f, "Message::QuickConnectKeyPathChanged({})", v),
-            Message::QuickConnectPassphraseChanged(_) => write!(f, "Message::QuickConnectPassphraseChanged(...)"),
+            Message::QuickConnectAuthChanged(a) => {
+                write!(f, "Message::QuickConnectAuthChanged({:?})", a)
+            }
+            Message::QuickConnectKeyPathChanged(v) => {
+                write!(f, "Message::QuickConnectKeyPathChanged({})", v)
+            }
+            Message::QuickConnectPassphraseChanged(_) => {
+                write!(f, "Message::QuickConnectPassphraseChanged(...)")
+            }
             Message::ConnectPressed => write!(f, "Message::ConnectPressed"),
             Message::BreadcrumbTogglePin => write!(f, "Message::BreadcrumbTogglePin"),
             Message::BreadcrumbShowTemp => write!(f, "Message::BreadcrumbShowTemp"),
@@ -294,29 +480,59 @@ impl std::fmt::Debug for Message {
             Message::BreadcrumbSftp => write!(f, "Message::BreadcrumbSftp"),
             Message::BreadcrumbPortForward => write!(f, "Message::BreadcrumbPortForward"),
             Message::ConnectResult(_) => write!(f, "Message::ConnectResult(...)"),
-            Message::QuickConnectInteractiveAnswerChanged(i, v) => write!(f, "Message::QuickConnectInteractiveAnswerChanged({}, {})", i, v),
-            Message::QuickConnectInteractiveSubmit => write!(f, "Message::QuickConnectInteractiveSubmit"),
-            Message::QuickConnectInlinePasswordSubmit(_) => write!(f, "Message::QuickConnectInlinePasswordSubmit(...)"),
-            Message::QuickConnectInlinePasswordChanged(_) => write!(f, "Message::QuickConnectInlinePasswordChanged(...)"),
+            Message::QuickConnectInteractiveAnswerChanged(i, v) => write!(
+                f,
+                "Message::QuickConnectInteractiveAnswerChanged({}, {})",
+                i, v
+            ),
+            Message::QuickConnectInteractiveSubmit => {
+                write!(f, "Message::QuickConnectInteractiveSubmit")
+            }
+            Message::QuickConnectInlinePasswordSubmit(_) => {
+                write!(f, "Message::QuickConnectInlinePasswordSubmit(...)")
+            }
+            Message::QuickConnectInlinePasswordChanged(_) => {
+                write!(f, "Message::QuickConnectInlinePasswordChanged(...)")
+            }
+            Message::QuickConnectInlinePasswordToggleVisibility => {
+                write!(f, "Message::QuickConnectInlinePasswordToggleVisibility")
+            }
+            Message::QuickConnectInlinePasswordClose => {
+                write!(f, "Message::QuickConnectInlinePasswordClose")
+            }
             Message::HostKeyAcceptOnce => write!(f, "Message::HostKeyAcceptOnce"),
             Message::HostKeyAlwaysTrust => write!(f, "Message::HostKeyAlwaysTrust"),
             Message::HostKeyReject => write!(f, "Message::HostKeyReject"),
             Message::AutoProbeConsentOpen => write!(f, "Message::AutoProbeConsentOpen"),
             Message::AutoProbeConsentAllowOnce => write!(f, "Message::AutoProbeConsentAllowOnce"),
-            Message::AutoProbeConsentAlwaysAllow => write!(f, "Message::AutoProbeConsentAlwaysAllow"),
-            Message::AutoProbeConsentUsePassword => write!(f, "Message::AutoProbeConsentUsePassword"),
+            Message::AutoProbeConsentAlwaysAllow => {
+                write!(f, "Message::AutoProbeConsentAlwaysAllow")
+            }
+            Message::AutoProbeConsentUsePassword => {
+                write!(f, "Message::AutoProbeConsentUsePassword")
+            }
             Message::QuickConnectSwitchAuth => write!(f, "Message::QuickConnectSwitchAuth"),
             Message::DisconnectPressed => write!(f, "Message::DisconnectPressed"),
             Message::SessionExited(i) => write!(f, "Message::SessionExited({})", i),
             Message::ProfileConnect(p) => write!(f, "Message::ProfileConnect({:?})", p.name),
             Message::VaultUnlockOpenConnect(_) => write!(f, "Message::VaultUnlockOpenConnect(...)"),
-            Message::VaultUnlockOpenDelete(id) => write!(f, "Message::VaultUnlockOpenDelete({})", id),
+            Message::VaultUnlockOpenDelete(id) => {
+                write!(f, "Message::VaultUnlockOpenDelete({})", id)
+            }
             Message::VaultUnlockOpenSaveSession => write!(f, "Message::VaultUnlockOpenSaveSession"),
             Message::VaultUnlockClose => write!(f, "Message::VaultUnlockClose"),
-            Message::VaultUnlockPasswordChanged(_) => write!(f, "Message::VaultUnlockPasswordChanged(...)"),
+            Message::VaultUnlockPasswordChanged(_) => {
+                write!(f, "Message::VaultUnlockPasswordChanged(...)")
+            }
             Message::VaultUnlockSubmit => write!(f, "Message::VaultUnlockSubmit"),
-            Message::VaultUnlockComplete(result) => write!(f, "Message::VaultUnlockComplete({:?})", result.is_ok()),
-            Message::ClipboardPaste(t) => write!(f, "Message::ClipboardPaste({:?})", t.as_ref().map(|_| "...")),
+            Message::VaultUnlockComplete(result) => {
+                write!(f, "Message::VaultUnlockComplete({:?})", result.is_ok())
+            }
+            Message::ClipboardPaste(t) => write!(
+                f,
+                "Message::ClipboardPaste({:?})",
+                t.as_ref().map(|_| "...")
+            ),
             Message::ClipboardWriteDone => write!(f, "Message::ClipboardWriteDone"),
             Message::SaveSettings => write!(f, "Message::SaveSettings"),
             Message::ToggleDebugOverlay => write!(f, "Message::ToggleDebugOverlay"),
@@ -329,6 +545,44 @@ impl std::fmt::Debug for Message {
             Message::SessionHoverEnd => write!(f, "Message::SessionHoverEnd"),
             Message::PrewarmTick => write!(f, "Message::PrewarmTick"),
             Message::PrewarmResult(_) => write!(f, "Message::PrewarmResult(...)"),
+            Message::SftpTab(msg) => write!(f, "Message::SftpTab({:?})", msg),
+            Message::SftpInitComplete { tab_index, .. } => write!(
+                f,
+                "Message::SftpInitComplete {{ tab_index: {} }}",
+                tab_index
+            ),
+            Message::SftpInitError { tab_index, error } => write!(
+                f,
+                "Message::SftpInitError {{ tab_index: {}, error: {} }}",
+                tab_index, error
+            ),
+            Message::SftpDirLoaded { tab_index, entries } => write!(
+                f,
+                "Message::SftpDirLoaded {{ tab_index: {}, entries_count: {} }}",
+                tab_index,
+                entries.len()
+            ),
+            Message::SftpDirError { tab_index, error } => write!(
+                f,
+                "Message::SftpDirError {{ tab_index: {}, error: {} }}",
+                tab_index, error
+            ),
+            Message::SftpRefreshComplete { tab_index } => write!(
+                f,
+                "Message::SftpRefreshComplete {{ tab_index: {} }}",
+                tab_index
+            ),
+            Message::Noop => write!(f, "Message::Noop"),
+            Message::SftpTransferComplete { tab_index, transfer_id } => write!(
+                f,
+                "Message::SftpTransferComplete {{ tab_index: {}, transfer_id: {} }}",
+                tab_index, transfer_id
+            ),
+            Message::SftpTransferFailed { tab_index, transfer_id, error } => write!(
+                f,
+                "Message::SftpTransferFailed {{ tab_index: {}, transfer_id: {}, error: {} }}",
+                tab_index, transfer_id, error
+            ),
         }
     }
 }

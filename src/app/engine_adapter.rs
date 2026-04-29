@@ -1,5 +1,7 @@
-use crate::terminal::controller::{EngineSnapshot, TerminalController, TerminalKey, TerminalModifiers};
 use crate::terminal::ScrollState;
+use crate::terminal::controller::{
+    EngineSnapshot, TerminalController, TerminalKey, TerminalModifiers,
+};
 
 use super::state::IcedState;
 

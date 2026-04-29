@@ -1,9 +1,9 @@
-use iced::widget::{column, container, Space, Stack};
 use iced::Element;
+use iced::widget::{Space, Stack, column, container};
 
 use super::chrome::unified_titlebar_padding;
-use super::components::helpers::tokens_for_state;
 use super::components;
+use super::components::helpers::tokens_for_state;
 use super::components::overlays;
 use super::components::quick_connect;
 use super::message::Message;
@@ -43,10 +43,13 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
         };
         let tokens = tokens_for_state(state);
         let main_chrome = crate::app::chrome::main_chrome_style(tokens);
-        let chrome = column![top_bar, container(welcome_with_overlays)
-            .width(iced::Length::Fill)
-            .height(iced::Length::Fill)
-            .style(main_chrome)]
+        let chrome = column![
+            top_bar,
+            container(welcome_with_overlays)
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .style(main_chrome)
+        ]
         .height(iced::Length::Fill);
         return container(chrome)
             .padding(unified_titlebar_padding())
@@ -60,10 +63,17 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
         let tokens = tokens_for_state(state);
         let main_chrome = crate::app::chrome::main_chrome_style(tokens);
         return container(
-            column![top_bar, container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
+            column![
+                top_bar,
+                container(
+                    Space::new()
+                        .width(iced::Length::Fill)
+                        .height(iced::Length::Fill)
+                )
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill)
-                .style(main_chrome)]
+                .style(main_chrome)
+            ]
             .height(iced::Length::Fill),
         )
         .padding(unified_titlebar_padding())
@@ -75,17 +85,12 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
     let mut term_vp =
         terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal);
 
-    // 根据 breadcrumb 状态更新 viewport spec
-    let breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+    // 根据 breadcrumb 动画进度更新 viewport spec
+    let breadcrumb_visible = state.breadcrumb_visible();
     term_vp.breadcrumb_visible = breadcrumb_visible;
 
-    // 根据 breadcrumb_pinned 和 breadcrumb_temp_visible 决定是否显示 breadcrumb
-    let breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
-    let breadcrumb = if breadcrumb_visible {
-        Some(components::breadcrumb::breadcrumb(state))
-    } else {
-        None
-    };
+    // Breadcrumb 始终渲染，通过高度动画实现展开/收起
+    let breadcrumb = components::breadcrumb::breadcrumb(state);
 
     let bottom_bar = components::status_bar::status_bar(state);
 
@@ -93,14 +98,11 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
     let tab_content = components::sftp::pane_layout::tab_content(state);
 
     // 构建主体内容区域（breadcrumb + 内容，终端/SFTP 弹性填满中间空间）
-    let below_top_fill: Element<'_, Message> = if let Some(bc) = breadcrumb {
-        column![bc, tab_content]
-            .spacing(term_vp.main_column_spacing())
-            .height(iced::Length::Fill)
-            .into()
-    } else {
-        tab_content
-    };
+    // 注意：breadcrumb 始终在 column 中，通过 height=0 在收起时不可见
+    let below_top_fill: Element<'_, Message> = column![breadcrumb, tab_content]
+        .spacing(term_vp.main_column_spacing())
+        .height(iced::Length::Fill)
+        .into();
 
     // 底栏固定在底部，主体区域填满剩余空间
     let content_with_bottom: Element<'_, Message> = column![below_top_fill, bottom_bar]
@@ -116,8 +118,8 @@ pub(crate) fn view(state: &IcedState) -> Element<'_, Message> {
         // Terminal-inline overlay: password/passphrase input (modal closed, need credential).
         layers.push(overlays::inline_password_overlay(state));
 
-        // 浮动 breadcrumb 图标（仅在 breadcrumb 未固定且未临时显示时显示）
-        if !state.breadcrumb_pinned && !state.breadcrumb_temp_visible {
+        // 浮动 breadcrumb 图标（始终渲染，通过透明度实现动画效果）
+        if state.breadcrumb_float_icon_visible() {
             layers.push(components::breadcrumb::breadcrumb_float_icon(state));
         }
 

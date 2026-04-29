@@ -10,19 +10,23 @@
 pub mod connection;
 pub mod session;
 pub mod settings;
+pub mod sftp;
 pub mod tick;
 pub mod vault;
 
-use iced::keyboard;
 use iced::Size;
 use iced::Task;
 use iced::event::Event;
+use iced::keyboard;
 use iced::mouse;
 
 use crate::backend::ssh_session::AsyncSession;
 
 use super::message::Message;
-use super::state::{IcedState, QuickConnectFlow, QuickConnectPanel, TabPane, ConnectionStage};
+use super::state::{
+    BreadcrumbAnimPhase, ConnectionStage, IcedState, ModalAnimPhase, ModalAnimState,
+    QuickConnectFlow, QuickConnectPanel, TabPane,
+};
 use super::terminal_event::TerminalEvent;
 use super::terminal_host::TerminalHost;
 use super::terminal_viewport;
@@ -51,11 +55,13 @@ pub(crate) fn apply_terminal_grid_resize_for_pane(
 
 /// Resize the active tab's PTY to current window size (syncs to SSH PTY if session exists).
 pub(crate) fn sync_terminal_grid_to_session(state: &mut IcedState) {
+    if state.tab_panes.is_empty() {
+        return;
+    }
     let term_settings = &state.model.settings.terminal;
     let pane = &mut state.tab_panes[state.active_tab];
     let window_size = state.window_size;
-    let breadcrumb_visible =
-        state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+    let breadcrumb_visible = state.breadcrumb_pinned;
     let (cols, rows) = {
         let mut spec = terminal_viewport::terminal_viewport_spec_for_settings(term_settings);
         spec.breadcrumb_visible = breadcrumb_visible;
@@ -73,11 +79,10 @@ pub(crate) fn sync_terminal_grid_to_session(state: &mut IcedState) {
 }
 
 pub(crate) fn disconnect_active_tab_session(state: &mut IcedState) {
-    state
-        .tab_manager
-        .detach_session(state.active_tab);
-    state.active_pane_mut().terminal.clear_pty_resize_anchor();
-    state.model.status = "Disconnected".to_string();
+    state.tab_manager.detach_session(state.active_tab);
+    if !state.tab_panes.is_empty() {
+        state.active_pane_mut().terminal.clear_pty_resize_anchor();
+    }
     state.last_activity_ms = crate::settings::unix_time_ms();
 }
 
@@ -100,7 +105,6 @@ pub(crate) fn complete_new_ssh_session(
 
     state.active_pane_mut().last_terminal_focus_sent = None;
     TerminalHost::sync_focus_report(state);
-    state.model.status = "Connected".to_string();
     state.model.record_recent_connection(recent);
     state.quick_connect_open = false;
     state.settings_modal_open = false;
@@ -130,7 +134,6 @@ pub(crate) fn complete_new_ssh_session_arc(
 
     state.active_pane_mut().last_terminal_focus_sent = None;
     TerminalHost::sync_focus_report(state);
-    state.model.status = "Connected".to_string();
     state.model.record_recent_connection(recent);
     state.quick_connect_open = false;
     state.settings_modal_open = false;
@@ -144,6 +147,7 @@ pub(crate) fn complete_new_ssh_session_arc(
 pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
     match message {
         // --- Tick ---
+        Message::Noop => Task::none(),
         Message::Tick => tick::handle_tick(state),
 
         // --- Window ---
@@ -151,8 +155,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.window_size = size;
             let term_settings = state.model.settings.terminal.clone();
             let window_size = state.window_size;
-            let breadcrumb_visible =
-                state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+            let breadcrumb_visible = state.breadcrumb_pinned;
             for pane in &mut state.tab_panes {
                 apply_terminal_grid_resize_for_pane(
                     pane,
@@ -273,7 +276,6 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.host_key_prompt = None;
             state.connection_stage = super::state::ConnectionStage::None;
             state.preconnect_info_line_count = 0;
-            state.model.status = "Quick connect".to_string();
             Task::none()
         }
         Message::TopOpenSettings => {
@@ -290,17 +292,35 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
 
         // --- Quick connect panels ---
         Message::QuickConnectDismiss => {
-            if state.quick_connect_anim.phase == super::state::ModalAnimPhase::Closed {
-                state.quick_connect_open = false;
-            } else if state.quick_connect_anim.phase != super::state::ModalAnimPhase::Closing {
-                state.quick_connect_anim = super::state::ModalAnimState::closing(state.tick_count);
+            log::debug!(
+                "[QuickConnect] Dismiss: phase={:?}, tick={}",
+                state.quick_connect_anim.phase,
+                state.tick_count
+            );
+
+            match state.quick_connect_anim.phase {
+                ModalAnimPhase::Closed => {
+                    state.quick_connect_open = false;
+                }
+                ModalAnimPhase::Opening => {
+                    // Opening 中直接跳到 Closing
+                    state.quick_connect_anim.phase = ModalAnimPhase::Closing;
+                    state.quick_connect_anim.enter_tick = state.tick_count;
+                }
+                ModalAnimPhase::Closing => {
+                    // 已在关闭中，无需重复操作
+                }
+                ModalAnimPhase::Open => {
+                    state.quick_connect_anim = ModalAnimState::closing(state.tick_count);
+                }
             }
+
             state.quick_connect_panel = QuickConnectPanel::Picker;
-            state.quick_connect_flow = super::state::QuickConnectFlow::Idle;
+            state.quick_connect_flow = QuickConnectFlow::Idle;
             state.quick_connect_error_kind = None;
             state.quick_connect_interactive = None;
             state.host_key_prompt = None;
-            state.connection_stage = super::state::ConnectionStage::None;
+            state.connection_stage = ConnectionStage::None;
             state.preconnect_info_line_count = 0;
             Task::none()
         }
@@ -329,9 +349,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
             state.model.draft.password = secrecy::SecretString::from(String::new());
             Task::none()
         }
-        Message::QuickConnectSaveSession => {
-            session::handle_quick_connect_save_session(state)
-        }
+        Message::QuickConnectSaveSession => session::handle_quick_connect_save_session(state),
         Message::QuickConnectBackToList => {
             state.quick_connect_panel = QuickConnectPanel::Picker;
             state.quick_connect_flow = super::state::QuickConnectFlow::Idle;
@@ -459,6 +477,7 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
         }
         Message::TabSelected(i) => session::handle_tab_selected(state, i),
         Message::TabClose(i) => session::handle_tab_close(state, i),
+        Message::SessionExited(i) => session::handle_session_exited(state, i),
 
         // --- Window controls ---
         #[cfg(not(target_os = "macos"))]
@@ -579,64 +598,52 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
         // --- Connection ---
         Message::ConnectPressed => connection::handle_connect(state),
         Message::BreadcrumbTogglePin => {
-            // 点击后隐藏 breadcrumb（无论当前状态如何）
-            state.breadcrumb_pinned = false;
-            state.breadcrumb_temp_visible = false;
-            // breadcrumb 状态变更会影响终端可视区域大小，需触发 PTY grid resize
-            let window_size = state.window_size;
-            let term_settings = state.model.settings.terminal.clone();
-            let breadcrumb_visible =
-                state.breadcrumb_pinned || state.breadcrumb_temp_visible;
-            for pane in &mut state.tab_panes {
-                apply_terminal_grid_resize_for_pane(
-                    pane,
-                    window_size,
-                    &term_settings,
-                    breadcrumb_visible,
-                );
+            // 直接写入 pinned 状态，动画被动跟随
+            if state.breadcrumb_pinned {
+                state.breadcrumb_pinned = false;
+                state.breadcrumb_anim =
+                    super::state::BreadcrumbAnimState::collapsing(state.tick_count);
+            } else {
+                state.breadcrumb_pinned = true;
+                state.breadcrumb_anim =
+                    super::state::BreadcrumbAnimState::expanding(state.tick_count);
             }
             Task::none()
         }
         Message::BreadcrumbShowTemp => {
-            state.breadcrumb_temp_visible = true;
-            // breadcrumb 状态变更会影响终端可视区域大小，需触发 PTY grid resize
-            let window_size = state.window_size;
-            let term_settings = state.model.settings.terminal.clone();
-            let breadcrumb_visible =
-                state.breadcrumb_pinned || state.breadcrumb_temp_visible;
-            for pane in &mut state.tab_panes {
-                apply_terminal_grid_resize_for_pane(
-                    pane,
-                    window_size,
-                    &term_settings,
-                    breadcrumb_visible,
-                );
+            // 浮动图标点击视为固定操作
+            if !state.breadcrumb_pinned {
+                state.breadcrumb_pinned = true;
+                state.breadcrumb_anim =
+                    super::state::BreadcrumbAnimState::expanding(state.tick_count);
             }
             Task::none()
         }
         Message::BreadcrumbHideTemp => {
-            state.breadcrumb_temp_visible = false;
-            // breadcrumb 状态变更会影响终端可视区域大小，需触发 PTY grid resize
-            let window_size = state.window_size;
-            let term_settings = state.model.settings.terminal.clone();
-            let breadcrumb_visible =
-                state.breadcrumb_pinned || state.breadcrumb_temp_visible;
-            for pane in &mut state.tab_panes {
-                apply_terminal_grid_resize_for_pane(
-                    pane,
-                    window_size,
-                    &term_settings,
-                    breadcrumb_visible,
-                );
+            // 鼠标移出时收起（已固定则取消固定并收起）
+            if state.breadcrumb_pinned {
+                state.breadcrumb_pinned = false;
+                state.breadcrumb_anim =
+                    super::state::BreadcrumbAnimState::collapsing(state.tick_count);
             }
             Task::none()
         }
         Message::BreadcrumbSftp => {
-            // TODO: 实现 SFTP 功能
-            Task::none()
+            // 切换 SFTP 面板显隐 - 发送 SftpToggle 消息统一处理
+            return sftp::handle(state, crate::app::message::SftpTabMessage::SftpToggle);
         }
         Message::BreadcrumbPortForward => {
-            // TODO: 实现端口转发功能
+            // 打开设置中心并切换到端口转发标签
+            let category = crate::app::message::SettingsCategory::Connection;
+            let cat_index = category as usize;
+            state.settings_category = category;
+            state.settings_sub_tab[cat_index] = 4; // 端口转发在 Connection 的子标签索引 4
+            if state.settings_anim.phase != super::state::ModalAnimPhase::Opening
+                && state.settings_anim.phase != super::state::ModalAnimPhase::Open
+            {
+                state.settings_anim = super::state::ModalAnimState::opening(state.tick_count);
+            }
+            state.settings_modal_open = true;
             Task::none()
         }
         Message::ConnectResult(result) => {
@@ -670,6 +677,21 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
         }
         Message::QuickConnectInlinePasswordChanged(raw) => {
             state.inline_password_input = secrecy::SecretString::from(raw);
+            Task::none()
+        }
+        Message::QuickConnectInlinePasswordToggleVisibility => {
+            log::info!(
+                "QuickConnectInlinePasswordToggleVisibility : {}",
+                state.show_inline_password
+            );
+            state.show_inline_password = !state.show_inline_password;
+            Task::none()
+        }
+        Message::QuickConnectInlinePasswordClose => {
+            log::info!("QuickConnectInlinePasswordClose state.quick_connect_flow");
+            state.quick_connect_flow = QuickConnectFlow::Idle;
+            state.inline_password_input = secrecy::SecretString::default();
+            state.show_inline_password = false;
             Task::none()
         }
         Message::AutoProbeConsentOpen => {
@@ -744,6 +766,37 @@ pub(crate) fn update(state: &mut IcedState, message: Message) -> Task<Message> {
                 "debug_overlay={}",
                 state.perf.debug_overlay_enabled
             );
+            Task::none()
+        }
+
+        // --- SFTP ---
+        Message::SftpTab(msg) => {
+            return sftp::handle(state, msg);
+        }
+        Message::SftpInitComplete { tab_index, session } => {
+            return sftp::handle_sftp_init_complete(state, tab_index, session);
+        }
+        Message::SftpInitError { tab_index, error } => {
+            sftp::handle_sftp_init_error(state, tab_index, error);
+            Task::none()
+        }
+        Message::SftpDirLoaded { tab_index, entries } => {
+            sftp::handle_sftp_dir_loaded(state, tab_index, entries);
+            Task::none()
+        }
+        Message::SftpDirError { tab_index, error } => {
+            sftp::handle_sftp_dir_error(state, tab_index, error);
+            Task::none()
+        }
+        Message::SftpRefreshComplete { tab_index } => {
+            sftp::handle_sftp_refresh(state, tab_index)
+        }
+        Message::SftpTransferComplete { tab_index, transfer_id } => {
+            sftp::handle_sftp_transfer_complete(state, tab_index, transfer_id);
+            Task::none()
+        }
+        Message::SftpTransferFailed { tab_index, transfer_id, error } => {
+            sftp::handle_sftp_transfer_failed(state, tab_index, transfer_id, error);
             Task::none()
         }
     }

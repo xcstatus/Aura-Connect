@@ -1,251 +1,298 @@
-//! 图标系统：SVG 资源管理、主题适配、绘制渲染（见 `doc/图标风格规范设计.md`）。
-//!
-//! ## 设计原则
-//!
-//! 1. **状态驱动颜色**：图标颜色完全继承 `DesignTokens`，不硬编码色值
-//! 2. **统一资源管理**：所有图标通过 `IconId` 枚举统一引用
-//! 3. **动画支持**：支持旋转动画（加载图标）
+//! 图标系统：SVG 资源管理、主题适配、绘制渲染（见 `doc/设计规范/图标规范.md`）。
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use iced::Color;
-use iced::widget::svg::{Svg, Style};
-use iced::widget::Space;
 use iced::Length;
+use iced::widget::Space;
+use iced::widget::svg::{Style, Svg};
 
-/// 图标唯一标识（与 `assets/icon/` 下的 SVG 文件对应）
+use crate::theme::layout::{ICON_BUTTON_SIZE, ICON_BUTTON_SIZE_COMPACT};
+use crate::theme::liquid_glass::glass_icon_button_style;
+
+// ============================================================================
+// IconId
+// ============================================================================
+
+/// 图标唯一标识（与 `assets/icon/` 下的 SVG 文件对应）。
+///
+/// 命名规范：`{分类前缀}{名称}`，分类前缀含义：
+/// - `Fn` — 功能图标（新建、设置、关闭等操作）
+/// - `Nav` — 导航图标（箭头方向）
+/// - `Mod` — 模块专用图标（SFTP、端口转发等）
+/// - `Status` — 状态指示图标（连接、锁定等）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IconId {
-    // 功能图标
-    QuickConnect, // link-1.svg - 快速连接
-    Reload,       // reload.svg - 旋转加载
-    Update,       // update.svg - 加载帧
-    Plus,         // plus.svg - 新建
-    Gear,         // gear.svg - 设置
-    Close,        // cross-2.svg - 关闭
-    Delete,       // trash.svg - 删除
+    // --- Fn: 功能图标 ---
+    FnPlus,
+    FnGear,
+    FnClose,
+    FnDelete,
+    FnReload,
+    FnLayout,
+    FnQuickConnect,
+    FnRestart,
+    FnFingerprint,
 
-    // Breadcrumb 图标
-    Sftp,         // file.svg - SFTP 文件传输
-    Pin,          // pin-top.svg - 固定 breadcrumb
-    Unpin,        // pin-bottom.svg - 取消固定
-    PortForward,  // port-forward.svg - 端口转发
+    // --- Nav: 导航图标 ---
+    NavArrowLeft,
+    NavArrowRight,
+    NavArrowDown,
 
-    // SFTP 专用图标
-    Download,     // download.svg - 下载
-    NewFolder,    // folder-plus.svg - 新建文件夹
+    // --- Mod: 模块专用 ---
+    ModSftp,
+    ModPortForward,
+    ModPin,
+    ModUnpin,
 
-    // 布局与导航图标
-    Layout,       // 切换布局
-    ArrowRight,   // 向右箭头（左右布局指示）
-    ArrowDown,    // 向下箭头（上下布局指示）
-    ArrowLeft,    // 向左箭头
-    Folder,       // 文件夹
-    Document,     // 文档/文件
+    // --- Status: 状态图标 ---
+    StatusCircleDot,
 
-    // Status icons (extended)
-    Connected,     // Connection established
-    Connecting,    // Connecting (with animation)
-    Disconnected,  // Not connected
-    Error,         // Error state
-    Locked,        // Locked
-    Unlocked,      // Unlocked
-    Eye,           // Show password
-    EyeOff,        // Hide password
-
+    // --- File: 文件/目录图标 ---
+    FileFolder,
+    FileFolderFill,
+    FileFolderOpen,
+    FileFolderPlus,
+    FileDocumentFill,
     File,
+    FileCode,
+    FileImage,
+    FileArchive,
+    FileMedia,
+
+    // --- Action: 动作图标 ---
+    ActionDownload,
+    ActionDownload2Fill,
+    ActionDownload2Line,
+    ActionUpload2Fill,
+    ActionUpload2Line,
+
+    // --- Eye: 密码可见性 ---
+    Eye,
+    EyeOff,
 }
 
+// ============================================================================
+// IconMeta
+// ============================================================================
+
 /// 图标元数据
+#[derive(Debug, Clone, Copy)]
 pub struct IconMeta {
     pub path: &'static str,
     pub width: u32,
     pub height: u32,
 }
 
-/// SVG 资源注册表（启动时加载一次）
+impl IconMeta {
+    pub fn path(&self) -> &str {
+        self.path
+    }
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+}
+
+// ============================================================================
+// ICON_REGISTRY
+// ============================================================================
+
+macro_rules! reg {
+    ($map:ident, $id:expr, $path:expr, $w:expr, $h:expr) => {
+        $map.insert(
+            $id,
+            IconMeta {
+                path: $path,
+                width: $w,
+                height: $h,
+            },
+        );
+    };
+}
+
+/// SVG 资源注册表（启动时加载一次）。
+/// 所有图标统一使用 15×15 画板（`port-forward.svg` 无显式尺寸，
+/// 按设计规范补齐为 15×15）。
 static ICON_REGISTRY: LazyLock<HashMap<IconId, IconMeta>> = LazyLock::new(|| {
     let mut map = HashMap::new();
 
-    // 功能图标
-    map.insert(IconId::QuickConnect, IconMeta {
-        path: "assets/icon/link-1.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Reload, IconMeta {
-        path: "assets/icon/reload.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Update, IconMeta {
-        path: "assets/icon/update.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Plus, IconMeta {
-        path: "assets/icon/plus.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Gear, IconMeta {
-        path: "assets/icon/gear.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Close, IconMeta {
-        path: "assets/icon/cross-2.svg",
-        width: 15,
-        height: 15,
-    });
+    // --- Fn: 功能图标 ---
+    reg!(map, IconId::FnPlus, "assets/icon/plus.svg", 15, 15);
+    reg!(map, IconId::FnGear, "assets/icon/gear.svg", 15, 15);
+    reg!(map, IconId::FnClose, "assets/icon/cross-2.svg", 15, 15);
+    reg!(map, IconId::FnDelete, "assets/icon/trash.svg", 15, 15);
+    reg!(map, IconId::FnReload, "assets/icon/reload.svg", 15, 15);
+    reg!(map, IconId::FnLayout, "assets/icon/layout.svg", 15, 15);
+    reg!(
+        map,
+        IconId::FnQuickConnect,
+        "assets/icon/link-1.svg",
+        15,
+        15
+    );
+    reg!(
+        map,
+        IconId::FnRestart,
+        "assets/icon/restart-line.svg",
+        24,
+        24
+    );
+    reg!(
+        map,
+        IconId::FnFingerprint,
+        "assets/icon/fingerprint-line.svg",
+        24,
+        24
+    );
 
-    // Breadcrumb 图标
-    map.insert(IconId::Sftp, IconMeta {
-        path: "assets/icon/folder-open-fill.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Pin, IconMeta {
-        path: "assets/icon/pin-top.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Unpin, IconMeta {
-        path: "assets/icon/pin-bottom.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Delete, IconMeta {
-        path: "assets/icon/trash.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::PortForward, IconMeta {
-        path: "assets/icon/port-forward.svg",
-        width: 15,
-        height: 15,
-    });
+    // --- Nav: 导航图标 ---
+    reg!(
+        map,
+        IconId::NavArrowLeft,
+        "assets/icon/arrow-left.svg",
+        15,
+        15
+    );
+    reg!(
+        map,
+        IconId::NavArrowRight,
+        "assets/icon/arrow-right.svg",
+        15,
+        15
+    );
+    reg!(
+        map,
+        IconId::NavArrowDown,
+        "assets/icon/arrow-down.svg",
+        15,
+        15
+    );
 
-    // 布局与导航图标
-    map.insert(IconId::Layout, IconMeta {
-        path: "assets/icon/layout.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::ArrowRight, IconMeta {
-        path: "assets/icon/arrow-right.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::ArrowDown, IconMeta {
-        path: "assets/icon/arrow-down.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::ArrowLeft, IconMeta {
-        path: "assets/icon/arrow-left.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Folder, IconMeta {
-        path: "assets/icon/folder-2-fill.svg",
-        width: 15,
-        height: 15,
-    });
+    // --- Mod: 模块专用 ---
+    reg!(
+        map,
+        IconId::ModSftp,
+        "assets/icon/folder-open-fill.svg",
+        15,
+        15
+    );
+    reg!(
+        map,
+        IconId::ModPortForward,
+        "assets/icon/port-forward.svg",
+        15,
+        15
+    );
+    reg!(map, IconId::ModPin, "assets/icon/pin-top.svg", 15, 15);
+    reg!(map, IconId::ModUnpin, "assets/icon/pin-bottom.svg", 15, 15);
 
-    map.insert(IconId::File, IconMeta {
-        path: "assets/icon/file-text.svg",
-        width: 15,
-        height: 15,
-    });
+    // --- Status ---
+    reg!(
+        map,
+        IconId::StatusCircleDot,
+        "assets/icon/circle-dot.svg",
+        8,
+        8
+    );
 
-    map.insert(IconId::Document, IconMeta {
-        path: "assets/icon/document.svg",
-        width: 15,
-        height: 15,
-    });
+    // --- File ---
+    reg!(map, IconId::FileFolder, "assets/icon/folder.svg", 15, 15);
+    reg!(
+        map,
+        IconId::FileFolderFill,
+        "assets/icon/folder-2-fill.svg",
+        24,
+        24
+    );
+    reg!(
+        map,
+        IconId::FileFolderOpen,
+        "assets/icon/folder-open-fill.svg",
+        15,
+        15
+    );
+    reg!(
+        map,
+        IconId::FileFolderPlus,
+        "assets/icon/folder-plus.svg",
+        15,
+        15
+    );
+    reg!(
+        map,
+        IconId::FileDocumentFill,
+        "assets/icon/file-text.svg",
+        15,
+        15
+    );
+    reg!(map, IconId::File, "assets/icon/file.svg", 15, 15);
+    reg!(map, IconId::FileCode, "assets/icon/file-text.svg", 15, 15);
+    reg!(map, IconId::FileImage, "assets/icon/file-text.svg", 15, 15);
+    reg!(map, IconId::FileArchive, "assets/icon/file-text.svg", 15, 15);
+    reg!(map, IconId::FileMedia, "assets/icon/file-text.svg", 15, 15);
 
-    // SFTP 专用图标
-    map.insert(IconId::Download, IconMeta {
-        path: "assets/icon/download.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::NewFolder, IconMeta {
-        path: "assets/icon/folder-plus.svg",
-        width: 15,
-        height: 15,
-    });
+    // --- Action ---
+    reg!(
+        map,
+        IconId::ActionDownload,
+        "assets/icon/download.svg",
+        15,
+        15
+    );
+    reg!(
+        map,
+        IconId::ActionDownload2Fill,
+        "assets/icon/download-2-fill.svg",
+        24,
+        24
+    );
+    reg!(
+        map,
+        IconId::ActionDownload2Line,
+        "assets/icon/download-2-line.svg",
+        24,
+        24
+    );
+    reg!(
+        map,
+        IconId::ActionUpload2Fill,
+        "assets/icon/upload-2-fill.svg",
+        24,
+        24
+    );
+    reg!(
+        map,
+        IconId::ActionUpload2Line,
+        "assets/icon/upload-2-line.svg",
+        24,
+        24
+    );
 
-    // Status icons (extended)
-    map.insert(IconId::Connected, IconMeta {
-        path: "assets/icon/check-circle.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Connecting, IconMeta {
-        path: "assets/icon/loader.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Disconnected, IconMeta {
-        path: "assets/icon/x-circle.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Error, IconMeta {
-        path: "assets/icon/alert-circle.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Locked, IconMeta {
-        path: "assets/icon/lock-closed.svg",
-        width: 15,
-        height: 15,
-    });
-    map.insert(IconId::Unlocked, IconMeta {
-        path: "assets/icon/lock-open-1.svg",
-        width: 15,
-        height: 15,
-    });
-
-    // Password visibility icons
-    map.insert(IconId::Eye, IconMeta {
-        path: "assets/icon/eye-line.svg",
-        width: 15,
-        height: 10,
-    });
-    map.insert(IconId::EyeOff, IconMeta {
-        path: "assets/icon/eye-off-line.svg",
-        width: 15,
-        height: 10,
-    });
+    // --- Eye ---
+    reg!(map, IconId::Eye, "assets/icon/eye-line.svg", 24, 24);
+    reg!(map, IconId::EyeOff, "assets/icon/eye-off-line.svg", 24, 24);
 
     map
 });
 
+// ============================================================================
+// IconState
+// ============================================================================
+
 /// 图标状态（决定颜色）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IconState {
-    /// 默认状态：使用 text_secondary
     Default,
-    /// 悬停状态：使用 text_primary
     Hovered,
-    /// 激活/选中状态：使用 accent_base
     Active,
-    /// 禁用状态：使用 text_disabled
     Disabled,
-    /// 错误状态：使用 error 色
     Error,
-    /// 警告状态：使用 warning 色
     Warning,
-    /// 成功状态：使用 success 色
     Success,
 }
 
 impl IconState {
-    /// 根据状态获取对应颜色
     pub fn color(&self, tokens: &crate::theme::DesignTokens) -> Color {
         match self {
             IconState::Default | IconState::Hovered => tokens.text_secondary,
@@ -258,24 +305,133 @@ impl IconState {
     }
 }
 
-/// 图标渲染选项
-#[derive(Debug, Clone)]
-pub struct IconOptions {
-    /// 图标 ID
-    pub id: IconId,
-    /// 渲染尺寸
+// ============================================================================
+// IconSize
+// ============================================================================
+
+/// 图标尺寸（SVG 渲染像素）。
+///
+/// 遵循 `doc/设计规范/图标规范.md` 的 9.1 节：
+/// | 枚举值 | 像素 | 用途 |
+/// | :--- | :---: | :--- |
+/// | `Tiny` | 8×8 | 状态指示圆点 |
+/// | `Small` | 12×12 | 紧凑按钮内、关闭图标 |
+/// | `Medium` | 15×15 | 标准工具栏（默认） |
+/// | `Large` | 24×24 | 设置面板、SFTP 顶栏 |
+/// | `XLARGE` | 32×32 | 极少使用 |
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IconSize {
     pub width: u32,
     pub height: u32,
-    /// 主题颜色
+}
+
+impl IconSize {
+    pub const TINY: Self = Self { width: 8, height: 8 };
+    pub const SMALL: Self = Self { width: 12, height: 12 };
+    pub const MEDIUM: Self = Self { width: 15, height: 15 };
+    pub const LARGE: Self = Self { width: 24, height: 24 };
+    pub const XLARGE: Self = Self { width: 32, height: 32 };
+
+    pub fn as_u32(self) -> u32 {
+        self.width
+    }
+    pub fn as_f32(self) -> f32 {
+        self.width as f32
+    }
+
+    pub fn icon_size(self) -> iced::Length {
+        Length::Fixed(self.width as f32)
+    }
+}
+
+
+// ============================================================================
+// IconButtonSize
+// ============================================================================
+
+/// 图标按钮尺寸变体（容器尺寸 + 图标尺寸 + 内边距 捆绑在一起）。
+///
+/// 保证图标在按钮内视觉居中，填充比 50%~60% 为最佳。
+///
+/// ## 尺寸变体
+///
+/// | 变体 | 容器 | 图标 | Padding | 填充比 | 适用场景 |
+/// | :--- | ---: | ---: | ---: | ---: | :--- |
+/// | `TOP` | 36×36 | 15px | 10px | 42% | 顶栏操作按钮 |
+/// | `STANDARD` | 28×28 | 15px | 6px | 54% | 标准工具栏 |
+/// | `COMPACT` | 24×24 | 12px | 6px | 50% | 内联弹窗、紧凑工具栏 |
+/// | `EXTRA_COMPACT` | 22×22 | 12px | 5px | 55% | 标签栏关闭按钮 |
+#[derive(Debug, Clone, Copy)]
+pub struct IconButtonSize {
+    /// 按钮容器内图标尺寸
+    pub icon_size: IconSize,
+    /// 按钮内边距（各方向相同）
+    pub padding: f32,
+    /// 按钮宽度
+    pub width: f32,
+    /// 按钮高度
+    pub height: f32,
+}
+
+impl IconButtonSize {
+    /// 顶栏操作按钮：36×36，图标 15px，内边距 10px
+    pub const TOP: Self = Self {
+        icon_size: IconSize::MEDIUM,
+        padding: 10.0,
+        width: 36.0,
+        height: 36.0,
+    };
+
+    /// 标准图标按钮：28×28，图标 15px，内边距 6px
+    pub const STANDARD: Self = Self {
+        icon_size: IconSize::MEDIUM,
+        padding: 6.0,
+        width: 28.0,
+        height: 28.0,
+    };
+
+    /// 紧凑图标按钮：24×24，图标 12px，内边距 6px
+    pub const COMPACT: Self = Self {
+        icon_size: IconSize::SMALL,
+        padding: 6.0,
+        width: 24.0,
+        height: 24.0,
+    };
+
+    /// 额外紧凑按钮：22×22，图标 12px，内边距 5px
+    pub const EXTRA_COMPACT: Self = Self {
+        icon_size: IconSize::SMALL,
+        padding: 5.0,
+        width: 22.0,
+        height: 22.0,
+    };
+
+    /// 视觉填充比（图标面积 / 容器面积）
+    pub fn visual_fill_ratio(self) -> f32 {
+        let icon_area = self.icon_size.as_f32().powi(2);
+        let container_area = self.width * self.height;
+        icon_area / container_area
+    }
+}
+
+// ============================================================================
+// IconOptions
+// ============================================================================
+
+/// 图标渲染选项（Builder 模式）
+#[derive(Debug, Clone)]
+pub struct IconOptions {
+    pub id: IconId,
+    pub width: u32,
+    pub height: u32,
     pub color: Color,
-    /// 旋转角度（0-360），用于动画
     pub rotation: Option<f32>,
 }
 
 impl Default for IconOptions {
     fn default() -> Self {
         Self {
-            id: IconId::Plus,
+            id: IconId::FnPlus,
             width: 15,
             height: 15,
             color: Color::from_rgb8(0xa0, 0xa0, 0xa5),
@@ -286,7 +442,10 @@ impl Default for IconOptions {
 
 impl IconOptions {
     pub fn new(id: IconId) -> Self {
-        Self { id, ..Default::default() }
+        Self {
+            id,
+            ..Default::default()
+        }
     }
 
     pub fn with_size(mut self, size: u32) -> Self {
@@ -315,7 +474,38 @@ impl IconOptions {
         self
     }
 
-    /// 从 DesignTokens 和 IconState 创建
+    /// 从 DesignTokens 和 IconState 自动获取颜色
+    pub fn with_state(mut self, tokens: &crate::theme::DesignTokens, state: IconState) -> Self {
+        self.color = state.color(tokens);
+        self
+    }
+
+    /// 快捷尺寸：12px（小图标、紧凑按钮内）
+    pub fn small(self) -> Self {
+        self.with_size(IconSize::SMALL.as_u32())
+    }
+
+    /// 快捷尺寸：15px（标准工具栏）
+    pub fn medium(self) -> Self {
+        self.with_size(IconSize::MEDIUM.as_u32())
+    }
+
+    /// 快捷尺寸：24px（大图标、设置面板）
+    pub fn large(self) -> Self {
+        self.with_size(IconSize::LARGE.as_u32())
+    }
+
+    /// 接受 IconSize 枚举的快捷方法
+    pub fn size(self, s: IconSize) -> Self {
+        self.with_size(s.as_u32())
+    }
+
+    /// 标记为旋转动画（初始角度 0，由动画层驱动）
+    pub fn spinning(self) -> Self {
+        self.with_rotation(0.0)
+    }
+
+    /// 从 DesignTokens + IconState 构造（替代已废弃的 `from_state`）
     pub fn from_state(id: IconId, tokens: &crate::theme::DesignTokens, state: IconState) -> Self {
         Self {
             id,
@@ -328,14 +518,13 @@ impl IconOptions {
 }
 
 // ============================================================================
-// SVG 内容处理
+// SVG 内容处理（内部使用，公开以支持高级用法）
 // ============================================================================
 
-/// 加载 SVG 内容并处理 currentColor
+/// 加载 SVG 内容
 pub fn load_svg_content(id: IconId) -> Option<String> {
     let meta = ICON_REGISTRY.get(&id)?;
     let full_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(meta.path);
-
     std::fs::read_to_string(&full_path).ok()
 }
 
@@ -344,30 +533,7 @@ pub fn colorize_svg(svg_content: &str, color: &Color) -> String {
     let r = (color.r * 255.0).round() as u8;
     let g = (color.g * 255.0).round() as u8;
     let b = (color.b * 255.0).round() as u8;
-
     svg_content.replace("currentColor", &format!("#{:02X}{:02X}{:02X}", r, g, b))
-}
-
-/// 旋转 SVG 内容
-pub fn rotate_svg_content(svg_content: &str, degrees: f32, width: u32, height: u32) -> String {
-    let cx = width as f32 / 2.0;
-    let cy = height as f32 / 2.0;
-
-    if let Some(start) = svg_content.find('>') {
-        if let Some(end) = svg_content.rfind("</svg>") {
-            let inner = &svg_content[start + 1..end];
-            let transform = format!(
-                r#"<g transform="rotate({:.1} {} {})">"#,
-                degrees, cx, cy
-            );
-            return format!(
-                r#"<svg width="{}" height="{}" viewBox="0 0 {} {}" fill="none" xmlns="http://www.w3.org/2000/svg">{}{}</g></svg>"#,
-                width, height, width, height, transform, inner
-            );
-        }
-    }
-
-    String::from(svg_content)
 }
 
 /// 获取 SVG 元数据
@@ -375,24 +541,17 @@ pub fn get_icon_meta(id: IconId) -> Option<IconMeta> {
     ICON_REGISTRY.get(&id).copied()
 }
 
-/// 获取所有注册的图标 ID
-pub fn all_icon_ids() -> Vec<IconId> {
-    ICON_REGISTRY.keys().copied().collect()
-}
-
 // ============================================================================
 // SVG 图标渲染
 // ============================================================================
 
-/// 获取图标的完整路径
-pub fn icon_path(id: IconId) -> Option<String> {
+fn icon_path(id: IconId) -> Option<String> {
     let meta = ICON_REGISTRY.get(&id)?;
-    let full_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(meta.path);
+    let full_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(meta.path);
     Some(full_path.to_string_lossy().to_string())
 }
 
-/// 创建图标视图
+/// 创建图标视图（无消息）
 pub fn icon_view(options: IconOptions) -> iced::Element<'static, ()> {
     let path = match icon_path(options.id) {
         Some(p) => p,
@@ -408,12 +567,10 @@ pub fn icon_view(options: IconOptions) -> iced::Element<'static, ()> {
         .width(Length::Fixed(options.width as f32))
         .height(Length::Fixed(options.height as f32));
 
-    // 设置颜色滤镜
     svg = svg.style(move |_theme, _status| Style {
         color: Some(options.color),
     });
 
-    // 设置旋转角度
     if let Some(rotation) = options.rotation {
         svg = svg.rotation(iced::Radians(rotation * std::f32::consts::PI / 180.0));
     }
@@ -421,7 +578,7 @@ pub fn icon_view(options: IconOptions) -> iced::Element<'static, ()> {
     svg.into()
 }
 
-/// 创建带泛型消息的图标视图
+/// 创建带消息的图标视图
 pub fn icon_view_with<Message: 'static + Clone>(
     options: IconOptions,
     msg: Message,
@@ -431,22 +588,196 @@ pub fn icon_view_with<Message: 'static + Clone>(
 }
 
 // ============================================================================
-// 便捷构造器
+// 便捷构造器（手动主题 + 自动主题）
 // ============================================================================
 
-/// 创建带状态的图标视图
-pub fn icon(id: IconId, tokens: &crate::theme::DesignTokens, state: IconState) -> iced::Element<'static, ()> {
+/// 从配色方案 ID 获取 DesignTokens。
+fn tokens_from_scheme_id(scheme_id: &str) -> crate::theme::DesignTokens {
+    crate::theme::DesignTokens::for_color_scheme(scheme_id)
+}
+
+// --- 手动主题版（存量 API，保留） ---
+
+/// 创建带状态的图标（需手动传入 DesignTokens）
+pub fn icon(
+    id: IconId,
+    tokens: &crate::theme::DesignTokens,
+    state: IconState,
+) -> iced::Element<'static, ()> {
     icon_view(IconOptions::from_state(id, tokens, state))
 }
 
-/// 创建默认状态的图标
+/// 创建默认状态的图标（需手动传入 DesignTokens）
 pub fn icon_default(id: IconId, tokens: &crate::theme::DesignTokens) -> iced::Element<'static, ()> {
     icon(id, tokens, IconState::Default)
 }
 
-/// 创建激活状态的图标
+/// 创建激活状态的图标（需手动传入 DesignTokens）
 pub fn icon_active(id: IconId, tokens: &crate::theme::DesignTokens) -> iced::Element<'static, ()> {
     icon(id, tokens, IconState::Active)
+}
+
+// --- 自动主题版（从配色方案 ID 自动检测） ---
+
+/// 创建图标（自动获取当前主题颜色）。
+///
+/// ## 参数
+/// - `id`: 图标 ID
+/// - `size`: 图标尺寸枚举
+/// - `msg`: 消息（用于类型转换）
+/// - `color_scheme_id`: 当前配色方案 ID（如 "terminal_dark"、"nord" 等）
+///
+/// ## 示例
+/// ```ignore
+/// icon_auto(IconId::FnGear, IconSize::MEDIUM, Message::Settings, "terminal_dark")
+/// ```
+pub fn icon_auto<Message: 'static + Clone>(
+    id: IconId,
+    size: IconSize,
+    msg: Message,
+    color_scheme_id: &str,
+) -> iced::Element<'static, Message> {
+    let tokens = tokens_from_scheme_id(color_scheme_id);
+    let options = IconOptions::new(id)
+        .with_size(size.as_u32())
+        .with_color(tokens.text_secondary);
+    let msg = std::sync::Arc::new(msg);
+    icon_view(options).map(move |()| (*msg).clone())
+}
+
+/// 创建带消息的图标（自动获取当前主题颜色）。
+///
+/// ## 示例
+/// ```ignore
+/// icon_with(IconId::FnGear, IconSize::MEDIUM, Message::Settings, "nord")
+/// ```
+pub fn icon_with<Message: 'static + Clone>(
+    id: IconId,
+    size: IconSize,
+    msg: Message,
+    color_scheme_id: &str,
+) -> iced::Element<'static, Message> {
+    let tokens = tokens_from_scheme_id(color_scheme_id);
+    icon_view_with(
+        IconOptions::new(id)
+            .with_size(size.as_u32())
+            .with_color(tokens.text_secondary),
+        msg,
+    )
+}
+
+// ============================================================================
+// icon_button helpers（手动主题 + 自动主题）
+// ============================================================================
+
+/// 创建图标按钮（需手动传入 DesignTokens）。
+///
+/// ## 参数
+/// - `id`: 图标 ID
+/// - `size`: 按钮尺寸变体（含图标尺寸 + padding + 容器尺寸）
+/// - `msg`: 点击消息
+/// - `tokens`: 主题 token
+///
+/// ## 示例
+/// ```ignore
+/// icon_button(IconId::FnGear, IconButtonSize::STANDARD, Message::Settings, &tokens)
+/// ```
+pub fn icon_button<Message: 'static + Clone>(
+    id: IconId,
+    size: IconButtonSize,
+    msg: Message,
+    tokens: &crate::theme::DesignTokens,
+) -> iced::Element<'static, Message> {
+    use iced::widget::button;
+
+    let icon = icon_view_with(
+        IconOptions::new(id).size(size.icon_size).with_color(tokens.text_secondary),
+        msg.clone(),
+    );
+
+    button(icon)
+        .on_press(msg)
+        .width(Length::Fixed(size.width))
+        .height(Length::Fixed(size.height))
+        .padding(iced::Padding::new(size.padding))
+        .style(glass_icon_button_style(tokens.clone()))
+        .into()
+}
+
+/// 创建图标按钮（自动获取当前主题颜色）。
+///
+/// ## 示例
+/// ```ignore
+/// icon_button_auto(IconId::FnGear, IconButtonSize::STANDARD, Message::Settings, "nord")
+/// icon_button_auto(IconId::FnClose, IconButtonSize::COMPACT, Message::Close, "terminal_dark")
+/// ```
+pub fn icon_button_auto<Message: 'static + Clone>(
+    id: IconId,
+    size: IconButtonSize,
+    msg: Message,
+    color_scheme_id: &str,
+) -> iced::Element<'static, Message> {
+    use iced::widget::button;
+
+    let tokens = tokens_from_scheme_id(color_scheme_id);
+    let icon = icon_view_with(
+        IconOptions::new(id).size(size.icon_size).with_color(tokens.text_secondary),
+        msg.clone(),
+    );
+
+    button(icon)
+        .on_press(msg)
+        .width(Length::Fixed(size.width))
+        .height(Length::Fixed(size.height))
+        .padding(iced::Padding::new(size.padding))
+        .style(glass_icon_button_style(tokens))
+        .into()
+}
+
+/// 创建带 Tooltip 的图标按钮（需手动传入 DesignTokens）。
+///
+/// ## 示例
+/// ```ignore
+/// icon_button_with_tooltip(IconId::FnGear, IconButtonSize::STANDARD, msg, "设置", &tokens)
+/// ```
+pub fn icon_button_with_tooltip<Message: 'static + Clone>(
+    id: IconId,
+    size: IconButtonSize,
+    msg: Message,
+    tooltip_text: impl std::fmt::Display,
+    tokens: &crate::theme::DesignTokens,
+) -> iced::Element<'static, Message> {
+    use iced::widget::{text, tooltip};
+
+    tooltip(
+        icon_button(id, size, msg, tokens),
+        text(tooltip_text.to_string()).size(12),
+        tooltip::Position::Bottom,
+    )
+    .into()
+}
+
+/// 创建带 Tooltip 的图标按钮（自动获取当前主题颜色）。
+///
+/// ## 示例
+/// ```ignore
+/// icon_button_tooltip_auto(IconId::FnGear, IconButtonSize::STANDARD, msg, "设置", "nord")
+/// ```
+pub fn icon_button_tooltip_auto<Message: 'static + Clone>(
+    id: IconId,
+    size: IconButtonSize,
+    msg: Message,
+    tooltip_text: impl std::fmt::Display,
+    color_scheme_id: &str,
+) -> iced::Element<'static, Message> {
+    use iced::widget::{text, tooltip};
+
+    tooltip(
+        icon_button_auto(id, size, msg.clone(), color_scheme_id),
+        text(tooltip_text.to_string()).size(12),
+        tooltip::Position::Bottom,
+    )
+    .into()
 }
 
 // ============================================================================
@@ -456,7 +787,6 @@ pub fn icon_active(id: IconId, tokens: &crate::theme::DesignTokens) -> iced::Ele
 /// 动画状态管理器
 #[derive(Debug, Clone, Default)]
 pub struct IconAnimationState {
-    /// 图标旋转角度映射
     rotations: HashMap<IconId, f32>,
 }
 
@@ -465,40 +795,34 @@ impl IconAnimationState {
         Self::default()
     }
 
-    /// 更新旋转角度
     pub fn update_rotation(&mut self, id: IconId, degrees: f32) {
         self.rotations.insert(id, degrees);
     }
 
-    /// 获取当前旋转角度
     pub fn get_rotation(&self, id: IconId) -> Option<f32> {
         self.rotations.get(&id).copied()
     }
 
-    /// 移除动画状态
     pub fn clear_rotation(&mut self, id: IconId) {
         self.rotations.remove(&id);
     }
 
-    /// 是否正在动画
     pub fn is_animating(&self, id: IconId) -> bool {
         self.rotations.contains_key(&id)
     }
 
-    /// 开始动画
     pub fn start_animation(&mut self, id: IconId) {
         if !self.rotations.contains_key(&id) {
             self.rotations.insert(id, 0.0);
         }
     }
 
-    /// 停止动画
     pub fn stop_animation(&mut self, id: IconId) {
         self.rotations.remove(&id);
     }
 }
 
-/// 加载图标旋转速度（每毫秒旋转角度，1秒转一圈）
+/// 旋转速度（度/毫秒），1 秒转一圈
 pub const RELOAD_ROTATION_SPEED: f32 = 360.0 / 1000.0;
 
 /// 计算动画旋转角度
@@ -508,162 +832,11 @@ pub fn compute_rotation(degrees_per_ms: f32, elapsed_ms: f32) -> f32 {
 
 /// 更新加载动画状态
 pub fn tick_loading_animation(state: &mut IconAnimationState, delta_ms: f32) {
-    // Reload 图标旋转
-    if state.is_animating(IconId::Reload) {
-        let current = state.get_rotation(IconId::Reload).unwrap_or(0.0);
-        state.update_rotation(IconId::Reload, (current + RELOAD_ROTATION_SPEED * delta_ms) % 360.0);
-    }
-
-    // Update 图标旋转
-    if state.is_animating(IconId::Update) {
-        let current = state.get_rotation(IconId::Update).unwrap_or(0.0);
-        state.update_rotation(IconId::Update, (current + RELOAD_ROTATION_SPEED * delta_ms) % 360.0);
-    }
-}
-
-// ============================================================================
-// 主题适配
-// ============================================================================
-
-/// 图标样式配置
-#[derive(Debug, Clone, Copy)]
-pub struct IconStyleConfig {
-    /// 默认颜色
-    pub default_color: Color,
-    /// 悬停颜色
-    pub hover_color: Color,
-    /// 激活颜色
-    pub active_color: Color,
-    /// 禁用颜色
-    pub disabled_color: Color,
-    /// 图标尺寸映射
-    pub sizes: IconSizes,
-}
-
-/// 图标尺寸
-#[derive(Debug, Clone, Copy)]
-pub struct IconSizes {
-    pub small: u32,
-    pub medium: u32,
-    pub large: u32,
-}
-
-impl Default for IconStyleConfig {
-    fn default() -> Self {
-        Self::dark()
-    }
-}
-
-impl IconStyleConfig {
-    pub fn dark() -> Self {
-        Self {
-            default_color: Color::from_rgb8(0xa0, 0xa0, 0xa5),
-            hover_color: Color::WHITE,
-            active_color: Color::from_rgb8(0x00, 0xff, 0x80),
-            disabled_color: Color::from_rgb8(0x6c, 0x6c, 0x70),
-            sizes: IconSizes {
-                small: 12,
-                medium: 15,
-                large: 24,
-            },
-        }
-    }
-
-    pub fn light() -> Self {
-        Self {
-            default_color: Color::from_rgb8(0x6e, 0x6e, 0x73),
-            hover_color: Color::from_rgb8(0x1c, 0x1c, 0x1e),
-            active_color: Color::from_rgb8(0x00, 0x7a, 0xff),
-            disabled_color: Color::from_rgb8(0xa1, 0xa1, 0xa6),
-            sizes: IconSizes {
-                small: 12,
-                medium: 15,
-                large: 24,
-            },
-        }
-    }
-
-    pub fn warm() -> Self {
-        Self {
-            default_color: Color::from_rgb8(0xb7, 0xa9, 0x99),
-            hover_color: Color::from_rgb8(0xd4, 0xbe, 0xab),
-            active_color: Color::from_rgb8(0xe0, 0x99, 0x5e),
-            disabled_color: Color::from_rgb8(0x8a, 0x7d, 0x72),
-            sizes: IconSizes {
-                small: 12,
-                medium: 15,
-                large: 24,
-            },
-        }
-    }
-
-    pub fn github() -> Self {
-        Self {
-            default_color: Color::from_rgb8(0x8B, 0x94, 0x9E),
-            hover_color: Color::from_rgb8(0xE6, 0xED, 0xF3),
-            active_color: Color::from_rgb8(0x23, 0x86, 0x36),
-            disabled_color: Color::from_rgb8(0x6E, 0x76, 0x81),
-            sizes: IconSizes {
-                small: 12,
-                medium: 15,
-                large: 24,
-            },
-        }
-    }
-
-    /// 从 DesignTokens 获取样式配置
-    pub fn from_tokens(tokens: &crate::theme::DesignTokens) -> Self {
-        Self {
-            default_color: tokens.text_secondary,
-            hover_color: tokens.text_primary,
-            active_color: tokens.accent_base,
-            disabled_color: tokens.text_disabled,
-            sizes: IconSizes {
-                small: 12,
-                medium: 15,
-                large: 24,
-            },
-        }
-    }
-}
-
-/// 图标主题适配器
-pub struct IconThemeAdapter;
-
-impl IconThemeAdapter {
-    /// 根据主题是否为暗色返回不同的图标样式配置
-    pub fn style_for_theme(is_dark: bool) -> IconStyleConfig {
-        if is_dark {
-            IconStyleConfig::dark()
-        } else {
-            IconStyleConfig::light()
-        }
-    }
-
-    /// 从 DesignTokens 获取样式配置
-    pub fn from_tokens(tokens: &crate::theme::DesignTokens) -> IconStyleConfig {
-        IconStyleConfig::from_tokens(tokens)
-    }
-}
-
-// ============================================================================
-// 辅助类型
-// ============================================================================
-
-impl IconMeta {
-    pub fn path(&self) -> &str {
-        self.path
-    }
-
-    pub fn dimensions(&self) -> (u32, u32) {
-        (self.width, self.height)
-    }
-}
-
-impl Copy for IconMeta {}
-
-impl Clone for IconMeta {
-    fn clone(&self) -> Self {
-        *self
+    if state.is_animating(IconId::FnReload) {
+        let current = state.get_rotation(IconId::FnReload).unwrap_or(0.0);
+        state.update_rotation(
+            IconId::FnReload,
+            (current + RELOAD_ROTATION_SPEED * delta_ms) % 360.0,
+        );
     }
 }

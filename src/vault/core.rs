@@ -26,7 +26,7 @@ pub struct CredentialVault {
     encrypted_data: Vec<u8>,
     salt: [u8; 16],
     unlocked_key: Option<Zeroizing<[u8; 32]>>,
-    pub unlocked: bool,
+    unlocked: bool,
 }
 
 impl CredentialVault {
@@ -40,7 +40,11 @@ impl CredentialVault {
     }
 
     /// Initialize a new Vault with a master password and specified KDF memory level.
-    pub fn initialize_with_level(master_password: &SecretString, salt: [u8; 16], level: KdfMemoryLevel) -> Result<Self, VaultError> {
+    pub fn initialize_with_level(
+        master_password: &SecretString,
+        salt: [u8; 16],
+        level: KdfMemoryLevel,
+    ) -> Result<Self, VaultError> {
         let key = crypto::derive_key_with_level(master_password, &salt, level)?;
 
         // Initial empty payload
@@ -63,7 +67,11 @@ impl CredentialVault {
     }
 
     /// Unlock an existing vault with the master password and specified KDF memory level.
-    pub fn unlock_with_level(&mut self, master_password: &SecretString, level: KdfMemoryLevel) -> Result<(), VaultError> {
+    pub fn unlock_with_level(
+        &mut self,
+        master_password: &SecretString,
+        level: KdfMemoryLevel,
+    ) -> Result<(), VaultError> {
         let key = crypto::derive_key_with_level(master_password, &self.salt, level)?;
 
         // Verify we can decrypt the payload with this key
@@ -81,14 +89,28 @@ impl CredentialVault {
         self.unlocked = false;
     }
 
+    /// Returns `true` if the vault is currently unlocked.
+    pub fn is_unlocked(&self) -> bool {
+        self.unlocked
+    }
+
     /// Re-encrypt the current vault payload with a new password and a new salt.
     /// The vault must be unlocked before calling this method.
-    pub fn rekey_with_salt(&mut self, new_password: &SecretString, new_salt: [u8; 16]) -> Result<(), VaultError> {
+    pub fn rekey_with_salt(
+        &mut self,
+        new_password: &SecretString,
+        new_salt: [u8; 16],
+    ) -> Result<(), VaultError> {
         self.rekey_with_salt_and_level(new_password, new_salt, KdfMemoryLevel::default())
     }
 
     /// Re-encrypt the current vault payload with a new password, salt, and KDF memory level.
-    pub fn rekey_with_salt_and_level(&mut self, new_password: &SecretString, new_salt: [u8; 16], level: KdfMemoryLevel) -> Result<(), VaultError> {
+    pub fn rekey_with_salt_and_level(
+        &mut self,
+        new_password: &SecretString,
+        new_salt: [u8; 16],
+        level: KdfMemoryLevel,
+    ) -> Result<(), VaultError> {
         let current_key = self.unlocked_key.as_ref().ok_or(VaultError::Locked)?;
         let decrypted = crypto::decrypt(current_key, &self.encrypted_data)?;
         // Wrap in Zeroizing so the plaintext is zeroized when dropped.
@@ -158,14 +180,33 @@ impl CredentialVault {
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
-        fs::write(path, data).map_err(|e| VaultError::EncryptionFailed(e.to_string()))?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(path)
+                .and_then(|mut f| {
+                    use std::io::Write;
+                    f.write_all(&data)
+                })
+                .map_err(|e| VaultError::EncryptionFailed(e.to_string()))?;
+        }
+        #[cfg(not(unix))]
+        {
+            fs::write(path, data).map_err(|e| VaultError::EncryptionFailed(e.to_string()))?;
+        }
+
         Ok(())
     }
 
     /// Load the encrypted Vault from a file.
     pub fn load_from_file(path: &Path) -> Result<Self, VaultError> {
-        let data =
-            fs::read(path).map_err(|e| VaultError::DecryptionFailed(e.to_string()))?;
+        let data = fs::read(path).map_err(|e| VaultError::DecryptionFailed(e.to_string()))?;
         let storage: VaultDiskFormat = serde_json::from_slice(&data)?;
 
         let mut salt = [0u8; 16];
@@ -195,7 +236,7 @@ mod tests {
         let salt = crypto::generate_salt();
         // Initialization
         let mut vault = CredentialVault::initialize(&password, salt).unwrap();
-        assert!(vault.unlocked);
+        assert!(vault.is_unlocked());
 
         // Write credential
         vault
@@ -208,7 +249,7 @@ mod tests {
 
         // Lock
         vault.lock();
-        assert!(!vault.unlocked);
+        assert!(!vault.is_unlocked());
         assert!(vault.get_credential("my_ssh_key").is_err());
 
         // Unlock with wrong password
@@ -220,7 +261,7 @@ mod tests {
 
         // Unlock with correct password
         vault.unlock(&password).unwrap();
-        assert!(vault.unlocked);
+        assert!(vault.is_unlocked());
 
         let cred2 = vault.get_credential("my_ssh_key").unwrap().unwrap();
         assert_eq!(cred2, b"-----BEGIN OPENSSH PRIVATE KEY-----");
@@ -249,7 +290,7 @@ mod tests {
 
         // Load into new instance
         let mut loaded_vault = CredentialVault::load_from_file(&file_path).unwrap();
-        assert!(!loaded_vault.unlocked);
+        assert!(!loaded_vault.is_unlocked());
         assert!(loaded_vault.get_credential("api_token").is_err());
 
         // Unlock new instance (uses the salt stored in the file)

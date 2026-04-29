@@ -76,9 +76,9 @@ impl From<std::io::Error> for SftpError {
             ErrorKind::PermissionDenied => SftpError::PermissionDenied(e.to_string()),
             ErrorKind::AlreadyExists => SftpError::FileExists(e.to_string()),
             ErrorKind::TimedOut => SftpError::Timeout,
-            ErrorKind::ConnectionReset
-            | ErrorKind::ConnectionAborted
-            | ErrorKind::BrokenPipe => SftpError::Disconnected,
+            ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::BrokenPipe => {
+                SftpError::Disconnected
+            }
             _ => SftpError::Other(e.to_string()),
         }
     }

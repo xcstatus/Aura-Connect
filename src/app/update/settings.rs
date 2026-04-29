@@ -1,15 +1,32 @@
 use iced::Task;
 
 use super::super::message::{Message, SettingsField};
-use super::super::state::IcedState;
+use super::super::state::{IcedState, ModalAnimPhase, ModalAnimState};
 use super::super::terminal_viewport;
 
 /// Handle SettingsDismiss message.
 pub(crate) fn handle_settings_dismiss(state: &mut IcedState) -> Task<Message> {
-    if state.settings_anim.phase == super::super::state::ModalAnimPhase::Closed {
-        state.settings_modal_open = false;
-    } else if state.settings_anim.phase != super::super::state::ModalAnimPhase::Closing {
-        state.settings_anim = super::super::state::ModalAnimState::closing(state.tick_count);
+    log::debug!(
+        "[Settings] Dismiss: phase={:?}, tick={}",
+        state.settings_anim.phase,
+        state.tick_count
+    );
+
+    match state.settings_anim.phase {
+        ModalAnimPhase::Closed => {
+            state.settings_modal_open = false;
+        }
+        ModalAnimPhase::Opening => {
+            // Opening 中直接跳到 Closing，避免状态错乱
+            state.settings_anim.phase = ModalAnimPhase::Closing;
+            state.settings_anim.enter_tick = state.tick_count;
+        }
+        ModalAnimPhase::Closing => {
+            // 已在关闭中，无需重复操作
+        }
+        ModalAnimPhase::Open => {
+            state.settings_anim = ModalAnimState::closing(state.tick_count);
+        }
     }
     Task::none()
 }
@@ -51,10 +68,9 @@ pub(crate) fn handle_biometrics_toggle(state: &mut IcedState, desired: bool) -> 
             Ok(()) => {
                 state.model.settings.security.use_biometrics = true;
                 state.model.settings.save_with_log();
-                state.model.status = state.model.i18n.tr("toast.biometrics.updated").to_string();
             }
-            Err(e) => {
-                state.model.status = state.model.i18n.tr(e.i18n_key()).to_string();
+            Err(_e) => {
+                // 错误静默处理，用户可从设置中看到生物识别未启用
             }
         }
     } else {
@@ -72,15 +88,12 @@ pub(crate) fn handle_settings_restart_ack(state: &mut IcedState) -> Task<Message
 
 /// Handle SaveSettings message.
 pub(crate) fn handle_save_settings(state: &mut IcedState) -> Task<Message> {
-    state.model.status = if state.model.settings.save().is_ok() {
+    if state.model.settings.save().is_ok() {
         super::super::update::sync_terminal_grid_to_session(state);
         for p in &mut state.tab_panes {
             p.terminal.refresh_terminal_snapshots();
         }
-        "Settings saved".to_string()
-    } else {
-        "Settings save failed".to_string()
-    };
+    }
     Task::none()
 }
 
@@ -91,10 +104,7 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
             | SettingsField::TerminalFontSize(_)
             | SettingsField::ApplyTerminalMetrics(_)
     );
-    let sync_palette = matches!(
-        &field,
-        SettingsField::ColorScheme(_)
-    );
+    let sync_palette = matches!(&field, SettingsField::ColorScheme(_));
     let s = &mut state.model.settings;
 
     match field {
@@ -133,7 +143,9 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
         SettingsField::KdfMemoryLevel(v) => s.security.kdf_memory_level = v,
         SettingsField::HostKeyPolicy(p) => s.security.host_key_policy = p,
         SettingsField::DeleteKnownHost { host, port } => {
-            s.security.known_hosts.retain(|r| !(r.host == host && r.port == port));
+            s.security
+                .known_hosts
+                .retain(|r| !(r.host == host && r.port == port));
         }
         SettingsField::ToggleKnownHostDetail { host, port } => {
             let key = format!("{}:{}", host, port);
@@ -152,6 +164,14 @@ fn apply_settings_field(state: &mut IcedState, field: SettingsField) {
         SettingsField::ReconnectBaseDelay(v) => s.quick_connect.reconnect_base_delay_secs = v,
         SettingsField::ReconnectExponential(v) => s.quick_connect.reconnect_exponential = v,
         SettingsField::RestoreLastSession(v) => s.quick_connect.restore_last_session = v,
+        SettingsField::AddPortForward => {
+            // TODO: 添加端口转发配置
+            log::info!("[Settings] AddPortForward clicked");
+        }
+        SettingsField::RemovePortForward(_index) => {
+            // TODO: 删除端口转发配置
+            log::info!("[Settings] RemovePortForward clicked");
+        }
     }
 
     state.model.settings.save_with_log();

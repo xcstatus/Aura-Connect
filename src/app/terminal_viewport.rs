@@ -150,7 +150,7 @@ impl TerminalViewportSpec {
     /// Keep in lockstep with `view.rs` terminal tab layout.
     pub const DEFAULT: Self = Self {
         top_bar_h: TOP_BAR_HEIGHT,
-        macos_window_top_inset: 0.0,
+        macos_window_top_inset: 6.0,
         breadcrumb_padding_top: 6.0,
         breadcrumb_padding_bottom: 6.0,
         breadcrumb_padding_h: 12.0,
@@ -158,8 +158,8 @@ impl TerminalViewportSpec {
         breadcrumb_visible: true, // 默认显示，运行时由 IcedState.breadcrumb_pinned 控制
         main_column_gap: 4.0,
         bottom_bar_h: BOTTOM_BAR_HEIGHT,
-        terminal_panel_pad_top: 16.0,
-        terminal_panel_pad_bottom: 16.0,
+        terminal_panel_pad_top: 0.0,
+        terminal_panel_pad_bottom: 0.0,
         terminal_panel_pad_left: 20.0,
         terminal_panel_pad_right: 20.0,
         terminal_inner_border_px: 1.0,
@@ -272,8 +272,7 @@ pub fn terminal_scroll_area_rect(
         - spec.terminal_inner_border_px * 2.0)
         .max(1.0);
 
-    // Y: top chrome + breadcrumb + gap + inside terminal panel vertical padding.
-    // breadcrumb 隐藏时高度为 0，终端区域上移与顶栏接触
+    // Y: top chrome + breadcrumb (if visible) + gap + inside terminal panel vertical padding.
     let breadcrumb_h = if spec.breadcrumb_visible {
         spec.breadcrumb_block_h()
     } else {
@@ -290,8 +289,7 @@ pub fn terminal_scroll_area_rect(
     // Height: derived from the same SSOT chain as `terminal_scroll_area_px`.
     let below_top = (win_h - spec.top_bar_h - spec.macos_window_top_inset).max(1.0);
     let body_h =
-        (below_top - breadcrumb_h - spec.bottom_bar_h - spec.main_column_gap * 2.0)
-            .max(1.0);
+        (below_top - breadcrumb_h - spec.bottom_bar_h - spec.main_column_gap * 2.0).max(1.0);
     let h = (body_h
         - spec.terminal_panel_pad_top
         - spec.terminal_panel_pad_bottom

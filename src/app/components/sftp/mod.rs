@@ -7,3 +7,4 @@ pub mod file_list;
 pub mod pane_layout;
 pub mod panel;
 pub mod top_bar;
+pub mod transfer_list;

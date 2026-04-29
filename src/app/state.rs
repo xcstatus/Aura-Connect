@@ -6,9 +6,9 @@ use crate::app::ssh_session_manager::SessionManager;
 use crate::app::terminal_widget::RowWidgetCache;
 use crate::settings::TerminalSettings;
 use crate::sftp::RemoteFileEntry;
-use crate::utils::StorageManager;
 use crate::terminal::controller::TerminalController;
 use crate::theme::layout::{self, TAB_CHIP_WIDTH};
+use crate::utils::StorageManager;
 use secrecy::SecretString;
 
 use super::message::{Message, SettingsCategory};
@@ -71,6 +71,16 @@ pub struct SftpPanel {
     pub show_hidden: bool,
     /// 右键菜单状态
     pub context_menu: Option<SftpContextMenuState>,
+    /// 待删除路径（确认对话框）
+    pub pending_delete: Option<String>,
+    /// 是否正在创建文件夹
+    pub creating_folder: bool,
+    /// 新建文件夹名称
+    pub new_folder_name: String,
+    /// 传输任务列表
+    pub transfers: Vec<crate::sftp::SftpTransfer>,
+    /// 是否显示传输列表
+    pub show_transfer_list: bool,
 }
 
 /// SFTP 右键菜单状态
@@ -139,12 +149,7 @@ impl RingBuffer<u64> {
         if self.count == 0 {
             return None;
         }
-        let sum: u64 = self
-            .data
-            .iter()
-            .take(self.count)
-            .map(|&v| v)
-            .sum();
+        let sum: u64 = self.data.iter().take(self.count).map(|&v| v).sum();
         Some(sum as f64 / self.count as f64)
     }
 }
@@ -204,7 +209,11 @@ pub(crate) enum ConnectionStage {
     /// PTY allocation + session finalization.
     SessionSetup,
     /// Auto-reconnect in progress.
-    Reconnecting { attempt: u8, max: u8, delay_secs: u32 },
+    Reconnecting {
+        attempt: u8,
+        max: u8,
+        delay_secs: u32,
+    },
 }
 
 /// 快速连接弹窗内：列表 / 新建连接表单。
@@ -282,7 +291,11 @@ pub(crate) struct TabAnimEntry {
 
 impl TabAnimEntry {
     pub(crate) fn new(target_w: f32, enter_tick: u64) -> Self {
-        Self { target_w, enter_tick, done: false }
+        Self {
+            target_w,
+            enter_tick,
+            done: false,
+        }
     }
 }
 
@@ -303,16 +316,68 @@ pub(crate) struct ModalAnimState {
 
 impl ModalAnimState {
     pub(crate) fn opening(tick_count: u64) -> Self {
-        Self { phase: ModalAnimPhase::Opening, enter_tick: tick_count }
+        Self {
+            phase: ModalAnimPhase::Opening,
+            enter_tick: tick_count,
+        }
     }
     pub(crate) fn closing(tick_count: u64) -> Self {
-        Self { phase: ModalAnimPhase::Closing, enter_tick: tick_count }
+        Self {
+            phase: ModalAnimPhase::Closing,
+            enter_tick: tick_count,
+        }
     }
 }
 
 impl Default for ModalAnimState {
     fn default() -> Self {
-        Self { phase: ModalAnimPhase::Closed, enter_tick: 0 }
+        Self {
+            phase: ModalAnimPhase::Closed,
+            enter_tick: 0,
+        }
+    }
+}
+
+/// Breadcrumb expand/collapse animation state.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum BreadcrumbAnimPhase {
+    /// Fully collapsed (height = 0, float icon visible).
+    Collapsed,
+    /// Expanding (height growing from 0 to full).
+    Expanding,
+    /// Fully expanded (height = full, float icon hidden).
+    Expanded,
+    /// Collapsing (height shrinking from full to 0).
+    Collapsing,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct BreadcrumbAnimState {
+    pub phase: BreadcrumbAnimPhase,
+    pub enter_tick: u64,
+}
+
+impl BreadcrumbAnimState {
+    pub(crate) fn expanding(tick_count: u64) -> Self {
+        Self {
+            phase: BreadcrumbAnimPhase::Expanding,
+            enter_tick: tick_count,
+        }
+    }
+    pub(crate) fn collapsing(tick_count: u64) -> Self {
+        Self {
+            phase: BreadcrumbAnimPhase::Collapsing,
+            enter_tick: tick_count,
+        }
+    }
+}
+
+impl Default for BreadcrumbAnimState {
+    fn default() -> Self {
+        Self {
+            phase: BreadcrumbAnimPhase::Collapsed,
+            enter_tick: 0,
+        }
     }
 }
 
@@ -344,18 +409,17 @@ pub(crate) struct TabPane {
 }
 
 impl TabPane {
-    pub fn new(terminal_settings: &TerminalSettings, color_scheme: &str) -> Self {
-        let mut terminal = TerminalController::new(terminal_settings)
-            .expect("Failed to initialize terminal controller - libghostty VT initialization failed");
+    pub fn new(terminal_settings: &TerminalSettings, color_scheme: &str) -> anyhow::Result<Self> {
+        let mut terminal = TerminalController::new(terminal_settings)?;
         terminal.apply_terminal_palette_for_scheme(color_scheme);
-        Self {
+        Ok(Self {
             terminal,
             last_terminal_focus_sent: None,
             last_pump_ms: 0,
             styled_row_cache: RowWidgetCache::new(),
             pane_layout: PaneLayout::default(),
             sftp_panel: None,
-        }
+        })
     }
 }
 
@@ -460,8 +524,8 @@ pub(crate) struct IcedState {
     pub scrollbar_hover_enter_tick: Option<u64>,
     /// Breadcrumb 是否固定显示（true = 固定，false = 自动隐藏）。
     pub breadcrumb_pinned: bool,
-    /// Breadcrumb 是否临时显示（鼠标悬停在浮动图标上时临时显示）。
-    pub breadcrumb_temp_visible: bool,
+    /// Breadcrumb 展开/收起动画状态。
+    pub breadcrumb_anim: BreadcrumbAnimState,
     /// 远程服务器当前工作目录。
     pub remote_cwd: String,
     /// 是否显示欢迎页（应用启动时或所有页签关闭后）。
@@ -479,10 +543,16 @@ impl IcedState {
         &mut self.tab_panes[self.active_tab]
     }
 
-    /// Safe version: returns None if tab_panes is empty (prevents index panic).
+    /// Safe version: returns None if tab_panes is empty or active_tab is out of bounds.
     #[inline]
     pub(crate) fn active_pane_mut_safe(&mut self) -> Option<&mut TabPane> {
         self.tab_panes.get_mut(self.active_tab)
+    }
+
+    /// Safe version of active_pane: returns None if active_tab is out of bounds.
+    #[inline]
+    pub(crate) fn active_pane_safe(&self) -> Option<&TabPane> {
+        self.tab_panes.get(self.active_tab)
     }
 
     #[inline]
@@ -499,14 +569,12 @@ impl IcedState {
 
     /// Settings center visibility (considers animation state).
     pub(crate) fn is_settings_visible(&self) -> bool {
-        self.settings_modal_open
-            || self.settings_anim.phase != ModalAnimPhase::Closed
+        self.settings_modal_open || self.settings_anim.phase != ModalAnimPhase::Closed
     }
 
     /// Quick connect visibility (considers animation state).
     pub(crate) fn is_quick_connect_visible(&self) -> bool {
-        self.quick_connect_open
-            || self.quick_connect_anim.phase != ModalAnimPhase::Closed
+        self.quick_connect_open || self.quick_connect_anim.phase != ModalAnimPhase::Closed
     }
 
     /// Get current page state (always in sync with tabs).
@@ -537,7 +605,7 @@ impl IcedState {
 
     /// 计算指定 tab 的 chip 宽度（与 build_tab_strip 中的逻辑保持一致）。
     fn chip_width_for_index(&self, _i: usize, available_w: f32) -> f32 {
-        use crate::theme::layout::{TAB_CHIP_WIDTH, TAB_CHIP_MIN_WIDTH};
+        use crate::theme::layout::{TAB_CHIP_MIN_WIDTH, TAB_CHIP_WIDTH};
         let count = self.tabs.len();
         if count == 0 {
             return TAB_CHIP_MIN_WIDTH;
@@ -587,7 +655,9 @@ impl IcedState {
 
     /// 检查是否需要恢复上次会话。
     /// 仅当 restore_last_session 设置开启且存在上次会话时返回。
-    pub(crate) fn check_last_session_restore(&self) -> Option<crate::settings::RecentConnectionRecord> {
+    pub(crate) fn check_last_session_restore(
+        &self,
+    ) -> Option<crate::settings::RecentConnectionRecord> {
         if !self.model.settings.quick_connect.restore_last_session {
             return None;
         }
@@ -622,9 +692,7 @@ impl IcedState {
 
     /// 获取下次重连的延迟（秒）。
     pub(crate) fn next_reconnect_delay(&self, attempt: u8) -> u32 {
-        self.model
-            .settings
-            .reconnect_delay_for_attempt(attempt)
+        self.model.settings.reconnect_delay_for_attempt(attempt)
     }
 
     /// Scrollbar track alpha for hover animation.
@@ -633,8 +701,17 @@ impl IcedState {
         use crate::theme::layout;
         let target = if self.scrollbar_hovered { 0.25 } else { 0.08 };
         let enter_tick = self.scrollbar_hover_enter_tick.unwrap_or(self.tick_count);
-        let t = anim_t(enter_tick, self.tick_count, tick_ms, layout::DURATION_HOVER_MS as f32);
-        let eased = if self.scrollbar_hovered { ease_out(t) } else { 1.0 - ease_out(t) };
+        let t = anim_t(
+            enter_tick,
+            self.tick_count,
+            tick_ms,
+            layout::DURATION_HOVER_MS as f32,
+        );
+        let eased = if self.scrollbar_hovered {
+            ease_out(t)
+        } else {
+            1.0 - ease_out(t)
+        };
         layout::SCROLLBAR_HIDE_ALPHA + (target - layout::SCROLLBAR_HIDE_ALPHA) * eased
     }
 
@@ -649,7 +726,12 @@ impl IcedState {
             return anim.target_w;
         }
         use crate::theme::animation::{anim_t, ease_out};
-        let t = anim_t(anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_TAB_NEW_MS as f32);
+        let t = anim_t(
+            anim.enter_tick,
+            self.tick_count,
+            tick_ms,
+            layout::DURATION_TAB_NEW_MS as f32,
+        );
         let t = ease_out(t);
         if anim.target_w > 0.0 {
             anim.target_w * t
@@ -679,16 +761,26 @@ impl IcedState {
 
     /// Quick connect modal alpha: 0.0 (fully transparent) to 1.0 (fully opaque).
     pub(crate) fn quick_connect_anim_alpha(&self, tick_ms: f32) -> f32 {
-        use crate::theme::animation::{anim_t, ease_out, ease_in};
+        use crate::theme::animation::{anim_t, ease_in, ease_out};
         match self.quick_connect_anim.phase {
             ModalAnimPhase::Closed => 0.0,
             ModalAnimPhase::Opening => {
-                let t = anim_t(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_MS as f32);
+                let t = anim_t(
+                    self.quick_connect_anim.enter_tick,
+                    self.tick_count,
+                    tick_ms,
+                    layout::DURATION_MODAL_MS as f32,
+                );
                 ease_out(t)
             }
             ModalAnimPhase::Open => 1.0,
             ModalAnimPhase::Closing => {
-                let t = anim_t(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_CLOSE_MS as f32);
+                let t = anim_t(
+                    self.quick_connect_anim.enter_tick,
+                    self.tick_count,
+                    tick_ms,
+                    layout::DURATION_MODAL_CLOSE_MS as f32,
+                );
                 ease_in(t)
             }
         }
@@ -696,19 +788,70 @@ impl IcedState {
 
     /// Quick connect modal Y offset: 0.0 (normal) to -8.0 (up).
     pub(crate) fn quick_connect_anim_offset(&self, tick_ms: f32) -> f32 {
-        use crate::theme::animation::{anim_t, ease_out, ease_in};
+        use crate::theme::animation::{anim_t, ease_in, ease_out};
         match self.quick_connect_anim.phase {
             ModalAnimPhase::Closed => -8.0,
             ModalAnimPhase::Opening => {
-                let t = anim_t(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_MS as f32);
+                let t = anim_t(
+                    self.quick_connect_anim.enter_tick,
+                    self.tick_count,
+                    tick_ms,
+                    layout::DURATION_MODAL_MS as f32,
+                );
                 -8.0 * (1.0 - ease_out(t))
             }
             ModalAnimPhase::Open => 0.0,
             ModalAnimPhase::Closing => {
-                let t = anim_t(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_CLOSE_MS as f32);
+                let t = anim_t(
+                    self.quick_connect_anim.enter_tick,
+                    self.tick_count,
+                    tick_ms,
+                    layout::DURATION_MODAL_CLOSE_MS as f32,
+                );
                 -8.0 * ease_in(t)
             }
         }
+    }
+
+    /// Breadcrumb expand/collapse progress: 0.0 (collapsed) to 1.0 (expanded).
+    pub(crate) fn breadcrumb_anim_progress(&self, tick_ms: f32) -> f32 {
+        use crate::theme::animation::{anim_t, ease_in, ease_out};
+        match self.breadcrumb_anim.phase {
+            BreadcrumbAnimPhase::Collapsed => 0.0,
+            BreadcrumbAnimPhase::Expanding => {
+                let t = anim_t(
+                    self.breadcrumb_anim.enter_tick,
+                    self.tick_count,
+                    tick_ms,
+                    layout::DURATION_BREADCRUMB_ANIM_MS as f32,
+                );
+                ease_out(t)
+            }
+            BreadcrumbAnimPhase::Expanded => 1.0,
+            BreadcrumbAnimPhase::Collapsing => {
+                let t = anim_t(
+                    self.breadcrumb_anim.enter_tick,
+                    self.tick_count,
+                    tick_ms,
+                    layout::DURATION_BREADCRUMB_ANIM_MS as f32,
+                );
+                ease_in(t)
+            }
+        }
+    }
+
+    /// Whether the breadcrumb is currently visible (expanding or expanded).
+    pub(crate) fn breadcrumb_visible(&self) -> bool {
+        matches!(
+            self.breadcrumb_anim.phase,
+            BreadcrumbAnimPhase::Expanded | BreadcrumbAnimPhase::Expanding
+        )
+    }
+
+    /// Whether the float icon is currently visible.
+    pub(crate) fn breadcrumb_float_icon_visible(&self) -> bool {
+        // Float icon 在未固定状态时显示，与动画相位无关
+        !self.breadcrumb_pinned
     }
 
     /// Advance modal animation state, advancing Opening→Open and Closing→Closed.
@@ -716,26 +859,68 @@ impl IcedState {
         use crate::theme::animation::anim_done;
 
         if self.quick_connect_anim.phase == ModalAnimPhase::Opening
-            && anim_done(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_MS as f32)
+            && anim_done(
+                self.quick_connect_anim.enter_tick,
+                self.tick_count,
+                tick_ms,
+                layout::DURATION_MODAL_MS as f32,
+            )
         {
             self.quick_connect_anim.phase = ModalAnimPhase::Open;
         }
         if self.quick_connect_anim.phase == ModalAnimPhase::Closing
-            && anim_done(self.quick_connect_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_CLOSE_MS as f32)
+            && anim_done(
+                self.quick_connect_anim.enter_tick,
+                self.tick_count,
+                tick_ms,
+                layout::DURATION_MODAL_CLOSE_MS as f32,
+            )
         {
             self.quick_connect_anim.phase = ModalAnimPhase::Closed;
             self.quick_connect_open = false;
         }
         if self.settings_anim.phase == ModalAnimPhase::Opening
-            && anim_done(self.settings_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_MS as f32)
+            && anim_done(
+                self.settings_anim.enter_tick,
+                self.tick_count,
+                tick_ms,
+                layout::DURATION_MODAL_MS as f32,
+            )
         {
             self.settings_anim.phase = ModalAnimPhase::Open;
         }
         if self.settings_anim.phase == ModalAnimPhase::Closing
-            && anim_done(self.settings_anim.enter_tick, self.tick_count, tick_ms, layout::DURATION_MODAL_CLOSE_MS as f32)
+            && anim_done(
+                self.settings_anim.enter_tick,
+                self.tick_count,
+                tick_ms,
+                layout::DURATION_MODAL_CLOSE_MS as f32,
+            )
         {
             self.settings_anim.phase = ModalAnimPhase::Closed;
             self.settings_modal_open = false;
+        }
+
+        // Breadcrumb expand/collapse animation.
+        if self.breadcrumb_anim.phase == BreadcrumbAnimPhase::Expanding
+            && anim_done(
+                self.breadcrumb_anim.enter_tick,
+                self.tick_count,
+                tick_ms,
+                layout::DURATION_BREADCRUMB_ANIM_MS as f32,
+            )
+        {
+            self.breadcrumb_anim.phase = BreadcrumbAnimPhase::Expanded;
+        }
+        if self.breadcrumb_anim.phase == BreadcrumbAnimPhase::Collapsing
+            && anim_done(
+                self.breadcrumb_anim.enter_tick,
+                self.tick_count,
+                tick_ms,
+                layout::DURATION_BREADCRUMB_ANIM_MS as f32,
+            )
+        {
+            self.breadcrumb_anim.phase = BreadcrumbAnimPhase::Collapsed;
         }
     }
 }
@@ -1097,7 +1282,11 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             reconnect_context: None,
             restore_session_modal: None,
             last_reconnect_tick_ms: now,
-            tab_anims: vec![TabAnimEntry { target_w: TAB_CHIP_WIDTH, enter_tick: 0, done: true }],
+            tab_anims: vec![TabAnimEntry {
+                target_w: TAB_CHIP_WIDTH,
+                enter_tick: 0,
+                done: true,
+            }],
             quick_connect_anim: ModalAnimState::default(),
             settings_anim: ModalAnimState::default(),
             scrollbar_hovered: false,
@@ -1106,7 +1295,7 @@ pub(crate) fn boot() -> (IcedState, Task<Message>) {
             tab_scroll_target: None,
             tab_overflow_open: false,
             breadcrumb_pinned: false,
-            breadcrumb_temp_visible: false,
+            breadcrumb_anim: BreadcrumbAnimState::default(),
             remote_cwd: String::from("~"),
             show_welcome: true,
         },

@@ -1,38 +1,59 @@
 //! SFTP 面板顶栏组件
 
 use iced::alignment::Alignment;
-use iced::widget::{button, container, row, text, Space};
+use iced::widget::{Space, container, row, text};
 use iced::{Element, Length};
 
 use crate::app::components::helpers::tokens_for_state;
 use crate::app::message::Message;
 use crate::app::state::IcedState;
 use crate::app::state::SftpPanel;
-use crate::app::widgets::chrome_button::style_top_icon;
-use crate::theme::icons::{icon, IconId, IconState};
-use crate::theme::layout;
 use crate::theme::DesignTokens;
+use crate::theme::icons::{IconButtonSize, IconId, icon_button_with_tooltip};
+use crate::theme::layout;
 
 /// 构建 SFTP 面板顶栏
 pub(crate) fn sftp_top_bar(state: &IcedState, sftp: &SftpPanel) -> Element<'static, Message> {
     let tokens = tokens_for_state(state);
+    let i18n = &state.model.i18n;
 
-    // 路径导航
-    let path_display = build_path_display(state, sftp);
+    // 路径面包屑导航
+    let path_display = build_path_breadcrumb(sftp, &tokens);
 
-    // 右侧操作按钮
-    let actions = row![
-        // 切换布局按钮
-        layout_toggle_button(state),
-        // 刷新按钮
-        refresh_button(state),
-        // 关闭按钮
-        close_button(state),
-    ]
-    .spacing(4)
-    .align_y(Alignment::Center);
+    // 右侧操作按钮（标准图标按钮）
+    let layout_btn = icon_button_with_tooltip(
+        IconId::FnLayout,
+        IconButtonSize::STANDARD,
+        Message::SftpTab(crate::app::message::SftpTabMessage::SftpToggleLayout),
+        i18n.tr("iced.sftp.btn.toggle_layout"),
+        &tokens,
+    );
+    let refresh_btn = icon_button_with_tooltip(
+        IconId::FnReload,
+        IconButtonSize::STANDARD,
+        Message::SftpTab(crate::app::message::SftpTabMessage::SftpRefresh),
+        i18n.tr("iced.sftp.btn.refresh"),
+        &tokens,
+    );
+    let close_btn = icon_button_with_tooltip(
+        IconId::FnClose,
+        IconButtonSize::COMPACT,
+        Message::SftpTab(crate::app::message::SftpTabMessage::SftpToggle),
+        i18n.tr("iced.sftp.btn.close"),
+        &tokens,
+    );
+    let upload_btn = icon_button_with_tooltip(
+        IconId::ActionUpload2Line,
+        IconButtonSize::COMPACT,
+        Message::SftpTab(crate::app::message::SftpTabMessage::SftpUpload),
+        i18n.tr("iced.sftp.btn.upload"),
+        &tokens,
+    );
 
-    // 整体布局：左侧路径 + 右侧操作
+    let actions = row![upload_btn, layout_btn, refresh_btn, close_btn]
+        .spacing(4)
+        .align_y(Alignment::Center);
+
     let content = row![path_display, Space::new().width(Length::Fill), actions]
         .spacing(8)
         .align_y(Alignment::Center)
@@ -41,94 +62,113 @@ pub(crate) fn sftp_top_bar(state: &IcedState, sftp: &SftpPanel) -> Element<'stat
     container(content)
         .height(Length::Fixed(layout::SFTP_TOP_BAR_HEIGHT))
         .width(Length::Fill)
+        .align_y(Alignment::Center)
         .style(top_bar_style(tokens))
         .into()
 }
 
-/// 构建路径显示区域（显示当前路径）
-fn build_path_display(state: &IcedState, sftp: &SftpPanel) -> Element<'static, Message> {
-    let tokens = tokens_for_state(state);
-
-    // 当前路径（默认显示 "/"）
-    let display_path = if sftp.current_path.is_empty() {
+/// 构建路径面包屑导航（每段可点击跳转到对应目录）
+fn build_path_breadcrumb(sftp: &SftpPanel, tokens: &DesignTokens) -> Element<'static, Message> {
+    let current_path = if sftp.current_path.is_empty() {
         "/".to_string()
     } else {
         sftp.current_path.clone()
     };
 
-    // 直接显示路径文本
-    text(display_path)
-        .size(12)
-        .color(tokens.text_primary)
-        .into()
-}
+    // 根路径特殊处理
+    if current_path == "/" {
+        return text("/")
+            .size(12)
+            .color(tokens.text_secondary)
+            .into();
+    }
 
-/// 布局切换按钮
-fn layout_toggle_button(state: &IcedState) -> Element<'static, Message> {
-    let tokens = tokens_for_state(state);
+    // 按 "/" 分割路径段
+    let segments: Vec<&str> = current_path.split('/').filter(|s| !s.is_empty()).collect();
+    if segments.is_empty() {
+        return text("/")
+            .size(12)
+            .color(tokens.text_secondary)
+            .into();
+    }
 
-    let icon_elem: Element<'static, ()> = icon(IconId::Layout, &tokens, IconState::Default);
-    let icon_msg: Element<'static, Message> = icon_elem.map(move |_| {
-        Message::SftpTab(crate::app::message::SftpTabMessage::SftpToggleLayout)
-    });
+    let mut parts: Vec<Element<'static, Message>> = Vec::new();
 
-    button(icon_msg)
-        .width(Length::Fixed(layout::ICON_BUTTON_SIZE))
-        .height(Length::Fixed(layout::ICON_BUTTON_SIZE))
-        .padding(0)
-        .style(style_top_icon(tokens))
-        .on_press(Message::SftpTab(crate::app::message::SftpTabMessage::SftpToggleLayout))
-        .into()
-}
+    // 根目录 "/"
+    parts.push(
+        text("/")
+            .size(12)
+            .color(tokens.text_secondary)
+            .into(),
+    );
 
-/// 刷新按钮
-fn refresh_button(state: &IcedState) -> Element<'static, Message> {
-    let tokens = tokens_for_state(state);
+    for (i, segment) in segments.iter().enumerate() {
+        let is_last = i == segments.len() - 1;
+        let segment_path = format!("/{}", segments[..=i].join("/"));
 
-    let icon_elem: Element<'static, ()> = icon(IconId::Reload, &tokens, IconState::Default);
-    let icon_msg: Element<'static, Message> = icon_elem.map(move |_| {
-        Message::SftpTab(crate::app::message::SftpTabMessage::SftpRefresh)
-    });
+        if is_last {
+            // 最后一段：当前目录，不可点击
+            parts.push(
+                text(segment.to_string())
+                    .size(12)
+                    .color(tokens.text_primary)
+                    .into(),
+            );
+        } else {
+            // 中间段：可点击跳转
+            let accent = tokens.accent_base;
+            let segment_text = text(segment.to_string())
+                .size(12)
+                .color(accent);
 
-    button(icon_msg)
-        .width(Length::Fixed(layout::ICON_BUTTON_SIZE))
-        .height(Length::Fixed(layout::ICON_BUTTON_SIZE))
-        .padding(0)
-        .style(style_top_icon(tokens))
-        .on_press(Message::SftpTab(crate::app::message::SftpTabMessage::SftpRefresh))
-        .into()
-}
+            let btn = iced::widget::button(segment_text)
+                .padding([2, 4])
+                .style(move |_: &iced::Theme, status: iced::widget::button::Status| {
+                    let mut style = iced::widget::button::Style::default();
+                    if let iced::widget::button::Status::Hovered = status {
+                        style.background = Some(iced::Background::Color(
+                            iced::Color::from_rgba(accent.r, accent.g, accent.b, 0.10),
+                        ));
+                        style.border = iced::Border {
+                            radius: 4.0.into(),
+                            ..Default::default()
+                        };
+                    }
+                    style
+                })
+                .on_press(Message::SftpTab(
+                    crate::app::message::SftpTabMessage::SftpNavigate(segment_path),
+                ));
+            parts.push(btn.into());
 
-/// 关闭按钮
-fn close_button(state: &IcedState) -> Element<'static, Message> {
-    let tokens = tokens_for_state(state);
+            // 分隔符
+            parts.push(
+                text("/")
+                    .size(12)
+                    .color(tokens.text_disabled)
+                    .into(),
+            );
+        }
+    }
 
-    let icon_elem: Element<'static, ()> = icon(IconId::Close, &tokens, IconState::Default);
-    let icon_msg: Element<'static, Message> = icon_elem.map(move |_| {
-        Message::SftpTab(crate::app::message::SftpTabMessage::SftpToggle)
-    });
-
-    button(icon_msg)
-        .width(Length::Fixed(layout::ICON_BUTTON_SIZE))
-        .height(Length::Fixed(layout::ICON_BUTTON_SIZE))
-        .padding(0)
-        .style(style_top_icon(tokens))
-        .on_press(Message::SftpTab(crate::app::message::SftpTabMessage::SftpToggle))
+    row(parts)
+        .spacing(2)
+        .align_y(Alignment::Center)
         .into()
 }
 
 /// 顶栏背景样式
-fn top_bar_style(tokens: DesignTokens) -> impl Fn(&iced::Theme) -> iced::widget::container::Style + 'static {
+fn top_bar_style(
+    tokens: DesignTokens,
+) -> impl Fn(&iced::Theme) -> iced::widget::container::Style + 'static {
     let bg = tokens.surface_1;
-    move |_: &iced::Theme| {
-        iced::widget::container::Style {
-            background: Some(iced::Background::Color(bg)),
-            border: iced::Border {
-                width: 0.0,
-                color: iced::Color::TRANSPARENT,
-                radius: Default::default(),
-            },
-            ..Default::default()
-        }
+    move |_: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(bg)),
+        border: iced::Border {
+            width: 0.0,
+            color: iced::Color::TRANSPARENT,
+            radius: Default::default(),
+        },
+        ..Default::default()
     }
 }

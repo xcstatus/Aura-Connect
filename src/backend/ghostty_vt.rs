@@ -260,9 +260,7 @@ impl GhosttyVtTerminal {
     }
 
     pub fn encode_paste(&mut self, text: &str) -> Vec<u8> {
-        let bracketed = self
-            .mode_get(ghostty_dec_mode(2004))
-            .unwrap_or(false);
+        let bracketed = self.mode_get(ghostty_dec_mode(2004)).unwrap_or(false);
 
         // Safety check (best-effort): still allow paste, but prefer bracketed
         // paste when enabled by the remote application.
@@ -282,9 +280,7 @@ impl GhosttyVtTerminal {
     }
 
     pub fn encode_focus_event(&mut self, focused: bool) -> Vec<u8> {
-        let focus_mode = self
-            .mode_get(ghostty_dec_mode(1004))
-            .unwrap_or(false);
+        let focus_mode = self.mode_get(ghostty_dec_mode(1004)).unwrap_or(false);
         if !focus_mode {
             return Vec::new();
         }
@@ -299,12 +295,7 @@ impl GhosttyVtTerminal {
         let mut buf = [0u8; 8];
         let mut written: usize = 0;
         let res = unsafe {
-            ffi::ghostty_focus_encode(
-                ev,
-                buf.as_mut_ptr() as *mut _,
-                buf.len(),
-                &mut written,
-            )
+            ffi::ghostty_focus_encode(ev, buf.as_mut_ptr() as *mut _, buf.len(), &mut written)
         };
         if res == ffi::GhosttyResult_GHOSTTY_SUCCESS {
             buf[..written].to_vec()
@@ -312,12 +303,7 @@ impl GhosttyVtTerminal {
             let mut v = vec![0u8; written];
             let mut written2: usize = 0;
             let res2 = unsafe {
-                ffi::ghostty_focus_encode(
-                    ev,
-                    v.as_mut_ptr() as *mut _,
-                    v.len(),
-                    &mut written2,
-                )
+                ffi::ghostty_focus_encode(ev, v.as_mut_ptr() as *mut _, v.len(), &mut written2)
             };
             if res2 == ffi::GhosttyResult_GHOSTTY_SUCCESS {
                 v.truncate(written2);
@@ -810,7 +796,8 @@ impl GhosttyVtTerminal {
 
             // Optimization 1: Early exit when frame is completely clean.
             if only_dirty {
-                let mut global_dirty = ffi::GhosttyRenderStateDirty_GHOSTTY_RENDER_STATE_DIRTY_FALSE;
+                let mut global_dirty =
+                    ffi::GhosttyRenderStateDirty_GHOSTTY_RENDER_STATE_DIRTY_FALSE;
                 let _ = ffi::ghostty_render_state_get(
                     self.render_state,
                     ffi::GhosttyRenderStateData_GHOSTTY_RENDER_STATE_DATA_DIRTY,

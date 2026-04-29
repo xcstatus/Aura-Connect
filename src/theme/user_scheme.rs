@@ -52,7 +52,8 @@ impl UserColorScheme {
 
     /// 设置颜色覆盖
     pub fn set_override(&mut self, field: &str, hex_value: Option<&str>) {
-        self.overrides.insert(field.to_string(), hex_value.map(String::from));
+        self.overrides
+            .insert(field.to_string(), hex_value.map(String::from));
         self.modified_at = current_time_ms();
     }
 
@@ -83,7 +84,9 @@ pub struct UserColorSchemes {
 impl UserColorSchemes {
     /// 创建空的用户配色列表
     pub fn new() -> Self {
-        Self { schemes: Vec::new() }
+        Self {
+            schemes: Vec::new(),
+        }
     }
 
     /// 根据 ID 查找用户配色
@@ -292,7 +295,10 @@ mod tests {
 
         scheme.set_override("bg_primary", Some("#FF0000"));
         assert!(scheme.has_override("bg_primary"));
-        assert_eq!(scheme.get_override("bg_primary"), Some(&Some("#FF0000".to_string())));
+        assert_eq!(
+            scheme.get_override("bg_primary"),
+            Some(&Some("#FF0000".to_string()))
+        );
 
         scheme.set_override("bg_primary", None);
         assert_eq!(scheme.get_override("bg_primary"), Some(&None));

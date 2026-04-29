@@ -17,8 +17,8 @@ pub(crate) fn unified_titlebar_padding() -> iced::padding::Padding {
     iced::padding::Padding::ZERO
 }
 
-pub(crate) use crate::theme::layout::TOP_BAR_HEIGHT as TOP_BAR_H;
 pub(crate) use crate::theme::layout::TAB_CHIP_WIDTH;
+pub(crate) use crate::theme::layout::TOP_BAR_HEIGHT as TOP_BAR_H;
 
 /// 操作按钮尺寸（可交互区域和图标尺寸）
 pub(crate) const TOP_ICON_BTN: f32 = 36.0;
@@ -50,27 +50,26 @@ pub(crate) fn tab_strip_width(window_width: f32) -> f32 {
     }
     let chrome_w = window_width;
     let row_inner = chrome_w; //- TOP_BAR_EDGE_PAD * 2.0;
-    let w = row_inner
-        - TRAFFIC_LIGHT_BAND_W
-        - TAB_ACTION_GROUP_W
-        - TOP_CONTROL_GROUP_W;
+    let w = row_inner - TRAFFIC_LIGHT_BAND_W - TAB_ACTION_GROUP_W - TOP_CONTROL_GROUP_W;
     w.max(0.0)
 }
 
 /// App chrome behind the title row: solid so only the top bar reads as "glass".
 /// 使用 DesignTokens 获取颜色，支持主题切换。
-pub(crate) fn main_chrome_style(tokens: DesignTokens) -> impl Fn(&Theme) -> container::Style + 'static {
+pub(crate) fn main_chrome_style(
+    tokens: DesignTokens,
+) -> impl Fn(&Theme) -> container::Style + 'static {
     let bg = tokens.bg_primary;
-    move |_: &Theme| {
-        container::Style::default().background(bg)
-    }
+    move |_: &Theme| container::Style::default().background(bg)
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) fn app_chrome_style(_state: &IcedState, theme: &Theme) -> iced::theme::Style {
-    // 根视图铺满不透明底，避免圆角窗口 + 透明 client 在左上/右上露出桌面
+pub(crate) fn app_chrome_style(state: &IcedState, theme: &Theme) -> iced::theme::Style {
     let mut base = theme.base();
-    base.background_color = theme.extended_palette().background.base.color;
+    // 使用 tokens 获取 bg_primary 作为根视图背景色
+    // 避免圆角窗口 + 透明 client 在左上/右上露出桌面
+    let tokens = DesignTokens::for_color_scheme(&state.model.settings.color_scheme);
+    base.background_color = tokens.bg_primary;
     base
 }
 

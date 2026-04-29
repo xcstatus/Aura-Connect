@@ -16,15 +16,17 @@ use std::sync::Arc;
 
 use crate::backend::ghostty_vt::ffi;
 use crate::backend::ghostty_vt::{CursorState, VtStyledCell, VtStyledRow, VtStyledRun};
-use crate::terminal::controller::{StyledFragment, TerminalController};
 use crate::terminal::ScrollState;
+use crate::terminal::controller::{StyledFragment, TerminalController};
 use crate::theme::layout::{SCROLLBAR_WIDTH, TERMINAL_SCROLLBAR_OVERLAY_PAD_RIGHT};
 use iced::alignment::{Horizontal, Vertical};
 use iced::font::{self, Font};
 use iced::widget::scrollable::{Direction as ScrollDirection, Scrollbar};
 use iced::widget::text::LineHeight;
 use iced::widget::text::Span;
-use iced::widget::{Row, column, container, mouse_area, rich_text, row, scrollable, span, text, Space, Stack};
+use iced::widget::{
+    Row, Space, Stack, column, container, mouse_area, rich_text, row, scrollable, span, text,
+};
 use iced::{Color, Element, Length, Padding, Theme};
 
 use super::engine_adapter::EngineAdapter;
@@ -482,7 +484,15 @@ pub(crate) fn styled_terminal<'a>(
             col = col.push(fixed_terminal_row(
                 line_px,
                 styled_row_line(
-                    row, y, cursor, cursor_alpha, selection, font_px, line_px, base_font, cell_w,
+                    row,
+                    y,
+                    cursor,
+                    cursor_alpha,
+                    selection,
+                    font_px,
+                    line_px,
+                    base_font,
+                    cell_w,
                 ),
             ));
             continue;
@@ -495,7 +505,15 @@ pub(crate) fn styled_terminal<'a>(
             col = col.push(fixed_terminal_row(
                 line_px,
                 styled_row_line(
-                    row, y, cursor, cursor_alpha, None, font_px, line_px, base_font, cell_w,
+                    row,
+                    y,
+                    cursor,
+                    cursor_alpha,
+                    None,
+                    font_px,
+                    line_px,
+                    base_font,
+                    cell_w,
                 ),
             ));
             continue;

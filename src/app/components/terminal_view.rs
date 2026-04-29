@@ -5,14 +5,15 @@ use crate::app::components::helpers::terminal_area_bg_style;
 use crate::app::engine_adapter::EngineAdapter;
 use crate::app::message::Message;
 use crate::app::state::IcedState;
-use crate::app::terminal_widget;
 use crate::app::terminal_viewport;
+use crate::app::terminal_widget;
 
 /// Build the terminal panel (main content area).
 pub(crate) fn terminal_panel(state: &IcedState) -> Element<'_, Message> {
-    let mut term_vp = terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal);
+    let mut term_vp =
+        terminal_viewport::terminal_viewport_spec_for_settings(&state.model.settings.terminal);
     // 同步 breadcrumb 状态，确保 breadcrumb 隐藏时终端区域变大
-    let breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+    let breadcrumb_visible = state.breadcrumb_pinned;
     term_vp.breadcrumb_visible = breadcrumb_visible;
     let cell_w_hit = terminal_viewport::terminal_scroll_cell_geometry(
         state.window_size,
@@ -30,21 +31,25 @@ pub(crate) fn terminal_panel(state: &IcedState) -> Element<'_, Message> {
     let cache = &state.tab_panes[state.active_tab].styled_row_cache;
 
     container(
-        column![container({
-            terminal_widget::styled_terminal(
-                terminal,
-                cache,
-                selection,
-                term_font_px,
-                term_cell_h,
-                term_font,
-                cell_w_hit,
-                tick_count,
-            )
-        })
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fill)
-        .style(terminal_area_bg_style(crate::app::components::helpers::tokens_for_state(state)))]
+        column![
+            container({
+                terminal_widget::styled_terminal(
+                    terminal,
+                    cache,
+                    selection,
+                    term_font_px,
+                    term_cell_h,
+                    term_font,
+                    cell_w_hit,
+                    tick_count,
+                )
+            })
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .style(terminal_area_bg_style(
+                crate::app::components::helpers::tokens_for_state(state)
+            ))
+        ]
         .spacing(term_vp.terminal_panel_inner_spacing())
         .height(iced::Length::Fill),
     )

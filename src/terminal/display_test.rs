@@ -4,10 +4,7 @@
 /// - `RUST_SSH_TERM_DISPLAY_TEST=1` (includes combining marks)
 /// - `RUST_SSH_TERM_DISPLAY_TEST=2` (omits combining marks)
 pub fn test_pattern_bytes() -> Vec<u8> {
-    let omit_marks = std::env::var("RUST_SSH_TERM_DISPLAY_TEST")
-        .ok()
-        .as_deref()
-        == Some("2");
+    let omit_marks = std::env::var("RUST_SSH_TERM_DISPLAY_TEST").ok().as_deref() == Some("2");
 
     let mut lines = vec![
         "\x1b[2J\x1b[H\x1b[0m",
@@ -22,10 +19,7 @@ pub fn test_pattern_bytes() -> Vec<u8> {
     ];
 
     if !omit_marks {
-        lines.insert(
-            8,
-            "Marks: e\u{301} a\u{308} n\u{303} (combining marks)\r\n",
-        );
+        lines.insert(8, "Marks: e\u{301} a\u{308} n\u{303} (combining marks)\r\n");
     }
 
     lines.concat().into_bytes()

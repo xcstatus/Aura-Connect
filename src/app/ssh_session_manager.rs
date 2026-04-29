@@ -15,25 +15,27 @@ pub struct SessionBox {
 
 impl SessionBox {
     pub fn new(inner: Arc<SshChannel>) -> Self {
-        Self { inner: Arc::new(std::sync::Mutex::new((*inner).clone())) }
+        Self {
+            inner: Arc::new(std::sync::Mutex::new((*inner).clone())),
+        }
     }
 }
 
 impl AsyncSession for SessionBox {
     fn read_stream(&mut self, buffer: &mut [u8]) -> anyhow::Result<usize> {
-        self.inner.lock().unwrap().read_stream(buffer)
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).read_stream(buffer)
     }
     fn write_stream(&mut self, data: &[u8]) -> anyhow::Result<()> {
-        self.inner.lock().unwrap().write_stream(data)
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).write_stream(data)
     }
     fn resize_pty(&mut self, cols: u16, rows: u16) -> anyhow::Result<()> {
-        self.inner.lock().unwrap().resize_pty(cols, rows)
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).resize_pty(cols, rows)
     }
     fn is_connected(&self) -> bool {
-        self.inner.lock().unwrap().is_connected()
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).is_connected()
     }
     fn exit_status(&self) -> Option<u32> {
-        self.inner.lock().unwrap().exit_status()
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).exit_status()
     }
 }
 
@@ -64,7 +66,9 @@ impl Debug for TabSession {
 pub struct SessionManager {
     sessions: Vec<Option<TabSession>>,
     /// 共享会话管理器：支持多路复用
-    pub shared_manager: std::sync::Arc<tokio::sync::RwLock<crate::backend::shared_ssh_session::SharedSessionManager>>,
+    pub shared_manager: std::sync::Arc<
+        tokio::sync::RwLock<crate::backend::shared_ssh_session::SharedSessionManager>,
+    >,
     /// Index of the currently focused tab.
     active_tab: usize,
 }
@@ -86,7 +90,12 @@ impl SessionManager {
     }
 
     /// Attach a session to a tab, replacing any existing session on that tab.
-    pub fn attach_session(&mut self, tab_index: usize, session: Box<dyn AsyncSession>, connection_key: Option<crate::backend::shared_ssh_session::ConnectionKey>) {
+    pub fn attach_session(
+        &mut self,
+        tab_index: usize,
+        session: Box<dyn AsyncSession>,
+        connection_key: Option<crate::backend::shared_ssh_session::ConnectionKey>,
+    ) {
         self.ensure_capacity(tab_index);
         self.sessions[tab_index] = Some(TabSession {
             session,
@@ -97,7 +106,12 @@ impl SessionManager {
     }
 
     /// Attach a session via Arc<SshChannel> (used by the connection pool for multiplexing).
-    pub fn attach_session_arc(&mut self, tab_index: usize, session: std::sync::Arc<SshChannel>, connection_key: Option<crate::backend::shared_ssh_session::ConnectionKey>) {
+    pub fn attach_session_arc(
+        &mut self,
+        tab_index: usize,
+        session: std::sync::Arc<SshChannel>,
+        connection_key: Option<crate::backend::shared_ssh_session::ConnectionKey>,
+    ) {
         self.ensure_capacity(tab_index);
         self.sessions[tab_index] = Some(TabSession {
             session: Box::new(SessionBox::new(session.clone())),
@@ -130,9 +144,7 @@ impl SessionManager {
 
     /// Returns true if a session is attached to the given tab.
     pub fn has_session(&self, tab_index: usize) -> bool {
-        self.sessions
-            .get(tab_index)
-            .is_some_and(|s| s.is_some())
+        self.sessions.get(tab_index).is_some_and(|s| s.is_some())
     }
 
     /// Immutable access to a tab's session.

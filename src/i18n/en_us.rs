@@ -93,9 +93,7 @@ pub fn tr(key: &'static str) -> &'static str {
             "Automatically attempt to reconnect when the connection is unexpectedly dropped."
         }
         "iced.settings.row.reconnect_max_attempts" => "Max reconnect attempts",
-        "iced.settings.row.reconnect_max_attempts.help" => {
-            "Set to 0 to disable auto-reconnect."
-        }
+        "iced.settings.row.reconnect_max_attempts.help" => "Set to 0 to disable auto-reconnect.",
         "iced.settings.row.reconnect_delay" => "Base reconnect delay (seconds)",
         "iced.settings.row.reconnect_delay.help" => {
             "Initial wait time before first reconnect. With exponential backoff, delay doubles each retry."
@@ -107,7 +105,7 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.settings.row.restore_last_session" => "Restore last session on startup",
         "iced.settings.row.restore_last_session.help" => {
             "Automatically reconnect to the last session when the app starts."
-        },
+        }
         "iced.settings.conn.manage_suffix" => "sessions",
         "iced.settings.conn.search_hint" => "Search name or address…",
         "iced.settings.conn.new" => "New",
@@ -115,11 +113,15 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.settings.conn.edit" => "Edit",
         "iced.settings.conn.delete" => "Delete",
         "iced.settings.conn.port_forward.title" => "Port Forwarding",
-        "iced.settings.conn.port_forward.description" => "Configure local (-L) and remote (-R) port forwarding. Forwards are enabled automatically when connected.",
+        "iced.settings.conn.port_forward.description" => {
+            "Configure local (-L) and remote (-R) port forwarding. Forwards are enabled automatically when connected."
+        }
         "iced.settings.conn.port_forward.local_title" => "Local Port Forward (-L)",
         "iced.settings.conn.port_forward.remote_title" => "Remote Port Forward (-R)",
         "iced.settings.conn.port_forward.add" => "Add Forward",
-        "iced.settings.conn.port_forward.empty" => "No port forwards configured. Click the button above to add.",
+        "iced.settings.conn.port_forward.empty" => {
+            "No port forwards configured. Click the button above to add."
+        }
         "iced.settings.backup.title" => "Backup & sync",
         "iced.settings.backup.hint" => {
             "Export/import and cloud sync are not available in this build (placeholder)."
@@ -144,9 +146,15 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.quick_connect.direct_cta" => "Connect to {target}",
         "iced.quick_connect.back" => "Back",
         "iced.quick_connect.new_title" => "New connection",
-        "iced.quick_connect.need_password" => "[rustssh] Password required. Enter your password below and click Connect.",
-        "iced.quick_connect.need_passphrase" => "[rustssh] Passphrase required. Enter your passphrase below and click Connect.",
-        "iced.quick_connect.need_auth" => "[rustssh] Authentication required. Enter your credential and click Connect.",
+        "iced.quick_connect.need_password" => {
+            "[rustssh] Password required. Enter your password below and click Connect."
+        }
+        "iced.quick_connect.need_passphrase" => {
+            "[rustssh] Passphrase required. Enter your passphrase below and click Connect."
+        }
+        "iced.quick_connect.need_auth" => {
+            "[rustssh] Authentication required. Enter your credential and click Connect."
+        }
         "iced.vault_unlock.title" => "Unlock Vault",
         "iced.vault_unlock.title_save_credentials" => "Unlock Vault to save credentials",
         "iced.vault_unlock.hint_save_credentials" => {
@@ -163,8 +171,12 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.vault.error.old_password_failed" => "Old password verification failed",
         "iced.vault.error.init_failed" => "Vault initialization failed",
         "iced.vault.error.vault_path_not_found" => "Cannot locate vault path",
-        "iced.vault.error.file_lost" => "Vault file is lost. Existing credentials will be cleared after password change.",
-        "iced.vault.error.save_failed" => "Vault save operation failed. Please check permissions or file corruption.",
+        "iced.vault.error.file_lost" => {
+            "Vault file is lost. Existing credentials will be cleared after password change."
+        }
+        "iced.vault.error.save_failed" => {
+            "Vault save operation failed. Please check permissions or file corruption."
+        }
         "iced.vault.title.initialize" => "Initialize Vault",
         "iced.vault.title.change_password" => "Change Master Password",
         "iced.vault.label.old_password" => "Current password",
@@ -336,6 +348,7 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.sftp.btn.toggle_layout" => "Toggle Layout",
         "iced.sftp.btn.refresh" => "Refresh",
         "iced.sftp.btn.close" => "Close",
+        "iced.sftp.btn.upload" => "Upload",
         "iced.sftp.empty" => "Empty directory",
         "iced.sftp.loading" => "Loading...",
         "iced.sftp.error.connection" => "SFTP connection failed",
@@ -351,6 +364,8 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.sftp.confirm.delete" => "Confirm Delete",
         "iced.sftp.confirm.delete_folder" => "Confirm delete folder and its contents",
         "iced.sftp.transfer.title" => "Transfer List",
+        "iced.sftp.transfer.empty" => "No transfers",
+        "iced.sftp.transfer.open_dir" => "Open Download Directory",
         "iced.sftp.transfer.downloading" => "Downloading",
         "iced.sftp.transfer.uploading" => "Uploading",
         "iced.sftp.transfer.completed" => "Completed",
@@ -362,6 +377,7 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.sftp.header.permissions" => "Permissions",
         "iced.sftp.header.size" => "Size",
         "iced.sftp.header.modified" => "Modified",
+        "iced.sftp.placeholder.folder_name" => "Folder name",
 
         _ => key,
     }

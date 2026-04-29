@@ -77,7 +77,10 @@ impl RemoteFileEntry {
     /// 获取文件扩展名
     #[must_use]
     pub fn extension(&self) -> Option<&str> {
-        self.name.rsplit('.').next().filter(|e| e.len() < self.name.len())
+        self.name
+            .rsplit('.')
+            .next()
+            .filter(|e| e.len() < self.name.len())
     }
 }
 

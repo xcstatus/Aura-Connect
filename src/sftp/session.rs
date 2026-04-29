@@ -11,8 +11,8 @@ use crate::backend::ssh_session::BaseSshConnection;
 
 use super::error::SftpError;
 use super::file_entry::RemoteFileEntry;
-use russh_sftp::client::fs::Metadata;
 use russh_sftp::client::SftpSession as RusshSftpSession;
+use russh_sftp::client::fs::Metadata;
 
 /// SFTP 会话，绑定到一个已建立的 SSH 连接
 #[derive(Clone)]
@@ -131,7 +131,10 @@ impl SftpSession {
         let w3 = if perms.other_write { 'w' } else { '-' };
         let x3 = if perms.other_exec { 'x' } else { '-' };
 
-        format!("{}{}{}{}{}{}{}{}{}{}", file_type, r, w, x, r2, w2, x2, r3, w3, x3)
+        format!(
+            "{}{}{}{}{}{}{}{}{}{}",
+            file_type, r, w, x, r2, w2, x2, r3, w3, x3
+        )
     }
 
     /// 列出目录内容（不含 "." 和 ".."）
@@ -197,11 +200,7 @@ impl SftpSession {
             .parent()
             .map(|p| {
                 let s = p.to_string_lossy().to_string();
-                if s.is_empty() {
-                    "/".to_string()
-                } else {
-                    s
-                }
+                if s.is_empty() { "/".to_string() } else { s }
             })
             .unwrap_or_else(|| "/".to_string());
 
@@ -212,19 +211,16 @@ impl SftpSession {
     pub async fn make_dir(&mut self, path: &str) -> Result<(), SftpError> {
         let normalized = self.normalize_path(path);
 
-        self.sftp
-            .create_dir(&normalized)
-            .await
-            .map_err(|e| {
-                let msg = e.to_string();
-                if msg.contains("Permission") || msg.contains("denied") {
-                    SftpError::PermissionDenied(normalized)
-                } else if msg.contains("exist") {
-                    SftpError::FileExists(normalized)
-                } else {
-                    SftpError::ProtocolError(msg)
-                }
-            })?;
+        self.sftp.create_dir(&normalized).await.map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("Permission") || msg.contains("denied") {
+                SftpError::PermissionDenied(normalized)
+            } else if msg.contains("exist") {
+                SftpError::FileExists(normalized)
+            } else {
+                SftpError::ProtocolError(msg)
+            }
+        })?;
 
         Ok(())
     }
@@ -233,17 +229,14 @@ impl SftpSession {
     pub async fn remove_file(&self, path: &str) -> Result<(), SftpError> {
         let normalized = self.normalize_path(path);
 
-        self.sftp
-            .remove_file(&normalized)
-            .await
-            .map_err(|e| {
-                let msg = e.to_string();
-                if msg.contains("Permission") || msg.contains("denied") {
-                    SftpError::PermissionDenied(normalized)
-                } else {
-                    SftpError::ProtocolError(msg)
-                }
-            })?;
+        self.sftp.remove_file(&normalized).await.map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("Permission") || msg.contains("denied") {
+                SftpError::PermissionDenied(normalized)
+            } else {
+                SftpError::ProtocolError(msg)
+            }
+        })?;
 
         Ok(())
     }
@@ -252,19 +245,16 @@ impl SftpSession {
     pub async fn remove_dir(&self, path: &str) -> Result<(), SftpError> {
         let normalized = self.normalize_path(path);
 
-        self.sftp
-            .remove_dir(&normalized)
-            .await
-            .map_err(|e| {
-                let msg = e.to_string();
-                if msg.contains("Permission") || msg.contains("denied") {
-                    SftpError::PermissionDenied(normalized)
-                } else if msg.contains("not empty") || msg.contains("Directory not empty") {
-                    SftpError::DirectoryNotEmpty(normalized)
-                } else {
-                    SftpError::ProtocolError(msg)
-                }
-            })?;
+        self.sftp.remove_dir(&normalized).await.map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("Permission") || msg.contains("denied") {
+                SftpError::PermissionDenied(normalized)
+            } else if msg.contains("not empty") || msg.contains("Directory not empty") {
+                SftpError::DirectoryNotEmpty(normalized)
+            } else {
+                SftpError::ProtocolError(msg)
+            }
+        })?;
 
         Ok(())
     }
@@ -274,17 +264,14 @@ impl SftpSession {
         let old = self.normalize_path(old_path);
         let new = self.normalize_path(new_path);
 
-        self.sftp
-            .rename(&old, &new)
-            .await
-            .map_err(|e| {
-                let msg = e.to_string();
-                if msg.contains("Permission") || msg.contains("denied") {
-                    SftpError::PermissionDenied(old)
-                } else {
-                    SftpError::ProtocolError(msg)
-                }
-            })?;
+        self.sftp.rename(&old, &new).await.map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("Permission") || msg.contains("denied") {
+                SftpError::PermissionDenied(old)
+            } else {
+                SftpError::ProtocolError(msg)
+            }
+        })?;
 
         Ok(())
     }
@@ -294,20 +281,16 @@ impl SftpSession {
         let normalized = self.normalize_path(path);
         let normalized_for_error = normalized.clone();
 
-        let metadata = self
-            .sftp
-            .metadata(&normalized)
-            .await
-            .map_err(|e| {
-                let msg = e.to_string();
-                if msg.contains("Not found") || msg.contains("No such") {
-                    SftpError::PathNotFound(normalized_for_error.clone())
-                } else if msg.contains("Permission") || msg.contains("denied") {
-                    SftpError::PermissionDenied(normalized_for_error)
-                } else {
-                    SftpError::ProtocolError(msg)
-                }
-            })?;
+        let metadata = self.sftp.metadata(&normalized).await.map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("Not found") || msg.contains("No such") {
+                SftpError::PathNotFound(normalized_for_error.clone())
+            } else if msg.contains("Permission") || msg.contains("denied") {
+                SftpError::PermissionDenied(normalized_for_error)
+            } else {
+                SftpError::ProtocolError(msg)
+            }
+        })?;
 
         let name = Path::new(&normalized)
             .file_name()
@@ -337,52 +320,40 @@ impl SftpSession {
         let remote = self.normalize_path(remote_path);
 
         // 使用 high-level API 直接读取整个文件
-        let data = self
-            .sftp
-            .read(&remote)
-            .await
-            .map_err(|e| {
-                let msg = e.to_string();
-                if msg.contains("Not found") || msg.contains("No such") {
-                    SftpError::PathNotFound(remote.clone())
-                } else if msg.contains("Permission") || msg.contains("denied") {
-                    SftpError::PermissionDenied(remote)
-                } else {
-                    SftpError::TransferFailed(msg)
-                }
-            })?;
+        let data = self.sftp.read(&remote).await.map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("Not found") || msg.contains("No such") {
+                SftpError::PathNotFound(remote.clone())
+            } else if msg.contains("Permission") || msg.contains("denied") {
+                SftpError::PermissionDenied(remote)
+            } else {
+                SftpError::TransferFailed(msg)
+            }
+        })?;
 
         // 写入本地文件
-        std::fs::write(local_path, &data)
-            .map_err(|e| SftpError::TransferFailed(e.to_string()))?;
+        std::fs::write(local_path, &data).map_err(|e| SftpError::TransferFailed(e.to_string()))?;
 
         Ok(())
     }
 
     /// 上传文件到远程
-    pub async fn upload_file(
-        &self,
-        local_path: &Path,
-        remote_path: &str,
-    ) -> Result<(), SftpError> {
+    pub async fn upload_file(&self, local_path: &Path, remote_path: &str) -> Result<(), SftpError> {
         let remote = self.normalize_path(remote_path);
 
         // 读取本地文件
-        let data = std::fs::read(local_path)
-            .map_err(|e| SftpError::TransferFailed(e.to_string()))?;
+        let data =
+            std::fs::read(local_path).map_err(|e| SftpError::TransferFailed(e.to_string()))?;
 
         // 使用 high-level API 直接写入整个文件
-        self.sftp
-            .write(&remote, &data)
-            .await
-            .map_err(|e| {
-                let msg = e.to_string();
-                if msg.contains("Permission") || msg.contains("denied") {
-                    SftpError::PermissionDenied(remote)
-                } else {
-                    SftpError::TransferFailed(msg)
-                }
-            })?;
+        self.sftp.write(&remote, &data).await.map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("Permission") || msg.contains("denied") {
+                SftpError::PermissionDenied(remote)
+            } else {
+                SftpError::TransferFailed(msg)
+            }
+        })?;
 
         Ok(())
     }

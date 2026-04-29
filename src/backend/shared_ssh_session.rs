@@ -21,7 +21,12 @@ pub struct ConnectionKey {
 
 impl ConnectionKey {
     pub fn new(host: String, port: u16, user: String, auth: AuthMethod) -> Self {
-        Self { host, port, user, auth }
+        Self {
+            host,
+            port,
+            user,
+            auth,
+        }
     }
 }
 
@@ -60,7 +65,16 @@ impl SharedSessionManager {
         key: ConnectionKey,
         cols: u16,
         rows: u16,
-        connect_fn: impl FnOnce() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Arc<BaseSshConnection>, (ConnectErrorKind, Option<HostKeyErrorInfo>)>> + Send>>,
+        connect_fn: impl FnOnce() -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<
+                            Arc<BaseSshConnection>,
+                            (ConnectErrorKind, Option<HostKeyErrorInfo>),
+                        >,
+                    > + Send,
+            >,
+        >,
     ) -> Result<Arc<SshChannel>, SharedSessionError> {
         // 检查是否已有连接
         {
@@ -71,10 +85,14 @@ impl SharedSessionManager {
                 drop(connections);
                 log::info!(
                     "[SharedSession] Reusing connection for {}@{}:{} (channels: {})",
-                    key.user, key.host, key.port,
+                    key.user,
+                    key.host,
+                    key.port,
                     conn.channel_count()
                 );
-                let channel = conn.open_channel(cols, rows).await
+                let channel = conn
+                    .open_channel(cols, rows)
+                    .await
                     .map_err(SharedSessionError::ChannelOpenFailed)?;
                 return Ok(Arc::new(channel));
             }
@@ -84,24 +102,32 @@ impl SharedSessionManager {
         {
             let connections = self.connections.read().await;
             if connections.len() >= self.max_connections {
-                return Err(SharedSessionError::MaxConnectionsReached(self.max_connections));
+                return Err(SharedSessionError::MaxConnectionsReached(
+                    self.max_connections,
+                ));
             }
         }
 
         // 创建新连接
         log::info!(
             "[SharedSession] Creating new shared connection for {}@{}:{}",
-            key.user, key.host, key.port
+            key.user,
+            key.host,
+            key.port
         );
 
-        let conn = connect_fn().await.map_err(|(kind, info)| SharedSessionError::ConnectFailed(kind, info))?;
+        let conn = connect_fn()
+            .await
+            .map_err(|(kind, info)| SharedSessionError::ConnectFailed(kind, info))?;
 
         {
             let mut connections = self.connections.write().await;
             connections.insert(key, ActiveConnection { conn: conn.clone() });
         }
 
-        let channel = conn.open_channel(cols, rows).await
+        let channel = conn
+            .open_channel(cols, rows)
+            .await
             .map_err(SharedSessionError::ChannelOpenFailed)?;
 
         Ok(Arc::new(channel))
@@ -113,7 +139,9 @@ impl SharedSessionManager {
         if let Some(active) = connections.remove(key) {
             log::info!(
                 "[SharedSession] Closed connection for {}@{}:{} (channels: {})",
-                key.user, key.host, key.port,
+                key.user,
+                key.host,
+                key.port,
                 active.conn.channel_count()
             );
             // 异步关闭所有 channel
@@ -131,7 +159,9 @@ impl SharedSessionManager {
         for (key, active) in connections.drain() {
             log::info!(
                 "[SharedSession] Closing connection for {}@{}:{}",
-                key.user, key.host, key.port
+                key.user,
+                key.host,
+                key.port
             );
             let conn = active.conn;
             tokio::spawn(async move {

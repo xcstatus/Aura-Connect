@@ -1,16 +1,16 @@
 use std::os::raw::c_char;
 
 use anyhow::Result;
-use thiserror::Error;
 use iced::keyboard::key::Code;
+use thiserror::Error;
 
 use crate::backend::ghostty_vt::{
     CursorState, GhosttyVtTerminal, ScrollbarState, VtStyledRow, ffi,
 };
 use crate::backend::ssh_session::AsyncSession;
 use crate::settings::TerminalSettings;
-use crate::terminal::selection::TerminalSelection;
 use crate::terminal::ScrollState;
+use crate::terminal::selection::TerminalSelection;
 
 #[derive(Error, Debug)]
 pub enum TerminalInitError {
@@ -196,32 +196,32 @@ pub struct TerminalController {
     bridge: TerminalSessionBridge,
     lines: Vec<String>,
     styled_rows: Vec<VtStyledRow>,
-/// Per-row render generation counter.
-///
-/// Mechanism: the `RowWidgetCache` in `terminal_rich.rs` uses `(row_index, generation[row_index])`
-/// as its cache key. When a row's generation increments, the cache miss causes the Iced widget
-/// tree for that row to be rebuilt. This avoids reconstructing the entire widget tree every frame
-/// while still keeping things simple (no explicit invalidation needed).
-///
-/// Generation is bumped in three cases:
-/// 1. `pump_output` — only dirty rows are incremented
-/// 2. `scroll_viewport_delta_rows` — all dirty rows are incremented
-/// 3. `refresh_terminal_snapshots` / `resize` — all rows are incremented (full redraw)
-styled_row_gen: Vec<u64>,
+    /// Per-row render generation counter.
+    ///
+    /// Mechanism: the `RowWidgetCache` in `terminal_rich.rs` uses `(row_index, generation[row_index])`
+    /// as its cache key. When a row's generation increments, the cache miss causes the Iced widget
+    /// tree for that row to be rebuilt. This avoids reconstructing the entire widget tree every frame
+    /// while still keeping things simple (no explicit invalidation needed).
+    ///
+    /// Generation is bumped in three cases:
+    /// 1. `pump_output` — only dirty rows are incremented
+    /// 2. `scroll_viewport_delta_rows` — all dirty rows are incremented
+    /// 3. `refresh_terminal_snapshots` / `resize` — all rows are incremented (full redraw)
+    styled_row_gen: Vec<u64>,
 
-/// Temporary list of dirty row indices for the current frame.
-///
-/// Used to scope `styled_fragments` rebuild to only the rows that actually changed.
-/// Cleared at the start of each pump/resize/refresh cycle. This is a scratch buffer —
-/// it is NOT preserved across frames.
-styled_dirty_rows_tmp: Vec<usize>,
+    /// Temporary list of dirty row indices for the current frame.
+    ///
+    /// Used to scope `styled_fragments` rebuild to only the rows that actually changed.
+    /// Cleared at the start of each pump/resize/refresh cycle. This is a scratch buffer —
+    /// it is NOT preserved across frames.
+    styled_dirty_rows_tmp: Vec<usize>,
 
-/// Per-row cache of rendered fragments, indexed by visible row.
-///
-/// Rebuilt from `styled_rows` on demand (dirty rows only) to avoid per-cell allocations
-/// during normal I/O. Each `Vec<StyledFragment>` is pre-allocated with capacity 16
-/// (enough for most color changes without reallocation).
-styled_fragments: Vec<Vec<StyledFragment>>,
+    /// Per-row cache of rendered fragments, indexed by visible row.
+    ///
+    /// Rebuilt from `styled_rows` on demand (dirty rows only) to avoid per-cell allocations
+    /// during normal I/O. Each `Vec<StyledFragment>` is pre-allocated with capacity 16
+    /// (enough for most color changes without reallocation).
+    styled_fragments: Vec<Vec<StyledFragment>>,
     pub(crate) selection: TerminalSelection,
     last_pty_size: (u16, u16),
     cols: u16,
@@ -442,7 +442,8 @@ impl TerminalController {
         let _ = self.vt.update_render_state();
         self.lines.resize(rows as usize, String::new());
         self.styled_row_gen.resize(rows as usize, 0);
-        self.styled_fragments.resize_with(rows as usize, || Vec::with_capacity(16));
+        self.styled_fragments
+            .resize_with(rows as usize, || Vec::with_capacity(16));
         self.styled_dirty_rows_tmp.clear();
         let _ = self.vt.update_dirty_styled_rows_and_clear_dirty_collect(
             &mut self.styled_rows,
@@ -635,7 +636,7 @@ impl TerminalController {
         modifiers: TerminalModifiers,
         text: Option<&str>,
     ) -> Option<Vec<u8>> {
-        let gk = code_to_ghostty_key(code)?;
+        let gk = super::key_encode::code_to_ghostty_key(code)?;
         self.encode_ghostty_press_key_utf8(gk, modifiers, text)
     }
 
@@ -658,7 +659,7 @@ impl TerminalController {
         modifiers: TerminalModifiers,
         text: Option<&str>,
     ) -> Option<Vec<u8>> {
-        let mods = mods_to_ffi(modifiers);
+        let mods = super::key_encode::mods_to_ffi(modifiers);
         let utf8 = text.and_then(|t| {
             if t.is_empty() {
                 None
@@ -721,7 +722,7 @@ impl TerminalController {
 
     /// DECSET 1004 focus reporting: CSI I / CSI O when the mode is enabled in the VT parser.
     pub fn encode_focus_event(&mut self, focused: bool) -> Vec<u8> {
-        let mode = dec_private_mode(1004);
+        let mode = super::key_encode::dec_private_mode(1004);
         let Ok(true) = self.vt.mode_get(mode) else {
             return Vec::new();
         };
@@ -760,7 +761,7 @@ impl TerminalController {
     /// Unconditional bracketed paste is unsafe for vim and many SSH peers: the wrapper begins with
     /// ESC (`\e[200~`), which exits insert mode if the app does not consume the sequence atomically.
     pub fn encode_paste(&mut self, text: &str) -> Vec<u8> {
-        let mode = dec_private_mode(2004);
+        let mode = super::key_encode::dec_private_mode(2004);
         let remote_2004 = self.vt.mode_get(mode).unwrap_or(false);
         let bracketed = self.bracketed_paste && remote_2004;
 
@@ -771,8 +772,11 @@ impl TerminalController {
             out.extend_from_slice(b"\x1b[201~");
             return out;
         }
-        let _safe =
+        let safe =
             unsafe { ffi::ghostty_paste_is_safe(text.as_ptr() as *const c_char, text.len()) };
+        if !safe {
+            log::debug!("paste contains unsafe control characters, returning raw bytes anyway");
+        }
         text.as_bytes().to_vec()
     }
 
@@ -826,10 +830,11 @@ impl TerminalController {
             TerminalKey::ArrowLeft => ffi::GhosttyKey_GHOSTTY_KEY_ARROW_LEFT,
             TerminalKey::ArrowRight => ffi::GhosttyKey_GHOSTTY_KEY_ARROW_RIGHT,
             TerminalKey::Function(n) => {
-                ghostty_function_key(n).unwrap_or(ffi::GhosttyKey_GHOSTTY_KEY_UNIDENTIFIED)
+                super::key_encode::ghostty_function_key(n)
+                    .unwrap_or(ffi::GhosttyKey_GHOSTTY_KEY_UNIDENTIFIED)
             }
         };
-        let mods = mods_to_ffi(modifiers);
+        let mods = super::key_encode::mods_to_ffi(modifiers);
         match self
             .vt
             .encode_key(ffi::GhosttyKeyAction_GHOSTTY_KEY_ACTION_PRESS, k, mods)
@@ -837,7 +842,7 @@ impl TerminalController {
             Ok(seq) if !seq.is_empty() => seq,
             Ok(_) | Err(_) => {
                 if mods == 0 {
-                    if let Some(seq) = whitelisted_minimal_named_key_fallback(key) {
+                    if let Some(seq) = super::key_encode::whitelisted_minimal_named_key_fallback(key) {
                         self.key_fallback_named = self.key_fallback_named.saturating_add(1);
                         log::warn!(
                             target: "term_key_fallback",
@@ -970,149 +975,6 @@ fn build_row_fragments(row: &VtStyledRow) -> Vec<StyledFragment> {
     out
 }
 
-/// Named keys that still need VT-compatible bytes when libghostty returns empty (no modifiers).
-/// **Not** function keys — those must stay on the encoder path only.
-fn whitelisted_minimal_named_key_fallback(key: TerminalKey) -> Option<Vec<u8>> {
-    let bytes: &[u8] = match key {
-        TerminalKey::Enter => b"\r",
-        TerminalKey::Backspace => &[0x7f],
-        TerminalKey::Tab => b"\t",
-        TerminalKey::Escape => b"\x1b",
-        TerminalKey::Space => b" ",
-        TerminalKey::ArrowUp => b"\x1b[A",
-        TerminalKey::ArrowDown => b"\x1b[B",
-        TerminalKey::ArrowRight => b"\x1b[C",
-        TerminalKey::ArrowLeft => b"\x1b[D",
-        TerminalKey::Home => b"\x1b[H",
-        TerminalKey::End => b"\x1b[F",
-        TerminalKey::PageUp => b"\x1b[5~",
-        TerminalKey::PageDown => b"\x1b[6~",
-        TerminalKey::Insert => b"\x1b[2~",
-        TerminalKey::Delete => b"\x1b[3~",
-        TerminalKey::Function(_) => return None,
-    };
-    Some(bytes.to_vec())
-}
-
-#[inline]
-fn ghostty_function_key(n: u8) -> Option<ffi::GhosttyKey> {
-    if n == 0 || n > 25 {
-        return None;
-    }
-    Some(ffi::GhosttyKey_GHOSTTY_KEY_F1 + (n as u32) - 1)
-}
-
-fn code_to_ghostty_key(code: Code) -> Option<ffi::GhosttyKey> {
-    use Code::*;
-    Some(match code {
-        KeyA => ffi::GhosttyKey_GHOSTTY_KEY_A,
-        KeyB => ffi::GhosttyKey_GHOSTTY_KEY_B,
-        KeyC => ffi::GhosttyKey_GHOSTTY_KEY_C,
-        KeyD => ffi::GhosttyKey_GHOSTTY_KEY_D,
-        KeyE => ffi::GhosttyKey_GHOSTTY_KEY_E,
-        KeyF => ffi::GhosttyKey_GHOSTTY_KEY_F,
-        KeyG => ffi::GhosttyKey_GHOSTTY_KEY_G,
-        KeyH => ffi::GhosttyKey_GHOSTTY_KEY_H,
-        KeyI => ffi::GhosttyKey_GHOSTTY_KEY_I,
-        KeyJ => ffi::GhosttyKey_GHOSTTY_KEY_J,
-        KeyK => ffi::GhosttyKey_GHOSTTY_KEY_K,
-        KeyL => ffi::GhosttyKey_GHOSTTY_KEY_L,
-        KeyM => ffi::GhosttyKey_GHOSTTY_KEY_M,
-        KeyN => ffi::GhosttyKey_GHOSTTY_KEY_N,
-        KeyO => ffi::GhosttyKey_GHOSTTY_KEY_O,
-        KeyP => ffi::GhosttyKey_GHOSTTY_KEY_P,
-        KeyQ => ffi::GhosttyKey_GHOSTTY_KEY_Q,
-        KeyR => ffi::GhosttyKey_GHOSTTY_KEY_R,
-        KeyS => ffi::GhosttyKey_GHOSTTY_KEY_S,
-        KeyT => ffi::GhosttyKey_GHOSTTY_KEY_T,
-        KeyU => ffi::GhosttyKey_GHOSTTY_KEY_U,
-        KeyV => ffi::GhosttyKey_GHOSTTY_KEY_V,
-        KeyW => ffi::GhosttyKey_GHOSTTY_KEY_W,
-        KeyX => ffi::GhosttyKey_GHOSTTY_KEY_X,
-        KeyY => ffi::GhosttyKey_GHOSTTY_KEY_Y,
-        KeyZ => ffi::GhosttyKey_GHOSTTY_KEY_Z,
-        Digit0 => ffi::GhosttyKey_GHOSTTY_KEY_DIGIT_0,
-        Digit1 => ffi::GhosttyKey_GHOSTTY_KEY_DIGIT_1,
-        Digit2 => ffi::GhosttyKey_GHOSTTY_KEY_DIGIT_2,
-        Digit3 => ffi::GhosttyKey_GHOSTTY_KEY_DIGIT_3,
-        Digit4 => ffi::GhosttyKey_GHOSTTY_KEY_DIGIT_4,
-        Digit5 => ffi::GhosttyKey_GHOSTTY_KEY_DIGIT_5,
-        Digit6 => ffi::GhosttyKey_GHOSTTY_KEY_DIGIT_6,
-        Digit7 => ffi::GhosttyKey_GHOSTTY_KEY_DIGIT_7,
-        Digit8 => ffi::GhosttyKey_GHOSTTY_KEY_DIGIT_8,
-        Digit9 => ffi::GhosttyKey_GHOSTTY_KEY_DIGIT_9,
-        Backquote => ffi::GhosttyKey_GHOSTTY_KEY_BACKQUOTE,
-        Minus => ffi::GhosttyKey_GHOSTTY_KEY_MINUS,
-        Equal => ffi::GhosttyKey_GHOSTTY_KEY_EQUAL,
-        BracketLeft => ffi::GhosttyKey_GHOSTTY_KEY_BRACKET_LEFT,
-        BracketRight => ffi::GhosttyKey_GHOSTTY_KEY_BRACKET_RIGHT,
-        Backslash => ffi::GhosttyKey_GHOSTTY_KEY_BACKSLASH,
-        Semicolon => ffi::GhosttyKey_GHOSTTY_KEY_SEMICOLON,
-        Quote => ffi::GhosttyKey_GHOSTTY_KEY_QUOTE,
-        IntlBackslash => ffi::GhosttyKey_GHOSTTY_KEY_INTL_BACKSLASH,
-        IntlRo => ffi::GhosttyKey_GHOSTTY_KEY_INTL_RO,
-        IntlYen => ffi::GhosttyKey_GHOSTTY_KEY_INTL_YEN,
-        Comma => ffi::GhosttyKey_GHOSTTY_KEY_COMMA,
-        Period => ffi::GhosttyKey_GHOSTTY_KEY_PERIOD,
-        Slash => ffi::GhosttyKey_GHOSTTY_KEY_SLASH,
-        Space => ffi::GhosttyKey_GHOSTTY_KEY_SPACE,
-        Enter => ffi::GhosttyKey_GHOSTTY_KEY_ENTER,
-        Tab => ffi::GhosttyKey_GHOSTTY_KEY_TAB,
-        Backspace => ffi::GhosttyKey_GHOSTTY_KEY_BACKSPACE,
-        Escape => ffi::GhosttyKey_GHOSTTY_KEY_ESCAPE,
-        ArrowDown => ffi::GhosttyKey_GHOSTTY_KEY_ARROW_DOWN,
-        ArrowLeft => ffi::GhosttyKey_GHOSTTY_KEY_ARROW_LEFT,
-        ArrowRight => ffi::GhosttyKey_GHOSTTY_KEY_ARROW_RIGHT,
-        ArrowUp => ffi::GhosttyKey_GHOSTTY_KEY_ARROW_UP,
-        Home => ffi::GhosttyKey_GHOSTTY_KEY_HOME,
-        End => ffi::GhosttyKey_GHOSTTY_KEY_END,
-        PageUp => ffi::GhosttyKey_GHOSTTY_KEY_PAGE_UP,
-        PageDown => ffi::GhosttyKey_GHOSTTY_KEY_PAGE_DOWN,
-        Insert => ffi::GhosttyKey_GHOSTTY_KEY_INSERT,
-        Delete => ffi::GhosttyKey_GHOSTTY_KEY_DELETE,
-        Numpad0 => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_0,
-        Numpad1 => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_1,
-        Numpad2 => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_2,
-        Numpad3 => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_3,
-        Numpad4 => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_4,
-        Numpad5 => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_5,
-        Numpad6 => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_6,
-        Numpad7 => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_7,
-        Numpad8 => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_8,
-        Numpad9 => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_9,
-        NumpadAdd => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_ADD,
-        NumpadSubtract => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_SUBTRACT,
-        NumpadMultiply => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_MULTIPLY,
-        NumpadDivide => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_DIVIDE,
-        NumpadDecimal => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_DECIMAL,
-        NumpadEqual => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_EQUAL,
-        NumpadEnter => ffi::GhosttyKey_GHOSTTY_KEY_NUMPAD_ENTER,
-        _ => return None,
-    })
-}
-
-#[inline]
-fn dec_private_mode(value: u16) -> ffi::GhosttyMode {
-    (value & 0x7fff) as ffi::GhosttyMode
-}
-
-fn mods_to_ffi(m: TerminalModifiers) -> ffi::GhosttyMods {
-    let mut mods: ffi::GhosttyMods = 0;
-    if m.shift {
-        mods |= ffi::GHOSTTY_MODS_SHIFT as ffi::GhosttyMods;
-    }
-    if m.ctrl {
-        mods |= ffi::GHOSTTY_MODS_CTRL as ffi::GhosttyMods;
-    }
-    if m.alt {
-        mods |= ffi::GHOSTTY_MODS_ALT as ffi::GhosttyMods;
-    }
-    if m.logo {
-        mods |= ffi::GHOSTTY_MODS_SUPER as ffi::GhosttyMods;
-    }
-    mods
-}
-
 #[cfg(test)]
 mod tests {
     use crate::backend::mock_session::MockSession;
@@ -1148,9 +1010,7 @@ mod tests {
         bridge.set_budgets(1024 * 1024, 2);
 
         let mut chunks = 0usize;
-        let drained = bridge
-            .drain_output(&mut s, |_bytes| chunks += 1)
-            .unwrap();
+        let drained = bridge.drain_output(&mut s, |_bytes| chunks += 1).unwrap();
 
         assert_eq!(chunks, 2);
         assert_eq!(drained, 2);
@@ -1182,9 +1042,7 @@ mod tests {
         bridge.set_budgets(100, 10);
 
         // Drain first frame with budget
-        let drained1 = bridge
-            .drain_output(&mut s, |_| {})
-            .unwrap();
+        let drained1 = bridge.drain_output(&mut s, |_| {}).unwrap();
 
         // Push a large chunk that exceeds the cap via next read
         s.push_data(&vec![b'x'; 400 * 1024]);

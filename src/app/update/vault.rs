@@ -58,18 +58,36 @@ pub(crate) fn handle_vault_submit(state: &mut IcedState) -> Task<Message> {
     let new_pwd = flow.new_password.expose_secret().trim().to_string();
     let confirm = flow.confirm_password.expose_secret().trim().to_string();
     if new_pwd.is_empty() || new_pwd != confirm {
-        flow.error = Some(state.model.i18n.tr("iced.vault.error.password_mismatch").to_string());
+        flow.error = Some(
+            state
+                .model
+                .i18n
+                .tr("iced.vault.error.password_mismatch")
+                .to_string(),
+        );
         return Task::none();
     }
 
     if let VaultFlowMode::ChangePassword = flow.mode {
         let Some(old_meta) = state.model.settings.security.vault.as_ref() else {
-            flow.error = Some(state.model.i18n.tr("iced.vault_unlock.error.vault_not_initialized").to_string());
+            flow.error = Some(
+                state
+                    .model
+                    .i18n
+                    .tr("iced.vault_unlock.error.vault_not_initialized")
+                    .to_string(),
+            );
             return Task::none();
         };
         let old_pwd = SecretString::from(flow.old_password.expose_secret().to_string());
         if !crate::vault::VaultManager::verify_password(&old_pwd, old_meta) {
-            flow.error = Some(state.model.i18n.tr("iced.vault.error.old_password_failed").to_string());
+            flow.error = Some(
+                state
+                    .model
+                    .i18n
+                    .tr("iced.vault.error.old_password_failed")
+                    .to_string(),
+            );
             return Task::none();
         }
     }
@@ -78,13 +96,23 @@ pub(crate) fn handle_vault_submit(state: &mut IcedState) -> Task<Message> {
     let new_meta = match crate::vault::VaultManager::setup_vault(&new_password) {
         Ok(m) => m,
         Err(e) => {
-            flow.error = Some(format!("{}: {}", state.model.i18n.tr("iced.vault.error.init_failed"), e));
+            flow.error = Some(format!(
+                "{}: {}",
+                state.model.i18n.tr("iced.vault.error.init_failed"),
+                e
+            ));
             return Task::none();
         }
     };
 
     let Some(vault_path) = crate::utils::StorageManager::get_vault_path() else {
-        flow.error = Some(state.model.i18n.tr("iced.vault.error.vault_path_not_found").to_string());
+        flow.error = Some(
+            state
+                .model
+                .i18n
+                .tr("iced.vault.error.vault_path_not_found")
+                .to_string(),
+        );
         return Task::none();
     };
 
@@ -97,16 +125,30 @@ pub(crate) fn handle_vault_submit(state: &mut IcedState) -> Task<Message> {
 
     // IMPORTANT: do NOT overwrite settings meta unless vault file operation succeeds.
     let vault_ok = match flow.mode {
-        VaultFlowMode::Initialize => crate::vault::core::CredentialVault::initialize(&new_password, enc_salt_arr)
-            .and_then(|v| v.save_to_file(&vault_path))
-            .is_ok(),
+        VaultFlowMode::Initialize => {
+            crate::vault::core::CredentialVault::initialize(&new_password, enc_salt_arr)
+                .and_then(|v| v.save_to_file(&vault_path))
+                .is_ok()
+        }
         VaultFlowMode::ChangePassword => {
             let Some(old_meta) = state.model.settings.security.vault.as_ref() else {
-                flow.error = Some(state.model.i18n.tr("iced.vault_unlock.error.vault_not_initialized").to_string());
+                flow.error = Some(
+                    state
+                        .model
+                        .i18n
+                        .tr("iced.vault_unlock.error.vault_not_initialized")
+                        .to_string(),
+                );
                 return Task::none();
             };
             if !vault_path.exists() {
-                flow.error = Some(state.model.i18n.tr("iced.vault.error.file_lost").to_string());
+                flow.error = Some(
+                    state
+                        .model
+                        .i18n
+                        .tr("iced.vault.error.file_lost")
+                        .to_string(),
+                );
                 return Task::none();
             }
             let old_enc_salt_str = old_meta.encryption_salt.as_deref().unwrap_or_default();
@@ -127,7 +169,13 @@ pub(crate) fn handle_vault_submit(state: &mut IcedState) -> Task<Message> {
     };
 
     if !vault_ok {
-        flow.error = Some(state.model.i18n.tr("iced.vault.error.save_failed").to_string());
+        flow.error = Some(
+            state
+                .model
+                .i18n
+                .tr("iced.vault.error.save_failed")
+                .to_string(),
+        );
         return Task::none();
     }
 
@@ -141,7 +189,6 @@ pub(crate) fn handle_vault_submit(state: &mut IcedState) -> Task<Message> {
     );
 
     state.vault_flow = None;
-    state.model.status = state.model.i18n.tr("iced.term.vault_unlocked").to_string();
     Task::none()
 }
 
@@ -266,21 +313,32 @@ pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message>
                 },
                 kdf_level,
             )
-        }).await;
+        })
+        .await;
 
         let verified = match verified {
             Ok(v) => v,
-            Err(_) => return Message::VaultUnlockComplete(Err(crate::vault::VaultUnlockError::VaultError("Task cancelled".into()))),
+            Err(_) => {
+                return Message::VaultUnlockComplete(Err(
+                    crate::vault::VaultUnlockError::VaultError("Task cancelled".into()),
+                ));
+            }
         };
 
         if !verified {
-            return Message::VaultUnlockComplete(Err(crate::vault::VaultUnlockError::WrongPassword));
+            return Message::VaultUnlockComplete(Err(
+                crate::vault::VaultUnlockError::WrongPassword,
+            ));
         }
 
         // Step 2: Load vault file (fast, no KDF)
         let vault_path = match crate::utils::StorageManager::get_vault_path() {
             Some(p) => p,
-            None => return Message::VaultUnlockComplete(Err(crate::vault::VaultUnlockError::VaultError("无法定位 vault 路径".into()))),
+            None => {
+                return Message::VaultUnlockComplete(Err(
+                    crate::vault::VaultUnlockError::VaultError("无法定位 vault 路径".into()),
+                ));
+            }
         };
         let vault_exists = vault_path.exists();
 
@@ -298,7 +356,8 @@ pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message>
             if vault_exists {
                 let mut vault = crate::vault::core::CredentialVault::load_from_file(&vault_path)
                     .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
-                vault.unlock_with_level(&SecretString::from(password_for_vault), kdf_level)
+                vault
+                    .unlock_with_level(&SecretString::from(password_for_vault), kdf_level)
                     .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
                 Ok(vault)
             } else {
@@ -308,24 +367,31 @@ pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message>
                     kdf_level,
                 )
                 .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
-                vault.save_to_file(&vault_path)
+                vault
+                    .save_to_file(&vault_path)
                     .map_err(|e| crate::vault::VaultUnlockError::VaultError(e.to_string()))?;
                 Ok(vault)
             }
-        }).await;
+        })
+        .await;
 
         let vault = match vault_result {
             Ok(Ok(v)) => v,
             Ok(Err(e)) => return Message::VaultUnlockComplete(Err(e)),
-            Err(_) => return Message::VaultUnlockComplete(Err(crate::vault::VaultUnlockError::VaultError("Task cancelled".into()))),
+            Err(_) => {
+                return Message::VaultUnlockComplete(Err(
+                    crate::vault::VaultUnlockError::VaultError("Task cancelled".into()),
+                ));
+            }
         };
 
         // Step 4: Preload SSH credentials for the pending session
         let preloaded = if let Some(ref cid) = pending_cred_id {
             let credential_id = format!("ssh:{}", cid);
             if let Ok(Some(raw)) = vault.get_credential(&credential_id) {
-                if let Ok(payload) =
-                    serde_json::from_slice::<crate::vault::session_credentials::SshCredentialPayload>(&raw)
+                if let Ok(payload) = serde_json::from_slice::<
+                    crate::vault::session_credentials::SshCredentialPayload,
+                >(&raw)
                 {
                     Some((payload.password, payload.passphrase))
                 } else {
@@ -339,7 +405,11 @@ pub(crate) fn handle_vault_unlock_submit(state: &mut IcedState) -> Task<Message>
         };
 
         // Return master password and preloaded credentials
-        let preloaded = preloaded.map(|(pw, pp)| (pw.unwrap_or_default(), pp));
+        let preloaded = preloaded.map(|(pw, pp)| {
+            let pw_str = pw.map(|z| (*z).clone()).unwrap_or_default();
+            let pp_str = pp.map(|z| (*z).clone());
+            (pw_str, pp_str)
+        });
         Message::VaultUnlockComplete(Ok((password, preloaded)))
     };
 
@@ -355,21 +425,30 @@ pub(crate) fn handle_vault_unlock_complete(
     let pending = match result {
         Ok((master_password, preloaded)) => {
             // Construct PendingVaultUnlock from preloaded data
-            let pending = state.pending_vault_unlock.take().expect("pending context missing");
+            let pending = state
+                .pending_vault_unlock
+                .take()
+                .expect("pending context missing");
             (pending, master_password, preloaded)
         }
         Err(e) => {
             // Error: reopen vault unlock modal with error (translate to current language)
             let error_msg = match &e {
-                crate::vault::VaultUnlockError::WrongPassword => {
-                    state.model.i18n.tr("iced.vault_unlock.error.wrong_password").to_string()
-                }
-                crate::vault::VaultUnlockError::VaultNotInitialized => {
-                    state.model.i18n.tr("iced.vault_unlock.error.vault_not_initialized").to_string()
-                }
-                crate::vault::VaultUnlockError::VaultError(_) => {
-                    state.model.i18n.tr("iced.vault_unlock.error.unknown").to_string()
-                }
+                crate::vault::VaultUnlockError::WrongPassword => state
+                    .model
+                    .i18n
+                    .tr("iced.vault_unlock.error.wrong_password")
+                    .to_string(),
+                crate::vault::VaultUnlockError::VaultNotInitialized => state
+                    .model
+                    .i18n
+                    .tr("iced.vault_unlock.error.vault_not_initialized")
+                    .to_string(),
+                crate::vault::VaultUnlockError::VaultError(_) => state
+                    .model
+                    .i18n
+                    .tr("iced.vault_unlock.error.unknown")
+                    .to_string(),
             };
             state.vault_unlock = Some(super::super::state::VaultUnlockState {
                 pending_connect: None,
@@ -406,15 +485,13 @@ pub(crate) fn handle_vault_unlock_complete(
         let pw_ok = !state.model.draft.password.expose_secret().trim().is_empty();
         if pw_ok {
             let pw = state.model.draft.password.expose_secret();
-            if let Ok(Some(cid)) =
-                crate::vault::session_credentials::sync_ssh_credentials(
-                    master.expose_secret(),
-                    &pid,
-                    Some(pw),
-                    None,
-                    state.model.settings.security.kdf_memory_level,
-                )
-            {
+            if let Ok(Some(cid)) = crate::vault::session_credentials::sync_ssh_credentials(
+                master,
+                &pid,
+                Some(pw),
+                None,
+                state.model.settings.security.kdf_memory_level,
+            ) {
                 if let Some(existing) = state.model.profiles().iter().find(|p| p.id == pid).cloned()
                 {
                     if let crate::session::TransportConfig::Ssh(mut ssh) = existing.transport {
@@ -423,7 +500,9 @@ pub(crate) fn handle_vault_unlock_complete(
                             transport: crate::session::TransportConfig::Ssh(ssh),
                             ..existing
                         };
-                        let _ = state.rt.block_on(state.model.tab_manager.upsert_session(updated));
+                        let _ = state
+                            .rt
+                            .block_on(state.model.tab_manager.upsert_session(updated));
                     }
                 }
             }
@@ -447,7 +526,11 @@ pub(crate) fn handle_vault_unlock_complete(
 
         // Fill draft with profile host/user/auth.
         let master = state.model.vault_master_password.clone();
-        if state.model.fill_draft_from_profile(&prof, master.as_ref()).is_err() {
+        if state
+            .model
+            .fill_draft_from_profile(&prof, master.as_ref())
+            .is_err()
+        {
             return Task::none();
         }
 
@@ -455,7 +538,8 @@ pub(crate) fn handle_vault_unlock_complete(
         // SSH info (target + fingerprint + auth method + "连接中…") will be injected
         // by start_ssh_connect once ConnectPressed is dispatched.
         state.active_pane_mut().terminal.clear_local_preconnect_ui();
-        state.active_pane_mut()
+        state
+            .active_pane_mut()
             .terminal
             .inject_local_lines(&[&vault_unlocked_msg]);
         // 记录 vault 提示行数，等待 handle_connect() 注入 SSH info 后一并计数

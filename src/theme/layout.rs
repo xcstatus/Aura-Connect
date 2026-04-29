@@ -15,9 +15,9 @@ pub const BTN_HEIGHT_COMPACT: f32 = 28.0;
 pub const BTN_HEIGHT_STANDARD: f32 = 32.0;
 
 /// 图标按钮尺寸
-pub const ICON_BUTTON_SIZE: f32 = 28.0;           // 标准图标按钮 28×28
-pub const ICON_BUTTON_SIZE_COMPACT: f32 = 24.0;   // 紧凑图标按钮 24×24
-pub const ICON_SIZE_COMPACT: f32 = 12.0;          // 紧凑按钮内图标视觉尺寸
+pub const ICON_BUTTON_SIZE: f32 = 28.0; // 标准图标按钮 28×28
+pub const ICON_BUTTON_SIZE_COMPACT: f32 = 24.0; // 紧凑图标按钮 24×24
+pub const ICON_SIZE_COMPACT: f32 = 12.0; // 紧凑按钮内图标视觉尺寸
 
 /// 按钮水平 / 垂直内边距（规范 8×12）
 pub const BTN_PADDING_H: f32 = 12.0;
@@ -148,7 +148,8 @@ pub const TAB_LABEL_CLOSE_SPACING: f32 = 3.0;
 /// 标签左右 padding（chip 内层）
 pub const TAB_CHIP_PAD_H: f32 = 4.0;
 /// 标签页最小宽度（含关闭按钮 + padding + 间距）
-pub const TAB_CHIP_MIN_WIDTH: f32 = TAB_CLOSE_HIT_W + TAB_CHIP_PAD_H * 2.0 + TAB_LABEL_CLOSE_SPACING; // ≈ 35px
+pub const TAB_CHIP_MIN_WIDTH: f32 =
+    TAB_CLOSE_HIT_W + TAB_CHIP_PAD_H * 2.0 + TAB_LABEL_CLOSE_SPACING; // ≈ 35px
 
 // ============ Breadcrumb 布局常量 ============
 
@@ -166,13 +167,17 @@ pub const BREADCRUMB_BTN_GAP: f32 = 4.0;
 pub const BREADCRUMB_FLOAT_ICON_SIZE: f32 = 22.0;
 /// Breadcrumb 浮动图标与边缘距离
 pub const BREADCRUMB_FLOAT_ICON_MARGIN: f32 = 8.0;
+/// Breadcrumb 展开/收起动画时长（ms）
+pub const DURATION_BREADCRUMB_ANIM_MS: u16 = 200;
 
 // ============ SFTP 布局常量 ============
 
 /// SFTP 面板顶栏高度
 pub const SFTP_TOP_BAR_HEIGHT: f32 = 36.0;
 /// SFTP 文件行高度
-pub const SFTP_FILE_ROW_HEIGHT: f32 = 28.0;
+pub const SFTP_FILE_ROW_HEIGHT: f32 = 32.0;
+/// SFTP 表头行高度
+pub const SFTP_HEADER_ROW_HEIGHT: f32 = 28.0;
 /// SFTP 面板最小高度
 pub const SFTP_PANEL_MIN_HEIGHT: f32 = 150.0;
 /// SFTP 面板默认比例（上下布局）
@@ -186,3 +191,12 @@ pub const SFTP_COL_SIZE: f32 = 60.0;
 pub const SFTP_COL_MODIFIED: f32 = 120.0;
 pub const SFTP_COL_SPACING: f32 = 8.0;
 pub const SFTP_COL_NAME_ICON_SPACING: f32 = 6.0;
+
+/// SFTP 行内边距
+pub const SFTP_ROW_PADDING_H: f32 = 12.0;
+pub const SFTP_ROW_PADDING_V: f32 = 5.0;
+/// SFTP 行圆角
+pub const SFTP_ROW_RADIUS: f32 = 6.0;
+/// SFTP 图标尺寸
+pub const SFTP_ICON_SIZE_FOLDER: f32 = 14.0;
+pub const SFTP_ICON_SIZE_FILE: f32 = 12.0;

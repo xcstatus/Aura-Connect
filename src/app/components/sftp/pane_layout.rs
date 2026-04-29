@@ -2,7 +2,7 @@
 //!
 //! 根据 PaneLayout 渲染终端 + SFTP 面板的组合布局。
 
-use iced::widget::{container, row, Column, Space};
+use iced::widget::{Column, Space, container, row};
 use iced::{Element, Length};
 
 use crate::app::components::sftp::panel::sftp_panel_view;
@@ -31,7 +31,7 @@ pub(crate) fn tab_content(state: &IcedState) -> Element<'_, Message> {
         }
         PaneLayout::TerminalAboveSftp { sftp_ratio } => {
             // 终端在上，SFTP 在下
-            let breadcrumb_visible = state.breadcrumb_pinned || state.breadcrumb_temp_visible;
+            let breadcrumb_visible = state.breadcrumb_pinned;
             let term_portion = if breadcrumb_visible {
                 ((1.0 - sftp_ratio) * 100.0) as u16
             } else {
@@ -46,12 +46,12 @@ pub(crate) fn tab_content(state: &IcedState) -> Element<'_, Message> {
                 .push(
                     container(term_view)
                         .height(Length::FillPortion(term_portion))
-                        .width(Length::Fill)
+                        .width(Length::Fill),
                 )
                 .push(
                     container(sftp_view)
                         .height(Length::FillPortion(sftp_portion))
-                        .width(Length::Fill)
+                        .width(Length::Fill),
                 )
                 .spacing(0)
                 .height(Length::Fill)

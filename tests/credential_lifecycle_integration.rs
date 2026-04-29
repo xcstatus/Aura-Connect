@@ -4,8 +4,8 @@ use secrecy::{ExposeSecret, SecretString};
 use tempfile::tempdir;
 
 use rust_ssh::session::{AuthMethod, SessionLibrary, SessionProfile, SshConfig, TransportConfig};
-use rust_ssh::settings::Settings;
-use rust_ssh::storage::StorageManager;
+use rust_ssh::settings::{KdfMemoryLevel, Settings};
+use rust_ssh::utils::StorageManager;
 use rust_ssh::vault::VaultManager;
 
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -80,16 +80,18 @@ fn save_write_restart_prefill() {
         let pw = SecretString::new("ssh-pass".into());
         let runtime_master = SecretString::from(meta.verifier_hash.clone());
         let credential_id = rust_ssh::vault::session_credentials::save_ssh_credentials(
-            runtime_master.expose_secret(),
+            &runtime_master,
             sid,
             Some(pw.expose_secret()),
             None,
+            KdfMemoryLevel::default(),
         )
         .unwrap();
 
         let profile = SessionProfile {
             id: sid.to_string(),
             name: "u@h".to_string(),
+            group_id: None,
             folder: None,
             color_tag: None,
             transport: TransportConfig::Ssh(SshConfig {
@@ -111,7 +113,7 @@ fn save_write_restart_prefill() {
         std::fs::write(&sessions_path, serde_json::to_string_pretty(&lib).unwrap()).unwrap();
 
         // 3) Restart: load model and verify prefill loads password back from vault.
-        let mut model = rust_ssh::app_model::AppModel::load();
+        let mut model = rust_ssh::app::AppModel::load();
         let derived_master = SecretString::from(meta.verifier_hash.clone());
         model
             .fill_draft_from_profile(&profile, Some(&derived_master))
@@ -145,24 +147,33 @@ fn update_clear_credentials_deletes_vault_entry() {
         let pw = SecretString::new("ssh-pass".into());
         let runtime_master = SecretString::from(meta.verifier_hash.clone());
         let cid = rust_ssh::vault::session_credentials::sync_ssh_credentials(
-            runtime_master.expose_secret(),
+            &runtime_master,
             sid,
             Some(pw.expose_secret()),
             None,
+            KdfMemoryLevel::default(),
         )
         .unwrap()
         .unwrap();
         assert_eq!(cid, "ssh:sess-2");
 
         // Clear: sync with no secrets should delete.
-        let cleared =
-            rust_ssh::vault::session_credentials::sync_ssh_credentials(runtime_master.expose_secret(), sid, None, None)
-                .unwrap();
+        let cleared = rust_ssh::vault::session_credentials::sync_ssh_credentials(
+            &runtime_master,
+            sid,
+            None,
+            None,
+            KdfMemoryLevel::default(),
+        )
+        .unwrap();
         assert!(cleared.is_none());
 
-        let loaded =
-            rust_ssh::vault::session_credentials::load_ssh_credentials(runtime_master.expose_secret(), "ssh:sess-2")
-                .unwrap();
+        let loaded = rust_ssh::vault::session_credentials::load_ssh_credentials(
+            &runtime_master,
+            "ssh:sess-2",
+            KdfMemoryLevel::default(),
+        )
+        .unwrap();
         assert!(loaded.is_none());
     });
 }
@@ -192,18 +203,28 @@ fn delete_profile_should_leave_no_orphan_credentials() {
         let pw = SecretString::new("ssh-pass".into());
         let runtime_master = SecretString::from(meta.verifier_hash.clone());
         let cid = rust_ssh::vault::session_credentials::sync_ssh_credentials(
-            runtime_master.expose_secret(),
+            &runtime_master,
             sid,
             Some(pw.expose_secret()),
             None,
+            KdfMemoryLevel::default(),
         )
         .unwrap()
         .unwrap();
 
         // Simulate "delete profile": delete the credential id, ensure it's gone.
-        rust_ssh::vault::session_credentials::delete_credential(runtime_master.expose_secret(), &cid).unwrap();
-        let loaded =
-            rust_ssh::vault::session_credentials::load_ssh_credentials(runtime_master.expose_secret(), &cid).unwrap();
+        rust_ssh::vault::session_credentials::delete_credential(
+            &runtime_master,
+            &cid,
+            KdfMemoryLevel::default(),
+        )
+        .unwrap();
+        let loaded = rust_ssh::vault::session_credentials::load_ssh_credentials(
+            &runtime_master,
+            &cid,
+            KdfMemoryLevel::default(),
+        )
+        .unwrap();
         assert!(loaded.is_none());
     });
 }
@@ -234,10 +255,11 @@ fn with_master_wrong_password_cannot_unlock_or_read_credentials() {
         let pw = SecretString::new("ssh-pass".into());
         let correct_master = SecretString::from(meta.verifier_hash.clone());
         let cid = rust_ssh::vault::session_credentials::save_ssh_credentials(
-            correct_master.expose_secret(),
+            &correct_master,
             sid,
             Some(pw.expose_secret()),
             None,
+            KdfMemoryLevel::default(),
         )
         .unwrap()
         .unwrap();
@@ -260,7 +282,7 @@ fn with_master_wrong_password_cannot_unlock_or_read_credentials() {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(ok.password.as_deref(), Some("ssh-pass"));
+        assert_eq!(ok.password.as_deref().map(|s| s.as_str()), Some("ssh-pass"));
     });
 }
 
@@ -290,36 +312,41 @@ fn delete_credential_with_master_requires_correct_master() {
         let wrong_master = SecretString::new("wrong-derived-secret".into());
         let pw = SecretString::new("ssh-pass".into());
         let cid = rust_ssh::vault::session_credentials::sync_ssh_credentials(
-            correct_master.expose_secret(),
+            &correct_master,
             sid,
             Some(pw.expose_secret()),
             None,
+            KdfMemoryLevel::default(),
         )
         .unwrap()
         .unwrap();
 
         // Wrong master should fail and keep credential intact.
         let wrong_del = rust_ssh::vault::session_credentials::delete_credential(
-            wrong_master.expose_secret(),
+            &wrong_master,
             &cid,
+            KdfMemoryLevel::default(),
         );
         assert!(wrong_del.is_err());
         let still_there = rust_ssh::vault::session_credentials::load_ssh_credentials(
-            correct_master.expose_secret(),
+            &correct_master,
             &cid,
+            KdfMemoryLevel::default(),
         )
         .unwrap();
         assert!(still_there.is_some());
 
         // Correct master can delete.
         rust_ssh::vault::session_credentials::delete_credential(
-            correct_master.expose_secret(),
+            &correct_master,
             &cid,
+            KdfMemoryLevel::default(),
         )
         .unwrap();
         let gone = rust_ssh::vault::session_credentials::load_ssh_credentials(
-            correct_master.expose_secret(),
+            &correct_master,
             &cid,
+            KdfMemoryLevel::default(),
         )
         .unwrap();
         assert!(gone.is_none());
@@ -353,16 +380,18 @@ fn key_profile_passphrase_roundtrip_and_prefill() {
         let passphrase = SecretString::new("key-passphrase".into());
         let runtime_master = SecretString::from(meta.verifier_hash.clone());
         let credential_id = rust_ssh::vault::session_credentials::sync_ssh_credentials(
-            runtime_master.expose_secret(),
+            &runtime_master,
             profile_id,
             None,
             Some(passphrase.expose_secret()),
+            KdfMemoryLevel::default(),
         )
         .unwrap();
 
         let profile = SessionProfile {
             id: profile_id.to_string(),
             name: "key-profile".to_string(),
+            group_id: None,
             folder: None,
             color_tag: None,
             transport: TransportConfig::Ssh(SshConfig {
@@ -376,7 +405,7 @@ fn key_profile_passphrase_roundtrip_and_prefill() {
             }),
         };
 
-        let mut model = rust_ssh::app_model::AppModel::load();
+        let mut model = rust_ssh::app::AppModel::load();
         model
             .fill_draft_from_profile(&profile, Some(&runtime_master))
             .unwrap();

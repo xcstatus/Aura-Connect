@@ -88,14 +88,20 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.settings.row.reconnect_max_attempts" => "最大重连次数",
         "iced.settings.row.reconnect_max_attempts.help" => "设置为 0 禁用自动重连。",
         "iced.settings.row.reconnect_delay" => "重连基础延迟（秒）",
-        "iced.settings.row.reconnect_delay.help" => "首次重连等待的秒数。启用指数退避后，每次重连延迟翻倍。",
+        "iced.settings.row.reconnect_delay.help" => {
+            "首次重连等待的秒数。启用指数退避后，每次重连延迟翻倍。"
+        }
         "iced.settings.row.reconnect_exponential" => "使用指数退避重连",
-        "iced.settings.row.reconnect_exponential.help" => "每次重连失败后，等待时间翻倍（封顶 30 秒）。",
+        "iced.settings.row.reconnect_exponential.help" => {
+            "每次重连失败后，等待时间翻倍（封顶 30 秒）。"
+        }
         "iced.settings.row.restore_last_session" => "启动时恢复上次会话",
         "iced.settings.row.restore_last_session.help" => "应用启动时自动恢复上次打开的会话。",
         "iced.settings.conn.advanced_hint" => "代理、跳板、证书与 Keepalive 等将在后续版本提供。",
         "iced.settings.conn.port_forward.title" => "端口转发",
-        "iced.settings.conn.port_forward.description" => "配置本地端口转发 (-L) 和远程端口转发 (-R)。转发将在连接时自动启用。",
+        "iced.settings.conn.port_forward.description" => {
+            "配置本地端口转发 (-L) 和远程端口转发 (-R)。转发将在连接时自动启用。"
+        }
         "iced.settings.conn.port_forward.local_title" => "本地端口转发 (-L)",
         "iced.settings.conn.port_forward.remote_title" => "远程端口转发 (-R)",
         "iced.settings.conn.port_forward.add" => "添加转发",
@@ -128,8 +134,12 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.quick_connect.direct_cta" => "连接到 {target}",
         "iced.quick_connect.back" => "返回",
         "iced.quick_connect.new_title" => "新建连接",
-        "iced.quick_connect.need_password" => "[rustssh] 需要输入密码。请在下方输入密码后点击连接。",
-        "iced.quick_connect.need_passphrase" => "[rustssh] 需要输入私钥密码。请在下方输入后点击连接。",
+        "iced.quick_connect.need_password" => {
+            "[rustssh] 需要输入密码。请在下方输入密码后点击连接。"
+        }
+        "iced.quick_connect.need_passphrase" => {
+            "[rustssh] 需要输入私钥密码。请在下方输入后点击连接。"
+        }
         "iced.quick_connect.need_auth" => "[rustssh] 需要完成认证。请输入凭据后点击连接。",
         "iced.vault_unlock.title" => "解锁 Vault",
         "iced.vault_unlock.title_save_credentials" => "解锁 Vault 以保存凭据",
@@ -302,6 +312,7 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.sftp.btn.toggle_layout" => "切换布局",
         "iced.sftp.btn.refresh" => "刷新",
         "iced.sftp.btn.close" => "关闭",
+        "iced.sftp.btn.upload" => "上传",
         "iced.sftp.empty" => "目录为空",
         "iced.sftp.loading" => "加载中...",
         "iced.sftp.error.connection" => "SFTP 连接失败",
@@ -317,6 +328,8 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.sftp.confirm.delete" => "确认删除",
         "iced.sftp.confirm.delete_folder" => "确认删除文件夹及其内容",
         "iced.sftp.transfer.title" => "传输列表",
+        "iced.sftp.transfer.empty" => "暂无传输任务",
+        "iced.sftp.transfer.open_dir" => "打开下载目录",
         "iced.sftp.transfer.downloading" => "下载中",
         "iced.sftp.transfer.uploading" => "上传中",
         "iced.sftp.transfer.completed" => "已完成",
@@ -328,6 +341,7 @@ pub fn tr(key: &'static str) -> &'static str {
         "iced.sftp.header.permissions" => "权限",
         "iced.sftp.header.size" => "大小",
         "iced.sftp.header.modified" => "修改时间",
+        "iced.sftp.placeholder.folder_name" => "文件夹名称",
 
         _ => key,
     }

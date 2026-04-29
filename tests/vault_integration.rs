@@ -27,7 +27,7 @@ proptest! {
 
         let secret = SecretString::new(s.clone().into());
         let mut vault = CredentialVault::initialize(&secret, crypto::generate_salt()).unwrap();
-        assert!(vault.unlocked);
+        assert!(vault.is_unlocked());
 
         let key = "test_key";
         let val = b"secret_data";
@@ -35,7 +35,7 @@ proptest! {
 
         // 关键链路：锁定后应不可读；重新解锁后应可读且数据一致。
         vault.lock();
-        assert!(!vault.unlocked);
+        assert!(!vault.is_unlocked());
 
         vault.unlock(&secret).unwrap();
         let retrieved = vault.get_credential(key).unwrap().unwrap();
@@ -58,7 +58,7 @@ fn test_vault_memory_lock_wipe() {
     let mut vault = CredentialVault::initialize(&secret, crypto::generate_salt()).unwrap();
     vault.set_credential("k", b"v").unwrap();
 
-    assert!(vault.unlocked);
+    assert!(vault.is_unlocked());
     vault.lock();
 
     // 尝试越权访问：锁定状态下必须拒绝读取。
@@ -116,7 +116,7 @@ fn test_unlock_with_wrong_password_does_not_unlock_or_corrupt_state() {
     vault.lock();
 
     assert!(vault.unlock(&wrong).is_err(), "错误密码解锁应返回错误");
-    assert!(!vault.unlocked, "错误密码失败后不应变为 unlocked");
+    assert!(!vault.is_unlocked(), "错误密码失败后不应变为 unlocked");
     assert!(
         vault.get_credential("token").is_err(),
         "错误密码失败后仍应拒绝读取"
@@ -147,11 +147,13 @@ fn test_rekey_invalidates_old_password_and_preserves_data() {
         .set_credential("ssh_key", b"PRIVATE_KEY_BYTES")
         .unwrap();
 
-    vault.rekey_with_salt(&new_pwd, crypto::generate_salt()).unwrap();
+    vault
+        .rekey_with_salt(&new_pwd, crypto::generate_salt())
+        .unwrap();
     vault.lock();
 
     assert!(vault.unlock(&old_pwd).is_err(), "rekey 后旧密码必须失效");
-    assert!(!vault.unlocked, "旧密码失败后不应变为 unlocked");
+    assert!(!vault.is_unlocked(), "旧密码失败后不应变为 unlocked");
 
     vault.unlock(&new_pwd).unwrap();
     let val = vault.get_credential("ssh_key").unwrap().unwrap();

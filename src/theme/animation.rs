@@ -89,9 +89,5 @@ pub fn anim_t_bidir(
     reverse: bool,
 ) -> f32 {
     let t = anim_t(enter_tick, current_tick, tick_ms, duration_ms);
-    if reverse {
-        1.0 - t
-    } else {
-        t
-    }
+    if reverse { 1.0 - t } else { t }
 }

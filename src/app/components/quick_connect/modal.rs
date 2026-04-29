@@ -1,6 +1,6 @@
-use iced::widget::{container, Stack};
 use iced::Element;
 use iced::Length;
+use iced::widget::{Stack, container};
 
 use crate::app::components::helpers::layered_scrim_alpha;
 use crate::app::message::Message;
@@ -13,8 +13,12 @@ use super::picker::quick_connect_picker;
 pub(crate) fn quick_connect_modal_stack(state: &IcedState) -> Element<'_, Message> {
     let tick_ms = state.tick_ms();
     let scrim_alpha = state.quick_connect_anim_alpha(tick_ms);
-    let scrim = container(iced::widget::Space::new().width(Length::Fill).height(Length::Fill))
-        .style(layered_scrim_alpha(scrim_alpha, 0));
+    let scrim = container(
+        iced::widget::Space::new()
+            .width(Length::Fill)
+            .height(Length::Fill),
+    )
+    .style(layered_scrim_alpha(scrim_alpha, 0));
 
     let offset_y = state.quick_connect_anim_offset(tick_ms);
     let anchored = container(

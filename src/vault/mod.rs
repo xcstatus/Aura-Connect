@@ -28,7 +28,9 @@ impl VaultUnlockError {
     pub fn i18n_key(&self) -> &'static str {
         match self {
             VaultUnlockError::WrongPassword => "iced.vault_unlock.error.wrong_password",
-            VaultUnlockError::VaultNotInitialized => "iced.vault_unlock.error.vault_not_initialized",
+            VaultUnlockError::VaultNotInitialized => {
+                "iced.vault_unlock.error.vault_not_initialized"
+            }
             VaultUnlockError::VaultError(_) => "iced.vault_unlock.error.unknown",
         }
     }

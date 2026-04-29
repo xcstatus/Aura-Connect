@@ -1,3 +1,10 @@
+// TODO(security): Refactor biometric auth to use native FFI instead of shell-out approach.
+// Current implementation passes Swift/PowerShell scripts via command-line arguments,
+// which exposes the script content in process listings (ps). Consider using:
+// - macOS: objc2 crate or compiled Swift framework for LocalAuthentication FFI
+// - Windows: windows crate for Windows.Security.Credentials.UI.UserConsentVerifier
+// See doc/技术规范/安全/ for analysis.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BiometricErrorCode {
     NotAvailable,

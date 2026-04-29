@@ -81,7 +81,8 @@ impl TerminalSessionBridge {
                 on_bytes(&self.buf[..remaining_budget]);
                 total += remaining_budget;
                 self.pending.clear();
-                self.pending.extend_from_slice(&self.buf[remaining_budget..n]);
+                self.pending
+                    .extend_from_slice(&self.buf[remaining_budget..n]);
                 self.pending_off = 0;
                 break;
             }
@@ -147,9 +148,7 @@ mod tests {
         bridge.set_budgets(1024 * 1024, 2);
 
         let mut chunks = 0usize;
-        let drained = bridge
-            .drain_output(&mut s, |_bytes| chunks += 1)
-            .unwrap();
+        let drained = bridge.drain_output(&mut s, |_bytes| chunks += 1).unwrap();
 
         assert_eq!(chunks, 2);
         assert_eq!(drained, 2);
@@ -173,4 +172,3 @@ mod tests {
         assert!(!changed2);
     }
 }
-

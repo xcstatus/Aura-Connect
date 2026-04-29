@@ -1,25 +1,31 @@
-use iced::alignment::Alignment;
 use iced::Element;
-use iced::widget::{button, column, container, row, text, text_input, Space};
+use iced::alignment::Alignment;
+use iced::widget::{Space, button, column, container, row, text, text_input};
 
 use secrecy::ExposeSecret;
 
-use crate::app::components::helpers::{layered_scrim_style, tokens_for_state, top_bar_material_style};
+use crate::app::components::helpers::{
+    layered_scrim_style, tokens_for_state, top_bar_material_style,
+};
 use crate::app::message::Message;
 use crate::app::state::{IcedState, VaultFlowMode};
-use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
-use crate::theme::icons::{icon_view_with, IconId, IconOptions};
+use crate::app::widgets::chrome_button::{lg_icon_button, lg_primary_button, lg_secondary_button};
+use crate::theme::icons::{IconId, IconOptions, icon_view_with};
 
 /// Build the vault (password manager) initialization/change-password modal.
 pub(crate) fn vault_modal(state: &IcedState) -> Element<'_, Message> {
     let Some(flow) = state.vault_flow.as_ref() else {
-        return Space::new().into()
+        return Space::new().into();
     };
 
     let tokens = tokens_for_state(state);
 
-    let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-        .style(layered_scrim_style(tokens, 0));
+    let scrim = container(
+        Space::new()
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill),
+    )
+    .style(layered_scrim_style(tokens, 0));
 
     let title = match flow.mode {
         VaultFlowMode::Initialize => state.model.i18n.tr("iced.vault.title.initialize"),
@@ -40,22 +46,31 @@ pub(crate) fn vault_modal(state: &IcedState) -> Element<'_, Message> {
 
     if matches!(flow.mode, VaultFlowMode::ChangePassword) {
         body = body.push(
-            text_input(i18n.tr("iced.vault.label.old_password"), flow.old_password.expose_secret())
-                .secure(true)
-                .on_input(Message::VaultOldPasswordChanged),
+            text_input(
+                i18n.tr("iced.vault.label.old_password"),
+                flow.old_password.expose_secret(),
+            )
+            .secure(true)
+            .on_input(Message::VaultOldPasswordChanged),
         );
     }
 
     body = body
         .push(
-            text_input(i18n.tr("iced.vault.label.new_password"), flow.new_password.expose_secret())
-                .secure(true)
-                .on_input(Message::VaultNewPasswordChanged),
+            text_input(
+                i18n.tr("iced.vault.label.new_password"),
+                flow.new_password.expose_secret(),
+            )
+            .secure(true)
+            .on_input(Message::VaultNewPasswordChanged),
         )
         .push(
-            text_input(i18n.tr("iced.vault.label.confirm_password"), flow.confirm_password.expose_secret())
-                .secure(true)
-                .on_input(Message::VaultConfirmPasswordChanged),
+            text_input(
+                i18n.tr("iced.vault.label.confirm_password"),
+                flow.confirm_password.expose_secret(),
+            )
+            .secure(true)
+            .on_input(Message::VaultConfirmPasswordChanged),
         );
 
     if let Some(err) = flow.error.as_ref() {
@@ -66,10 +81,10 @@ pub(crate) fn vault_modal(state: &IcedState) -> Element<'_, Message> {
         row![
             button(text(i18n.tr("iced.btn.confirm")).size(13))
                 .on_press(Message::VaultSubmit)
-                .style(style_chrome_primary(tokens)),
+                .style(lg_primary_button(tokens)),
             button(text(i18n.tr("iced.btn.cancel")).size(13))
                 .on_press(Message::VaultClose)
-                .style(style_chrome_secondary(tokens)),
+                .style(lg_secondary_button(tokens)),
         ]
         .spacing(8),
     );
@@ -77,6 +92,7 @@ pub(crate) fn vault_modal(state: &IcedState) -> Element<'_, Message> {
     let card = container(body)
         .width(iced::Length::Fixed(520.0))
         .padding(16)
+        .align_x(iced::alignment::Horizontal::Right)
         .style(top_bar_material_style(tokens));
     let centered = container(card)
         .width(iced::Length::Fill)
@@ -98,7 +114,7 @@ pub(crate) fn vault_modal(state: &IcedState) -> Element<'_, Message> {
 /// 创建关闭图标按钮
 fn icon_close_button(tokens: crate::theme::DesignTokens) -> Element<'static, Message> {
     let close_icon = icon_view_with(
-        IconOptions::new(IconId::Close)
+        IconOptions::new(IconId::FnClose)
             .with_size(14)
             .with_color(tokens.text_secondary),
         Message::VaultClose,
@@ -107,6 +123,6 @@ fn icon_close_button(tokens: crate::theme::DesignTokens) -> Element<'static, Mes
         .on_press(Message::VaultClose)
         .width(iced::Length::Fixed(28.0))
         .height(iced::Length::Fixed(28.0))
-        .style(style_top_icon(tokens))
+        .style(lg_icon_button(tokens))
         .into()
 }

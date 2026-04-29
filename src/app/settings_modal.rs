@@ -3,23 +3,25 @@
 use std::collections::BTreeMap;
 
 use iced::alignment::Alignment;
+use iced::border::Radius;
 use iced::widget::scrollable::{Direction as ScrollDirection, Scrollbar};
 use iced::widget::{
-    Space, Stack, button, checkbox, column, container, pick_list, radio, row,
-    scrollable, slider, text, text_input,
+    Space, Stack, button, checkbox, column, container, pick_list, radio, row, scrollable, slider,
+    text, text_input,
 };
-use iced::{Border, Color, Element, Theme, Padding};
-use iced::border::Radius;
+use iced::{Border, Color, Element, Theme};
 
 use crate::session::{ProtocolType, SessionProfile, TransportConfig};
 use crate::settings::KnownHostRecord;
+use crate::theme::icons::{IconId, IconOptions, icon_view_with};
 use crate::theme::layout;
 use crate::theme::{COLOR_SCHEMES, DesignTokens};
-use crate::theme::icons::{icon_view_with, IconId, IconOptions};
 
 use super::message::{Message, SettingsCategory, SettingsField};
 use super::state::IcedState;
-use super::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_tab_strip, style_top_icon};
+use super::widgets::chrome_button::{
+    lg_icon_button, lg_primary_button, lg_secondary_button, lg_tab_button,
+};
 
 fn settings_tokens(state: &IcedState) -> DesignTokens {
     DesignTokens::for_color_scheme(&state.model.settings.color_scheme)
@@ -45,13 +47,17 @@ pub(crate) fn modal_stack(state: &IcedState) -> Element<'_, Message> {
 
     // 遮罩层不再拦截点击事件，用户点击模态框外部区域不会关闭设置中心
     // ESC 键关闭功能在其他地方处理
-    let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-        .style(move |_t: &Theme| {
-            container::Style::default().background(tokens.scrim())
-        });
+    let scrim = container(
+        Space::new()
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill),
+    )
+    .style(move |_t: &Theme| container::Style::default().background(tokens.scrim()));
 
-    let mw = (state.window_size.width * layout::SETTINGS_MODAL_WIDTH_RATIO)
-        .clamp(layout::SETTINGS_MODAL_MIN_WIDTH, layout::SETTINGS_MODAL_MAX_WIDTH);
+    let mw = (state.window_size.width * layout::SETTINGS_MODAL_WIDTH_RATIO).clamp(
+        layout::SETTINGS_MODAL_MIN_WIDTH,
+        layout::SETTINGS_MODAL_MAX_WIDTH,
+    );
     let mh = (state.window_size.height * layout::SETTINGS_MODAL_HEIGHT_RATIO)
         .max(layout::SETTINGS_MODAL_MIN_HEIGHT);
 
@@ -91,9 +97,7 @@ fn modal_card(state: &IcedState) -> Element<'_, Message> {
     let divider = container(Space::new())
         .width(iced::Length::Fixed(1.0))
         .height(iced::Length::Fill)
-        .style(move |_t: &Theme| {
-            container::Style::default().background(tokens.border_subtle)
-        });
+        .style(move |_t: &Theme| container::Style::default().background(tokens.border_subtle));
 
     let row_content = row![
         sidebar,
@@ -120,26 +124,34 @@ fn modal_card(state: &IcedState) -> Element<'_, Message> {
 }
 
 fn sidebar_item_style(active: bool, tokens: DesignTokens) -> container::Style {
-    let bg = if active { tokens.surface_2 } else { tokens.bg_secondary };
-    let border_color = if active { tokens.accent_base } else { Color::TRANSPARENT };
-    container::Style::default()
-        .background(bg)
-        .border(Border {
-            width: 3.0,
-            color: border_color,
-            radius: 4.0.into(),
-        })
+    let bg = if active {
+        tokens.surface_2
+    } else {
+        tokens.bg_secondary
+    };
+    let border_color = if active {
+        tokens.accent_base
+    } else {
+        Color::TRANSPARENT
+    };
+    container::Style::default().background(bg).border(Border {
+        width: 3.0,
+        color: border_color,
+        radius: 4.0.into(),
+    })
 }
 
-fn sidebar_item_style_clone(active: bool, bg: Color, accent: Color) -> impl Fn(&Theme) -> container::Style + 'static {
+fn sidebar_item_style_clone(
+    active: bool,
+    bg: Color,
+    accent: Color,
+) -> impl Fn(&Theme) -> container::Style + 'static {
     move |_theme: &Theme| {
-        container::Style::default()
-            .background(bg)
-            .border(Border {
-                width: if active { 3.0 } else { 0.0 },
-                color: if active { accent } else { Color::TRANSPARENT },
-                radius: 4.0.into(),
-            })
+        container::Style::default().background(bg).border(Border {
+            width: if active { 3.0 } else { 0.0 },
+            color: if active { accent } else { Color::TRANSPARENT },
+            radius: 4.0.into(),
+        })
     }
 }
 
@@ -147,7 +159,10 @@ fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mess
     let i18n = &state.model.i18n;
     let entries: [(SettingsCategory, &'static str); 6] = [
         (SettingsCategory::General, "iced.settings.cat.general"),
-        (SettingsCategory::ColorScheme, "iced.settings.cat.color_scheme"),
+        (
+            SettingsCategory::ColorScheme,
+            "iced.settings.cat.color_scheme",
+        ),
         (SettingsCategory::Terminal, "iced.settings.cat.terminal"),
         (SettingsCategory::Connection, "iced.settings.cat.connection"),
         (SettingsCategory::Security, "iced.settings.cat.security"),
@@ -166,23 +181,24 @@ fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mess
         let label = i18n.tr(key).to_string();
         let active = state.settings_category == cat;
         let text_color = if active { accent_base } else { text_secondary };
-        let btn_style = style_tab_strip(tokens);
         let item_bg = if active { surface_2 } else { bg_secondary };
-        let item_accent = if active { accent_base } else { Color::TRANSPARENT };
+        let item_accent = if active {
+            accent_base
+        } else {
+            Color::TRANSPARENT
+        };
         let cell = button(
             container(text(label).size(13).style(move |_t: &Theme| text::Style {
                 color: Some(text_color),
             }))
-                .width(iced::Length::Fill)
-                .padding([10, 16]),
+            .width(iced::Length::Fill)
+            .padding([10, 16]),
         )
         .on_press(Message::SettingsCategoryChanged(cat))
         .width(iced::Length::Fill)
-        .style(btn_style);
-        col = col.push(
-            container(cell)
-                .style(sidebar_item_style_clone(active, item_bg, item_accent)),
-        );
+        .style(lg_tab_button(tokens));
+        col =
+            col.push(container(cell).style(sidebar_item_style_clone(active, item_bg, item_accent)));
     }
     container(col)
         .width(iced::Length::Fixed(layout::SETTINGS_SIDEBAR_WIDTH))
@@ -193,7 +209,7 @@ fn settings_sidebar(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mess
                 .border(Border {
                     width: 3.0,
                     color: bg_secondary,
-                    radius: Radius{
+                    radius: Radius {
                         top_left: 12.0,
                         top_right: 0.0,
                         bottom_right: 0.0,
@@ -223,9 +239,7 @@ fn sub_tab_labels(category: SettingsCategory, i18n: &crate::i18n::I18n) -> Vec<S
             "iced.settings.sub.general.basic",
             "iced.settings.sub.general.typography",
         ],
-        SettingsCategory::ColorScheme => &[
-            "iced.settings.sub.color_scheme.presets",
-        ],
+        SettingsCategory::ColorScheme => &["iced.settings.sub.color_scheme.presets"],
         SettingsCategory::Terminal => &[
             "iced.settings.sub.terminal.render",
             "iced.settings.sub.terminal.text",
@@ -256,24 +270,21 @@ fn settings_sub_tab_row(state: &IcedState, tokens: DesignTokens) -> Element<'_, 
     let text_secondary = tokens.text_secondary;
     // let border_subtle = tokens.border_subtle;
 
-    let mut r = row![].spacing(layout::SETTINGS_TAB_SPACING).align_y(Alignment::Center);
+    let mut r = row![]
+        .spacing(layout::SETTINGS_TAB_SPACING)
+        .align_y(Alignment::Center);
     for (idx, lab) in labels.iter().enumerate() {
         let active = idx == current;
         let lab_clone = lab.clone();
         let btn_color = if active { accent_base } else { text_secondary };
-        let btn = button(
-            container(
-                text(lab_clone).size(18).style(move |_t: &Theme| text::Style {
-                    color: Some(btn_color),
-                })
-            )
-        )
+        let btn = button(container(text(lab_clone).size(18).style(
+            move |_t: &Theme| text::Style {
+                color: Some(btn_color),
+            },
+        )))
         .padding(0)
         .on_press(Message::SettingsSubTabChanged(idx))
-        .style(move |theme: &Theme, status: iced::widget::button::Status| {
-            // 所有 Tab 按钮都使用极简样式，选中态通过文字颜色区分
-            style_tab_strip(tokens)(theme, status)
-        });
+        .style(lg_tab_button(tokens));
         r = r.push(btn);
     }
 
@@ -281,7 +292,7 @@ fn settings_sub_tab_row(state: &IcedState, tokens: DesignTokens) -> Element<'_, 
     container(r)
         .width(iced::Length::Fill)
         .height(iced::Length::Fixed(layout::SETTINGS_TAB_HEIGHT))
-        .padding([8,layout::SETTINGS_CONTENT_PADDING as u16])
+        .padding([8, layout::SETTINGS_CONTENT_PADDING as u16])
         // .style(move |_t: &Theme| {
         //     container::Style::default()
         //         .border(Border {
@@ -309,34 +320,30 @@ fn settings_main_content(state: &IcedState, tokens: DesignTokens) -> Element<'_,
 
 fn section_title(s: &str, tokens: DesignTokens) -> Element<'_, Message> {
     let text_primary = tokens.text_primary;
-    container(
-        text(s).size(18).style(move |_t: &Theme| text::Style {
-            color: Some(text_primary),
-        })
-    )
-        .padding(iced::Padding {
-            top: 8.0,
-            right: 0.0,
-            bottom: 16.0,
-            left: 0.0,
-        })
-        .into()
+    container(text(s).size(18).style(move |_t: &Theme| text::Style {
+        color: Some(text_primary),
+    }))
+    .padding(iced::Padding {
+        top: 8.0,
+        right: 0.0,
+        bottom: 16.0,
+        left: 0.0,
+    })
+    .into()
 }
 
 fn section_title_owned(s: String, tokens: DesignTokens) -> Element<'static, Message> {
     let text_primary = tokens.text_primary;
-    container(
-        text(s).size(18).style(move |_t: &Theme| text::Style {
-            color: Some(text_primary),
-        })
-    )
-        .padding(iced::Padding {
-            top: 8.0,
-            right: 0.0,
-            bottom: 16.0,
-            left: 0.0,
-        })
-        .into()
+    container(text(s).size(18).style(move |_t: &Theme| text::Style {
+        color: Some(text_primary),
+    }))
+    .padding(iced::Padding {
+        top: 8.0,
+        right: 0.0,
+        bottom: 16.0,
+        left: 0.0,
+    })
+    .into()
 }
 
 fn general_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element<'_, Message> {
@@ -370,9 +377,11 @@ fn general_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element<
             checkbox(g.auto_check_update)
                 .label(i18n.tr("iced.settings.row.auto_update"))
                 .on_toggle(|v| Message::SettingsFieldChanged(SettingsField::AutoCheckUpdate(v))),
-            text(i18n.tr("iced.settings.language.help")).size(12).style(move |_t: &Theme| text::Style {
-                color: Some(text_secondary),
-            }),
+            text(i18n.tr("iced.settings.language.help"))
+                .size(12)
+                .style(move |_t: &Theme| text::Style {
+                    color: Some(text_secondary),
+                }),
         ]
         .spacing(layout::SETTINGS_ITEM_SPACING)
         .padding(layout::SETTINGS_CONTENT_PADDING as u16)
@@ -382,9 +391,11 @@ fn general_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element<
             section_title(i18n.tr("iced.settings.section.typography"), tokens),
             settings_row(
                 i18n.tr("iced.settings.row.ui_font_size"),
-                text(format!("{:.0}px", g.font_size)).size(12).style(move |_t: &Theme| text::Style {
-                    color: Some(text_secondary),
-                }),
+                text(format!("{:.0}px", g.font_size))
+                    .size(12)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
                 tokens,
             ),
             slider(12.0..=20.0, g.font_size, |v| {
@@ -405,8 +416,11 @@ fn color_scheme_pane(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mes
     let current_scheme_id = &state.model.settings.color_scheme;
     let text_primary = tokens.text_primary;
 
-    let mut col = column![section_title(i18n.tr("iced.settings.section.color_scheme"), tokens)]
-        .spacing(layout::SETTINGS_ITEM_SPACING);
+    let mut col = column![section_title(
+        i18n.tr("iced.settings.section.color_scheme"),
+        tokens
+    )]
+    .spacing(layout::SETTINGS_ITEM_SPACING);
 
     // 分两列显示预设方案
     for chunk in COLOR_SCHEMES.chunks(2) {
@@ -416,11 +430,9 @@ fn color_scheme_pane(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mes
 
             // 配色预览框 - 使用 effective_* 方法获取衍生值
             let preview = container(
-                column![
-                    text("Aa").size(12).style(move |_| text::Style {
-                        color: Some(scheme.effective_term_fg()),
-                    }),
-                ]
+                column![text("Aa").size(12).style(move |_| text::Style {
+                    color: Some(scheme.effective_term_fg()),
+                }),]
                 .spacing(4),
             )
             .width(iced::Length::Fixed(60.0))
@@ -430,7 +442,11 @@ fn color_scheme_pane(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mes
                 background: Some(iced::Background::Color(scheme.effective_term_bg())),
                 border: iced::Border {
                     width: 1.0,
-                    color: if active { tokens.accent_base } else { tokens.border_default },
+                    color: if active {
+                        tokens.accent_base
+                    } else {
+                        tokens.border_default
+                    },
                     radius: 4.0.into(),
                 },
                 ..Default::default()
@@ -448,9 +464,11 @@ fn color_scheme_pane(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mes
             };
 
             let scheme_content = column![
-                text(scheme.name).size(13).style(move |_t: &Theme| text::Style {
-                    color: Some(text_primary),
-                }),
+                text(scheme.name)
+                    .size(13)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_primary),
+                    }),
                 preview,
                 applied_text,
             ]
@@ -461,25 +479,27 @@ fn color_scheme_pane(state: &IcedState, tokens: DesignTokens) -> Element<'_, Mes
                     scheme.id.to_string(),
                 )))
                 .padding(8)
-                .style(move |_theme: &Theme, _status: iced::widget::button::Status| {
-                    iced::widget::button::Style {
-                        background: Some(if active {
-                            tokens.accent_base.into()
-                        } else {
-                            tokens.surface_1.into()
-                        }),
-                        border: iced::Border {
-                            width: if active { 2.0 } else { 1.0 },
-                            color: if active {
-                                tokens.accent_base
+                .style(
+                    move |_theme: &Theme, _status: iced::widget::button::Status| {
+                        iced::widget::button::Style {
+                            background: Some(if active {
+                                tokens.accent_base.into()
                             } else {
-                                tokens.border_default
+                                tokens.surface_1.into()
+                            }),
+                            border: iced::Border {
+                                width: if active { 2.0 } else { 1.0 },
+                                color: if active {
+                                    tokens.accent_base
+                                } else {
+                                    tokens.border_default
+                                },
+                                radius: 8.0.into(),
                             },
-                            radius: 8.0.into(),
-                        },
-                        ..Default::default()
-                    }
-                });
+                            ..Default::default()
+                        }
+                    },
+                );
 
             row_elements.push(scheme_btn.into());
         }
@@ -514,9 +534,11 @@ fn terminal_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
             section_title(i18n.tr("iced.settings.section.render_engine"), tokens),
             settings_row(
                 i18n.tr("iced.settings.row.target_fps"),
-                text(format!("{}", t.target_fps)).size(12).style(move |_t: &Theme| text::Style {
-                    color: Some(text_secondary),
-                }),
+                text(format!("{}", t.target_fps))
+                    .size(12)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
                 tokens,
             ),
             slider(10u32..=240u32, t.target_fps, |v| {
@@ -544,9 +566,11 @@ fn terminal_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
                     }),
                 settings_row(
                     i18n.tr("iced.settings.row.terminal_font_size"),
-                    text(format!("{:.0}", t.font_size)).size(12).style(move |_t: &Theme| text::Style {
-                        color: Some(text_secondary),
-                    }),
+                    text(format!("{:.0}", t.font_size))
+                        .size(12)
+                        .style(move |_t: &Theme| text::Style {
+                            color: Some(text_secondary),
+                        }),
                     tokens,
                 ),
                 slider(8.0..=36.0, t.font_size, |v| {
@@ -555,9 +579,11 @@ fn terminal_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
                 .width(300.0),
                 settings_row(
                     i18n.tr("iced.settings.row.line_height"),
-                    text(format!("{:.2}", t.line_height)).size(12).style(move |_t: &Theme| text::Style {
-                        color: Some(text_secondary),
-                    }),
+                    text(format!("{:.2}", t.line_height))
+                        .size(12)
+                        .style(move |_t: &Theme| text::Style {
+                            color: Some(text_secondary),
+                        }),
                     tokens,
                 ),
                 slider(1.0..=2.0, t.line_height, |v| {
@@ -594,9 +620,11 @@ fn terminal_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
                 }),
             settings_row(
                 i18n.tr("iced.settings.row.scrollback"),
-                text(format!("{}", t.scrollback_limit)).size(12).style(move |_t: &Theme| text::Style {
-                    color: Some(text_secondary),
-                }),
+                text(format!("{}", t.scrollback_limit))
+                    .size(12)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
                 tokens,
             ),
             slider(1000u32..=50000u32, t.scrollback_limit as u32, |v| {
@@ -662,13 +690,17 @@ fn connection_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Eleme
                     .on_toggle(|v| {
                         Message::SettingsFieldChanged(SettingsField::SingleSharedSession(v))
                     }),
-                text(i18n.tr("iced.settings.hint.single_shared_session")).size(12).style(move |_t: &Theme| text::Style {
-                    color: Some(text_secondary),
-                }),
+                text(i18n.tr("iced.settings.hint.single_shared_session"))
+                    .size(12)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
                 section_title(i18n.tr("iced.settings.conn.advanced_title"), tokens),
-                text(i18n.tr("iced.settings.conn.advanced_hint")).size(13).style(move |_t: &Theme| text::Style {
-                    color: Some(text_secondary),
-                }),
+                text(i18n.tr("iced.settings.conn.advanced_hint"))
+                    .size(13)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
             ]
             .spacing(layout::SETTINGS_ITEM_SPACING)
             .padding(layout::SETTINGS_CONTENT_PADDING as u16)
@@ -719,7 +751,7 @@ fn connection_protocol_page<'a>(
                 .width(iced::Length::Fill),
             button(text(i18n.tr("iced.settings.conn.new")))
                 .on_press(Message::OpenSessionEditor(None))
-                .style(style_chrome_primary(tokens)),
+                .style(lg_primary_button(tokens)),
         ]
         .spacing(8)
         .align_y(Alignment::Center),
@@ -729,9 +761,11 @@ fn connection_protocol_page<'a>(
     .width(iced::Length::Fill);
 
     if grouped.is_empty() {
-        col = col.push(text(i18n.tr("iced.settings.conn.empty")).size(13).style(move |_t: &Theme| text::Style {
-            color: Some(text_secondary),
-        }));
+        col = col.push(text(i18n.tr("iced.settings.conn.empty")).size(13).style(
+            move |_t: &Theme| text::Style {
+                color: Some(text_secondary),
+            },
+        ));
     } else {
         for (group, sessions) in grouped {
             let is_default = group == "Default" || group == "未分类";
@@ -751,21 +785,25 @@ fn connection_protocol_page<'a>(
                 col = col.push(
                     row![
                         column![
-                            text(s.name.clone()).size(13).style(move |_t: &Theme| text::Style {
-                                color: Some(text_primary),
-                            }),
-                            text(subtitle).size(11).style(move |_t: &Theme| text::Style {
-                                color: Some(text_secondary),
-                            }),
+                            text(s.name.clone())
+                                .size(13)
+                                .style(move |_t: &Theme| text::Style {
+                                    color: Some(text_primary),
+                                }),
+                            text(subtitle)
+                                .size(11)
+                                .style(move |_t: &Theme| text::Style {
+                                    color: Some(text_secondary),
+                                }),
                         ]
                         .spacing(layout::SETTINGS_LABEL_DESC_SPACING),
                         Space::new().width(iced::Length::Fill),
                         button(text(i18n.tr("iced.settings.conn.edit")))
                             .on_press(Message::OpenSessionEditor(Some(id.clone())))
-                            .style(style_chrome_secondary(tokens)),
+                            .style(lg_secondary_button(tokens)),
                         button(text(i18n.tr("iced.settings.conn.delete")))
                             .on_press(Message::DeleteSessionProfile(id))
-                            .style(style_chrome_secondary(tokens)),
+                            .style(lg_secondary_button(tokens)),
                     ]
                     .align_y(Alignment::Center),
                 );
@@ -787,12 +825,16 @@ fn security_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
             column![
                 section_title(i18n.tr("settings.security.vault.title"), tokens),
                 column![
-                    text(i18n.tr("settings.security.auto_lock.label")).size(14).style(move |_t: &Theme| text::Style {
-                        color: Some(text_primary),
-                    }),
-                    text(i18n.tr("settings.security.auto_lock.help")).size(11).style(move |_t: &Theme| text::Style {
-                        color: Some(text_secondary),
-                    }),
+                    text(i18n.tr("settings.security.auto_lock.label"))
+                        .size(14)
+                        .style(move |_t: &Theme| text::Style {
+                            color: Some(text_primary),
+                        }),
+                    text(i18n.tr("settings.security.auto_lock.help"))
+                        .size(11)
+                        .style(move |_t: &Theme| text::Style {
+                            color: Some(text_secondary),
+                        }),
                 ]
                 .spacing(layout::SETTINGS_LABEL_DESC_SPACING),
                 radio(
@@ -828,14 +870,18 @@ fn security_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
                 checkbox(sec.lock_on_sleep)
                     .label(i18n.tr("settings.security.lock_on_sleep.label"))
                     .on_toggle(|v| Message::SettingsFieldChanged(SettingsField::LockOnSleep(v))),
-                text(i18n.tr("settings.security.lock_on_sleep.help")).size(11).style(move |_t: &Theme| text::Style {
-                    color: Some(text_secondary),
-                }),
+                text(i18n.tr("settings.security.lock_on_sleep.help"))
+                    .size(11)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
                 Space::new().height(iced::Length::Fixed(8.0)),
                 section_title(i18n.tr("settings.security.kdf.title"), tokens),
-                text(i18n.tr("settings.security.kdf.help")).size(11).style(move |_t: &Theme| text::Style {
-                    color: Some(text_secondary),
-                }),
+                text(i18n.tr("settings.security.kdf.help"))
+                    .size(11)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
                 radio(
                     i18n.tr("settings.security.kdf.balanced"),
                     crate::settings::KdfMemoryLevel::Balanced,
@@ -855,16 +901,20 @@ fn security_pane(state: &IcedState, sub: usize, tokens: DesignTokens) -> Element
                     i18n.tr("settings.security.master_password.init_action")
                 }))
                 .on_press(Message::VaultOpen)
-                .style(style_chrome_secondary(tokens)),
-                text(i18n.tr("settings.security.biometrics.title")).size(16).style(move |_t: &Theme| text::Style {
-                    color: Some(text_primary),
-                }),
+                .style(lg_secondary_button(tokens)),
+                text(i18n.tr("settings.security.biometrics.title"))
+                    .size(16)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_primary),
+                    }),
                 checkbox(sec.use_biometrics)
                     .label(i18n.tr("settings.security.biometrics.label"))
                     .on_toggle(Message::BiometricsToggle),
-                text(i18n.tr("settings.security.biometrics.help")).size(11).style(move |_t: &Theme| text::Style {
-                    color: Some(text_secondary),
-                }),
+                text(i18n.tr("settings.security.biometrics.help"))
+                    .size(11)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(text_secondary),
+                    }),
             ]
             .spacing(layout::SETTINGS_ITEM_SPACING)
             .padding(layout::SETTINGS_CONTENT_PADDING as u16)
@@ -886,11 +936,16 @@ fn port_forward_pane<'a>(state: &'a IcedState, tokens: DesignTokens) -> Element<
     // 当前为占位 UI
     let mut col = column![
         section_title(i18n.tr("iced.settings.conn.port_forward.title"), tokens),
-        text(i18n.tr("iced.settings.conn.port_forward.description")).size(12).style(move |_t: &Theme| text::Style {
-            color: Some(text_secondary),
-        }),
+        text(i18n.tr("iced.settings.conn.port_forward.description"))
+            .size(12)
+            .style(move |_t: &Theme| text::Style {
+                color: Some(text_secondary),
+            }),
         Space::new().height(iced::Length::Fixed(16.0)),
-        section_title(i18n.tr("iced.settings.conn.port_forward.local_title"), tokens),
+        section_title(
+            i18n.tr("iced.settings.conn.port_forward.local_title"),
+            tokens
+        ),
     ]
     .spacing(layout::SETTINGS_ITEM_SPACING)
     .padding(layout::SETTINGS_CONTENT_PADDING as u16)
@@ -900,25 +955,33 @@ fn port_forward_pane<'a>(state: &'a IcedState, tokens: DesignTokens) -> Element<
     let add_btn = button(
         container(
             row![
-                text("+").size(16).style(move |_t: &Theme| text::Style { color: Some(tokens.accent_base) }),
-                text(i18n.tr("iced.settings.conn.port_forward.add")).size(13).style(move |_t: &Theme| text::Style { color: Some(tokens.accent_base) }),
+                text("+").size(16).style(move |_t: &Theme| text::Style {
+                    color: Some(tokens.accent_base)
+                }),
+                text(i18n.tr("iced.settings.conn.port_forward.add"))
+                    .size(13)
+                    .style(move |_t: &Theme| text::Style {
+                        color: Some(tokens.accent_base)
+                    }),
             ]
             .spacing(4)
-            .align_y(iced::alignment::Vertical::Center)
+            .align_y(iced::alignment::Vertical::Center),
         )
-        .padding([8, 16])
+        .padding([8, 16]),
     )
     .on_press(Message::SettingsFieldChanged(SettingsField::AddPortForward))
-    .style(style_chrome_primary(tokens));
+    .style(lg_primary_button(tokens));
 
     col = col.push(add_btn);
 
     // TODO: 后续添加端口转发列表渲染
     // 目前为空列表提示
     col = col.push(
-        text(i18n.tr("iced.settings.conn.port_forward.empty")).size(12).style(move |_t: &Theme| text::Style {
-            color: Some(text_secondary),
-        })
+        text(i18n.tr("iced.settings.conn.port_forward.empty"))
+            .size(12)
+            .style(move |_t: &Theme| text::Style {
+                color: Some(text_secondary),
+            }),
     );
 
     col.into()
@@ -935,9 +998,11 @@ fn host_key_table_pane<'a>(state: &'a IcedState, tokens: DesignTokens) -> Elemen
 
     // 验证策略部分
     let policy_section = column![
-        text(i18n.tr("settings.security.hosts.policy.label")).size(14).style(move |_t: &Theme| text::Style {
-            color: Some(text_primary),
-        }),
+        text(i18n.tr("settings.security.hosts.policy.label"))
+            .size(14)
+            .style(move |_t: &Theme| text::Style {
+                color: Some(text_primary),
+            }),
         radio(
             i18n.tr("settings.security.hosts.policy.strict"),
             crate::settings::HostKeyPolicy::Strict,
@@ -956,9 +1021,11 @@ fn host_key_table_pane<'a>(state: &'a IcedState, tokens: DesignTokens) -> Elemen
             Some(policy),
             |p| Message::SettingsFieldChanged(SettingsField::HostKeyPolicy(p)),
         ),
-        text(i18n.tr("settings.security.hosts.policy.help")).size(11).style(move |_t: &Theme| text::Style {
-            color: Some(text_secondary),
-        }),
+        text(i18n.tr("settings.security.hosts.policy.help"))
+            .size(11)
+            .style(move |_t: &Theme| text::Style {
+                color: Some(text_secondary),
+            }),
     ]
     .spacing(layout::SETTINGS_ITEM_SPACING);
 
@@ -968,9 +1035,11 @@ fn host_key_table_pane<'a>(state: &'a IcedState, tokens: DesignTokens) -> Elemen
             section_title(i18n.tr("settings.security.hosts.title"), tokens),
             policy_section,
             Space::new().height(iced::Length::Fixed(8.0)),
-            text(i18n.tr("settings.security.hosts.table.title")).size(14).style(move |_t: &Theme| text::Style {
-                color: Some(text_primary),
-            }),
+            text(i18n.tr("settings.security.hosts.table.title"))
+                .size(14)
+                .style(move |_t: &Theme| text::Style {
+                    color: Some(text_primary),
+                }),
             text(i18n.tr("settings.security.hosts.empty"))
                 .size(13)
                 .style(move |_t: &Theme| text::Style {
@@ -993,11 +1062,12 @@ fn host_key_table_pane<'a>(state: &'a IcedState, tokens: DesignTokens) -> Elemen
         section_title(i18n.tr("settings.security.hosts.title"), tokens),
         policy_section,
         Space::new().height(iced::Length::Fixed(8.0)),
-        text(i18n.tr("settings.security.hosts.table.title")).size(14).style(move |_t: &Theme| text::Style {
-            color: Some(text_primary),
-        }),
-        column(rows)
-            .spacing(2)
+        text(i18n.tr("settings.security.hosts.table.title"))
+            .size(14)
+            .style(move |_t: &Theme| text::Style {
+                color: Some(text_primary),
+            }),
+        column(rows).spacing(2)
     ]
     .spacing(layout::SETTINGS_ITEM_SPACING)
     .padding(layout::SETTINGS_CONTENT_PADDING as u16)
@@ -1022,46 +1092,42 @@ fn host_key_table_row<'a>(
     let is_expanded = state.expanded_known_host.as_ref() == Some(&detail_key);
 
     // 主机显示文本
-    let host_display = if record.port == 22 {
-        Some(record.host.as_str())
+    let host_display: std::borrow::Cow<str> = if record.port == 22 {
+        std::borrow::Cow::Borrowed(record.host.as_str())
     } else {
-        None
+        std::borrow::Cow::Owned(detail_key.clone())
     };
-    let host_display_leaked = host_display.unwrap_or_else(|| {
-        Box::leak(format!("{}:{}", record.host, record.port).into_boxed_str()) as &str
-    });
 
     // 删除按钮
     let delete_msg = Message::SettingsFieldChanged(SettingsField::DeleteKnownHost {
         host: record.host.clone(),
         port: record.port,
     });
-    let delete_btn = button(
-        icon_view_with(
-            IconOptions::new(IconId::Delete)
-                .with_size(12)
-                .with_color(text_secondary),
-            delete_msg.clone(),
-        ),
-    )
+    let delete_btn = button(icon_view_with(
+        IconOptions::new(IconId::FnDelete)
+            .with_size(12)
+            .with_color(text_secondary),
+        delete_msg.clone(),
+    ))
     .on_press(delete_msg)
     .width(iced::Length::Fixed(24.0))
     .height(iced::Length::Fixed(24.0))
     .padding(6)
-    .style(style_top_icon(tokens));
+    .style(lg_icon_button(tokens));
 
     // 展开指示器
-    let expand_icon = text(if is_expanded { "▼" } else { "▶" })
-        .size(10)
-        .style(move |_t: &Theme| text::Style {
-            color: Some(text_secondary),
-        });
+    let expand_icon =
+        text(if is_expanded { "▼" } else { "▶" })
+            .size(10)
+            .style(move |_t: &Theme| text::Style {
+                color: Some(text_secondary),
+            });
 
     // 主行内容
     let main_row_content: Element<'a, Message> = row![
         expand_icon,
         Space::new().width(iced::Length::Fixed(6.0)),
-        text(host_display_leaked)
+        text(host_display)
             .size(13)
             .style(move |_t: &Theme| text::Style {
                 color: Some(text_primary),
@@ -1086,7 +1152,7 @@ fn host_key_table_row<'a>(
     let main_row_btn = button(main_row_content)
         .on_press(toggle_msg)
         .width(iced::Length::Fill)
-        .style(style_top_icon(tokens));
+        .style(lg_icon_button(tokens));
 
     let main_row = container(main_row_btn)
         .padding([6, 8])
@@ -1104,11 +1170,9 @@ fn host_key_table_row<'a>(
     // 如果展开，显示详情
     if is_expanded {
         let added_str = if record.added_ms > 0 {
-            Box::leak(
-                crate::time_utils::format_local_datetime(record.added_ms).into_boxed_str(),
-            ) as &str
+            crate::time_utils::format_local_datetime(record.added_ms)
         } else {
-            i18n.tr("settings.security.hosts.empty")
+            i18n.tr("settings.security.hosts.empty").to_string()
         };
 
         let detail: Element<'a, Message> = column![
@@ -1156,25 +1220,22 @@ fn host_key_table_row<'a>(
         .padding([8, 12])
         .into();
 
-        let detail_container = container(detail)
-            .width(iced::Length::Fill)
-            .style(move |_t: &Theme| container::Style {
-                background: Some(iced::Background::Color(surface_1)),
-                border: iced::Border {
-                    width: 1.0,
-                    color: border_subtle,
-                    radius: 4.0.into(),
-                },
-                ..Default::default()
-            });
+        let detail_container =
+            container(detail)
+                .width(iced::Length::Fill)
+                .style(move |_t: &Theme| container::Style {
+                    background: Some(iced::Background::Color(surface_1)),
+                    border: iced::Border {
+                        width: 1.0,
+                        color: border_subtle,
+                        radius: 4.0.into(),
+                    },
+                    ..Default::default()
+                });
 
-        column![main_row, detail_container]
-            .spacing(2)
-            .into()
+        column![main_row, detail_container].spacing(2).into()
     } else {
-        column![main_row]
-            .spacing(2)
-            .into()
+        column![main_row].spacing(2).into()
     }
 }
 
@@ -1183,9 +1244,11 @@ fn backup_pane(state: &IcedState, tokens: DesignTokens) -> Element<'_, Message> 
     let text_secondary = tokens.text_secondary;
     column![
         section_title(i18n.tr("iced.settings.backup.title"), tokens),
-        text(i18n.tr("iced.settings.backup.hint")).size(13).style(move |_t: &Theme| text::Style {
-            color: Some(text_secondary),
-        }),
+        text(i18n.tr("iced.settings.backup.hint"))
+            .size(13)
+            .style(move |_t: &Theme| text::Style {
+                color: Some(text_secondary),
+            }),
     ]
     .spacing(layout::SETTINGS_ITEM_SPACING)
     .padding(layout::SETTINGS_CONTENT_PADDING as u16)
@@ -1200,13 +1263,11 @@ fn settings_row<'a, L: Into<Element<'a, Message>>>(
 ) -> Element<'a, Message> {
     let text_primary = tokens.text_primary;
     row![
-        container(
-            text(label).size(14).style(move |_t: &Theme| text::Style {
-                color: Some(text_primary),
-            })
-        )
-            .width(iced::Length::FillPortion(1))
-            .align_y(iced::alignment::Vertical::Top),
+        container(text(label).size(14).style(move |_t: &Theme| text::Style {
+            color: Some(text_primary),
+        }))
+        .width(iced::Length::FillPortion(1))
+        .align_y(iced::alignment::Vertical::Top),
         container(right.into())
             .width(iced::Length::FillPortion(1))
             .align_x(iced::alignment::Horizontal::Right),
@@ -1226,26 +1287,27 @@ fn restart_banner(state: &IcedState, tokens: DesignTokens) -> Element<'_, Messag
 
     container(
         row![
-            text(i18n.tr("iced.settings.restart.banner")).size(13).style(move |_t: &Theme| text::Style {
-                color: Some(text_primary),
-            }),
+            text(i18n.tr("iced.settings.restart.banner"))
+                .size(13)
+                .style(move |_t: &Theme| text::Style {
+                    color: Some(text_primary),
+                }),
             Space::new().width(iced::Length::Fill),
             button(text(i18n.tr("iced.settings.restart.ok")))
                 .on_press(Message::SettingsRestartAcknowledged)
-                .style(style_chrome_primary(tokens)),
+                .style(lg_primary_button(tokens)),
         ]
         .padding(12)
         .align_y(Alignment::Center),
     )
     .width(iced::Length::Fill)
     .style(move |_t: &Theme| {
-        container::Style::default()
-            .background(iced::Color::from_rgba(
-                warning_color.r,
-                warning_color.g,
-                warning_color.b,
-                0.15,
-            ))
+        container::Style::default().background(iced::Color::from_rgba(
+            warning_color.r,
+            warning_color.g,
+            warning_color.b,
+            0.15,
+        ))
     })
     .into()
 }
@@ -1257,16 +1319,16 @@ fn restart_banner(state: &IcedState, tokens: DesignTokens) -> Element<'_, Messag
 /// 创建关闭图标按钮
 fn icon_close_button(tokens: DesignTokens) -> Element<'static, Message> {
     let close_icon = icon_view_with(
-        IconOptions::new(IconId::Close)
+        IconOptions::new(IconId::FnClose)
             .with_size(14)
             .with_color(tokens.text_secondary),
         Message::SettingsDismiss,
     );
-    
+
     button(close_icon)
         .on_press(Message::SettingsDismiss)
         .width(iced::Length::Fixed(layout::BTN_HEIGHT_STANDARD))
         .height(iced::Length::Fixed(layout::BTN_HEIGHT_STANDARD))
-        .style(style_top_icon(tokens))
+        .style(lg_icon_button(tokens))
         .into()
 }

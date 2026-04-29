@@ -4,7 +4,7 @@ use crate::settings;
 
 use super::super::message::Message;
 use super::super::state::PrewarmStatus;
-use super::super::state::{IcedState, ConnectionStage};
+use super::super::state::{ConnectionStage, IcedState};
 
 /// Slow tick threshold: ticks taking longer than this are logged as warnings.
 const SLOW_TICK_NS: u64 = 5_000_000; // 5ms
@@ -87,7 +87,9 @@ pub(crate) fn handle_tick(state: &mut IcedState) -> Task<Message> {
     handle_tab_scroll_animation(state);
 
     // 合并两个 Task
-    reconnect_task.chain(prewarm_task).chain(exit_task.unwrap_or_else(Task::none))
+    reconnect_task
+        .chain(prewarm_task)
+        .chain(exit_task.unwrap_or_else(Task::none))
 }
 
 /// Handle tab scroll animation: ease current offset toward target.
@@ -132,7 +134,10 @@ fn handle_prewarm_timer(state: &mut IcedState, _now: i64) -> Task<Message> {
         };
 
         match prewarm.status {
-            PrewarmStatus::Idle | PrewarmStatus::Connecting | PrewarmStatus::Ready | PrewarmStatus::Failed => {
+            PrewarmStatus::Idle
+            | PrewarmStatus::Connecting
+            | PrewarmStatus::Ready
+            | PrewarmStatus::Failed => {
                 // 这些状态不需要计时
                 false
             }
@@ -143,11 +148,7 @@ fn handle_prewarm_timer(state: &mut IcedState, _now: i64) -> Task<Message> {
                     .map(|t| t.elapsed().as_millis() as i64)
                     .unwrap_or(0);
 
-                if elapsed < 500 {
-                    false
-                } else {
-                    true
-                }
+                if elapsed < 500 { false } else { true }
             }
         }
     };
@@ -166,7 +167,11 @@ fn handle_prewarm_timer(state: &mut IcedState, _now: i64) -> Task<Message> {
 
 /// Pump all registered SSH sessions (one per tab).
 /// Returns a Task if any session has exited and needs to close its tab.
-fn pump_all_sessions(state: &mut IcedState, now: i64, bg_pump_every_ms: i64) -> Option<Task<Message>> {
+fn pump_all_sessions(
+    state: &mut IcedState,
+    now: i64,
+    bg_pump_every_ms: i64,
+) -> Option<Task<Message>> {
     let active = state.active_tab;
 
     for (i, pane) in state.tab_panes.iter_mut().enumerate() {
@@ -261,9 +266,10 @@ fn handle_perf_log(state: &mut IcedState) {
     let bytes = state.perf.bytes_in - state.perf.bytes_in_at_log;
 
     // Slow tick delta since last log.
-    let slow_ticks_delta = state.perf.slow_ticks.saturating_sub(
-        state.perf.slow_ticks_at_log.unwrap_or(0),
-    );
+    let slow_ticks_delta = state
+        .perf
+        .slow_ticks
+        .saturating_sub(state.perf.slow_ticks_at_log.unwrap_or(0));
     state.perf.slow_ticks_at_log = Some(state.perf.slow_ticks);
 
     // Aggregate key fallback counts across all tabs.
@@ -295,9 +301,10 @@ fn handle_perf_log(state: &mut IcedState) {
     let pump_rate = pumps as f64 / dt;
     let bytes_rate = bytes as f64 / dt;
     let empty_pct = if pumps > 0 {
-        let empty_delta = state.perf.pump_empty_reads.saturating_sub(
-            state.perf.pump_empty_reads_at_log.unwrap_or(0),
-        );
+        let empty_delta = state
+            .perf
+            .pump_empty_reads
+            .saturating_sub(state.perf.pump_empty_reads_at_log.unwrap_or(0));
         state.perf.pump_empty_reads_at_log = Some(state.perf.pump_empty_reads);
         empty_delta as f64 * 100.0 / pumps as f64
     } else {
@@ -362,9 +369,10 @@ fn write_perf_dump(
         .collect::<Vec<_>>()
         .join(",");
 
-    let empty_delta = state.perf.pump_empty_reads.saturating_sub(
-        state.perf.pump_empty_reads_at_log.unwrap_or(0),
-    );
+    let empty_delta = state
+        .perf
+        .pump_empty_reads
+        .saturating_sub(state.perf.pump_empty_reads_at_log.unwrap_or(0));
     state.perf.pump_empty_reads_at_log = Some(state.perf.pump_empty_reads);
 
     let empty_pct = if pumps > 0 {

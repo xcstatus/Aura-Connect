@@ -175,12 +175,7 @@ impl TerminalBackend for GhosttyVtBackend {
         }
     }
 
-    fn on_key(
-        &mut self,
-        key: TerminalKey,
-        pressed: bool,
-        modifiers: TerminalModifiers,
-    ) -> Vec<u8> {
+    fn on_key(&mut self, key: TerminalKey, pressed: bool, modifiers: TerminalModifiers) -> Vec<u8> {
         if !pressed {
             return Vec::new();
         }
@@ -279,4 +274,3 @@ pub fn write_to_session(session: &mut Option<Box<dyn AsyncSession>>, bytes: &[u8
     }
     Ok(())
 }
-

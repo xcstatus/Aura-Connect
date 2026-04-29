@@ -26,7 +26,11 @@ pub fn derive_key(password: &SecretString, salt: &[u8]) -> Result<Zeroizing<[u8;
 }
 
 /// 使用 Argon2id 派生密钥（指定内存级别）
-pub fn derive_key_with_level(password: &SecretString, salt: &[u8], level: KdfMemoryLevel) -> Result<Zeroizing<[u8; 32]>, VaultError> {
+pub fn derive_key_with_level(
+    password: &SecretString,
+    salt: &[u8],
+    level: KdfMemoryLevel,
+) -> Result<Zeroizing<[u8; 32]>, VaultError> {
     let argon2 = kdf_argon2id_for_level(level);
     let mut key = [0u8; 32];
     argon2

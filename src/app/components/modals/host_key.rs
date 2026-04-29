@@ -1,25 +1,31 @@
-use iced::alignment::Alignment;
 use iced::Element;
-use iced::widget::{button, column, container, row, text, Space};
+use iced::alignment::Alignment;
+use iced::widget::{Space, button, column, container, row, text};
 
-use crate::app::components::helpers::{layered_scrim_style, tokens_for_state, top_bar_material_style};
+use crate::app::components::helpers::{
+    layered_scrim_style, tokens_for_state, top_bar_material_style,
+};
 use crate::app::message::Message;
 use crate::app::state::IcedState;
-use crate::app::widgets::chrome_button::{style_chrome_primary, style_chrome_secondary, style_top_icon};
-use crate::theme::icons::{icon_view_with, IconId, IconOptions};
+use crate::app::widgets::chrome_button::{lg_icon_button, lg_primary_button, lg_secondary_button};
+use crate::theme::icons::{IconId, IconOptions, icon_view_with};
 
 /// Build the host key confirmation prompt modal.
 pub(crate) fn host_key_prompt_modal(state: &IcedState) -> Element<'_, Message> {
     let Some(p) = state.host_key_prompt.as_ref() else {
-        return Space::new().into()
+        return Space::new().into();
     };
 
     let tokens = tokens_for_state(state);
     let i18n = &state.model.i18n;
     let info = &p.info;
 
-    let scrim = container(Space::new().width(iced::Length::Fill).height(iced::Length::Fill))
-        .style(layered_scrim_style(tokens, 0));
+    let scrim = container(
+        Space::new()
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill),
+    )
+    .style(layered_scrim_style(tokens, 0));
 
     let mut body = column![
         row![
@@ -57,9 +63,15 @@ pub(crate) fn host_key_prompt_modal(state: &IcedState) -> Element<'_, Message> {
         )
         .push(
             text(match state.model.settings.security.host_key_policy {
-                crate::settings::HostKeyPolicy::Strict => i18n.tr("settings.security.hosts.policy.strict"),
-                crate::settings::HostKeyPolicy::Ask => i18n.tr("settings.security.hosts.policy.ask"),
-                crate::settings::HostKeyPolicy::AcceptNew => i18n.tr("settings.security.hosts.policy.accept_new"),
+                crate::settings::HostKeyPolicy::Strict => {
+                    i18n.tr("settings.security.hosts.policy.strict")
+                }
+                crate::settings::HostKeyPolicy::Ask => {
+                    i18n.tr("settings.security.hosts.policy.ask")
+                }
+                crate::settings::HostKeyPolicy::AcceptNew => {
+                    i18n.tr("settings.security.hosts.policy.accept_new")
+                }
             })
             .size(12),
         )
@@ -67,13 +79,13 @@ pub(crate) fn host_key_prompt_modal(state: &IcedState) -> Element<'_, Message> {
             row![
                 button(text(i18n.tr("iced.host_key_prompt.accept_once")).size(13))
                     .on_press(Message::HostKeyAcceptOnce)
-                    .style(style_chrome_secondary(tokens)),
+                    .style(lg_secondary_button(tokens)),
                 button(text(i18n.tr("iced.host_key_prompt.always_trust")).size(13))
                     .on_press(Message::HostKeyAlwaysTrust)
-                    .style(style_chrome_primary(tokens)),
+                    .style(lg_primary_button(tokens)),
                 button(text(i18n.tr("iced.host_key_prompt.reject")).size(13))
                     .on_press(Message::HostKeyReject)
-                    .style(style_chrome_secondary(tokens)),
+                    .style(lg_secondary_button(tokens)),
             ]
             .spacing(8),
         );
@@ -102,7 +114,7 @@ pub(crate) fn host_key_prompt_modal(state: &IcedState) -> Element<'_, Message> {
 /// 创建关闭图标按钮
 fn icon_close_button(tokens: crate::theme::DesignTokens) -> Element<'static, Message> {
     let close_icon = icon_view_with(
-        IconOptions::new(IconId::Close)
+        IconOptions::new(IconId::FnClose)
             .with_size(14)
             .with_color(tokens.text_secondary),
         Message::HostKeyReject,
@@ -111,6 +123,6 @@ fn icon_close_button(tokens: crate::theme::DesignTokens) -> Element<'static, Mes
         .on_press(Message::HostKeyReject)
         .width(iced::Length::Fixed(28.0))
         .height(iced::Length::Fixed(28.0))
-        .style(style_top_icon(tokens))
+        .style(lg_icon_button(tokens))
         .into()
 }

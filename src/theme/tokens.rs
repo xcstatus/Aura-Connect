@@ -140,8 +140,7 @@ impl ColorScheme {
             line_highlight: Color::from_rgba(1.0, 1.0, 1.0, 0.03),
             selection_bg: Color::from_rgba(0.0, 1.0, 0.5, 0.25),
             // 终端颜色 - 使用 Option
-            // term_bg 使用纯黑，非衍生
-            term_bg: Some(Color::from_rgb8(0x0A, 0x0A, 0x0F)),
+            term_bg: None,
             term_fg: None,
             term_cursor: None,
             term_cursor_bg: None,
@@ -585,6 +584,60 @@ impl ColorScheme {
     pub fn effective_term_scrollbar_fg(&self) -> Color {
         self.term_scrollbar_fg.unwrap_or(self.surface_3)
     }
+
+    /// Apply user overrides from a HashMap of field-name → hex-color mappings.
+    /// Returns a new ColorScheme with overrides applied.
+    pub fn apply_overrides(&self, overrides: &std::collections::HashMap<String, Option<String>>) -> Self {
+        let mut scheme = *self;
+        for (field, hex_opt) in overrides {
+            if let Some(hex) = hex_opt {
+                if let Some(color) = color::from_hex(hex) {
+                    scheme.set_field_by_name(field, Some(color));
+                }
+            } else {
+                scheme.set_field_by_name(field, None);
+            }
+        }
+        scheme
+    }
+
+    /// Set a field by name string. Used by user color scheme overrides.
+    fn set_field_by_name(&mut self, name: &str, value: Option<Color>) {
+        match name {
+            "bg_primary" => if let Some(c) = value { self.bg_primary = c; },
+            "bg_secondary" => if let Some(c) = value { self.bg_secondary = c; },
+            "bg_header" => if let Some(c) = value { self.bg_header = c; },
+            "bg_popup" => if let Some(c) = value { self.bg_popup = c; },
+            "surface_1" => if let Some(c) = value { self.surface_1 = c; },
+            "surface_2" => if let Some(c) = value { self.surface_2 = c; },
+            "surface_3" => if let Some(c) = value { self.surface_3 = c; },
+            "tab_active_bg" => if let Some(c) = value { self.tab_active_bg = c; },
+            "text_primary" => if let Some(c) = value { self.text_primary = c; },
+            "text_secondary" => if let Some(c) = value { self.text_secondary = c; },
+            "text_disabled" => if let Some(c) = value { self.text_disabled = c; },
+            "border_default" => if let Some(c) = value { self.border_default = c; },
+            "border_subtle" => if let Some(c) = value { self.border_subtle = c; },
+            "accent_base" => if let Some(c) = value { self.accent_base = c; },
+            "accent_hover" => if let Some(c) = value { self.accent_hover = c; },
+            "accent_active" => if let Some(c) = value { self.accent_active = c; },
+            "on_accent_label" => if let Some(c) = value { self.on_accent_label = c; },
+            "success" => if let Some(c) = value { self.success = c; },
+            "warning" => if let Some(c) = value { self.warning = c; },
+            "error" => if let Some(c) = value { self.error = c; },
+            "info" => if let Some(c) = value { self.info = c; },
+            "line_highlight" => if let Some(c) = value { self.line_highlight = c; },
+            "selection_bg" => if let Some(c) = value { self.selection_bg = c; },
+            "term_bg" => self.term_bg = value.or(self.term_bg),
+            "term_fg" => self.term_fg = value.or(self.term_fg),
+            "term_cursor" => self.term_cursor = value.or(self.term_cursor),
+            "term_cursor_bg" => self.term_cursor_bg = value.or(self.term_cursor_bg),
+            "term_selection_bg" => self.term_selection_bg = value.or(self.term_selection_bg),
+            "term_selection_fg" => self.term_selection_fg = value.or(self.term_selection_fg),
+            "term_scrollbar_bg" => self.term_scrollbar_bg = value.or(self.term_scrollbar_bg),
+            "term_scrollbar_fg" => self.term_scrollbar_fg = value.or(self.term_scrollbar_fg),
+            _ => {} // Unknown field, ignore
+        }
+    }
 }
 
 /// 所有预设配色方案
@@ -631,6 +684,29 @@ pub struct DesignTokens {
     pub scrollbar_active: Color,
     pub line_highlight: Color,
     pub selection_bg: Color,
+    // === Liquid Glass 专用 Token ===
+    /// 玻璃着色：弱 (Subtle) - 4%
+    pub glass_subtle: Color,
+    /// 玻璃着色：中等 (Moderate) - 8%
+    pub glass_moderate: Color,
+    /// 玻璃着色：强 (Strong) - 12%
+    pub glass_strong: Color,
+    /// 玻璃着色：极强 (Intense) - 16%
+    pub glass_intense: Color,
+    /// 玻璃边缘高光顶部
+    pub glass_edge_top: Color,
+    /// 玻璃边缘高光底部
+    pub glass_edge_bottom: Color,
+    /// 玻璃模糊半径：常规 (20px)
+    pub glass_blur_regular: f32,
+    /// 玻璃模糊半径：模态 (24px)
+    pub glass_blur_modal: f32,
+
+    // === 顶栏专用颜色 ===
+    /// 顶栏默认背景（未选中标签位、按钮背景）
+    pub bar_default: Color,
+    /// 选中标签背景（与终端区域同色，视觉打通）
+    pub bar_active: Color,
 }
 
 impl DesignTokens {
@@ -647,6 +723,12 @@ impl DesignTokens {
     ///
     /// 终端颜色使用 effective_* 方法获取衍生值
     pub fn from_scheme(scheme: &ColorScheme) -> Self {
+        // 计算顶栏专用颜色
+        // bar_default: 使用 bg_header（顶栏未选中态）
+        // bar_active: 使用 terminal_bg（选中态，与终端区域同色）
+        let bar_default = scheme.bg_header;
+        let bar_active = scheme.effective_term_bg();
+
         Self {
             bg_primary: scheme.bg_primary,
             bg_secondary: scheme.bg_secondary,
@@ -676,11 +758,52 @@ impl DesignTokens {
             scrollbar_active: scheme.effective_term_scrollbar_fg(),
             line_highlight: scheme.line_highlight,
             selection_bg: scheme.selection_bg,
+            // Liquid Glass 专用 Token（基于主题自动计算）
+            // 玻璃着色：根据是否为暗色主题使用白色或黑色渐变
+            glass_subtle: if is_dark_color(&scheme.bg_primary) {
+                Color::from_rgba(1.0, 1.0, 1.0, 0.04)
+            } else {
+                Color::from_rgba(0.0, 0.0, 0.0, 0.04)
+            },
+            glass_moderate: if is_dark_color(&scheme.bg_primary) {
+                Color::from_rgba(1.0, 1.0, 1.0, 0.08)
+            } else {
+                Color::from_rgba(0.0, 0.0, 0.0, 0.08)
+            },
+            glass_strong: if is_dark_color(&scheme.bg_primary) {
+                Color::from_rgba(1.0, 1.0, 1.0, 0.12)
+            } else {
+                Color::from_rgba(0.0, 0.0, 0.0, 0.12)
+            },
+            glass_intense: if is_dark_color(&scheme.bg_primary) {
+                Color::from_rgba(1.0, 1.0, 1.0, 0.16)
+            } else {
+                Color::from_rgba(0.0, 0.0, 0.0, 0.16)
+            },
+            glass_edge_top: if is_dark_color(&scheme.bg_primary) {
+                Color::from_rgba(1.0, 1.0, 1.0, 0.12)
+            } else {
+                Color::from_rgba(1.0, 1.0, 1.0, 0.30)
+            },
+            glass_edge_bottom: if is_dark_color(&scheme.bg_primary) {
+                Color::from_rgba(0.0, 0.0, 0.0, 0.05)
+            } else {
+                Color::from_rgba(0.0, 0.0, 0.0, 0.08)
+            },
+            glass_blur_regular: 20.0,
+            glass_blur_modal: 24.0,
+
+            // 顶栏专用颜色
+            bar_default,
+            bar_active,
         }
     }
 
     /// Terminal Dark（默认）
     pub const fn terminal_dark() -> Self {
+        // 注意：此处值必须与 from_scheme(ColorScheme::terminal_dark()) 保持同步
+        // bar_default = scheme.bg_header = #28282D
+        // bar_active = scheme.effective_term_bg() = scheme.term_bg.unwrap_or(scheme.bg_primary) = #0A0A0F
         Self {
             bg_primary: Color::from_rgb8(0x1C, 0x1C, 0x1E),
             bg_secondary: Color::from_rgb8(0x23, 0x23, 0x26),
@@ -709,25 +832,53 @@ impl DesignTokens {
             scrollbar_active: Color::from_rgba(1.0, 1.0, 1.0, 0.20),
             line_highlight: Color::from_rgba(1.0, 1.0, 1.0, 0.03),
             selection_bg: Color::from_rgba(0.0, 1.0, 0.5, 0.25),
+            // Liquid Glass 专用 Token - Terminal Dark
+            glass_subtle: Color::from_rgba(1.0, 1.0, 1.0, 0.04),
+            glass_moderate: Color::from_rgba(1.0, 1.0, 1.0, 0.08),
+            glass_strong: Color::from_rgba(1.0, 1.0, 1.0, 0.12),
+            glass_intense: Color::from_rgba(1.0, 1.0, 1.0, 0.16),
+            glass_edge_top: Color::from_rgba(1.0, 1.0, 1.0, 0.12),
+            glass_edge_bottom: Color::from_rgba(0.0, 0.0, 0.0, 0.05),
+            glass_blur_regular: 20.0,
+            glass_blur_modal: 24.0,
+
+            // 顶栏专用颜色（派生自 from_scheme）
+            bar_default: Color::from_rgb8(0x28, 0x28, 0x2D), // = scheme.bg_header
+            bar_active: Color::from_rgb8(0x0A, 0x0A, 0x0F),  // = scheme.effective_term_bg()
         }
     }
 }
 
 /// 设计令牌辅助函数
+/// 判断是否为暗色主题
+pub fn is_dark_color(color: &Color) -> bool {
+    color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722 < 0.45
+}
+
 impl DesignTokens {
     /// 判断是否为暗色主题
     pub fn is_dark(&self) -> bool {
-        self.bg_primary.r * 0.2126 + self.bg_primary.g * 0.7152 + self.bg_primary.b * 0.0722 < 0.45
+        is_dark_color(&self.bg_primary)
     }
 
     /// 获取遮罩层颜色（基于背景色的半透明版本）
     pub fn scrim(&self) -> Color {
-        Color::from_rgba(self.bg_primary.r, self.bg_primary.g, self.bg_primary.b, 0.42)
+        Color::from_rgba(
+            self.bg_primary.r,
+            self.bg_primary.g,
+            self.bg_primary.b,
+            0.42,
+        )
     }
 
     /// 获取遮罩层颜色（带自定义透明度）
     pub fn scrim_with_alpha(&self, alpha: f32) -> Color {
-        Color::from_rgba(self.bg_primary.r, self.bg_primary.g, self.bg_primary.b, alpha)
+        Color::from_rgba(
+            self.bg_primary.r,
+            self.bg_primary.g,
+            self.bg_primary.b,
+            alpha,
+        )
     }
 
     /// 层级遮罩层颜色 - 根据弹窗层级调整透明度
@@ -736,19 +887,81 @@ impl DesignTokens {
     pub fn layered_scrim(&self, level: usize) -> Color {
         let base_alpha = 0.35_f32;
         let alpha = (base_alpha + level as f32 * 0.15).min(0.75);
-        Color::from_rgba(self.bg_primary.r, self.bg_primary.g, self.bg_primary.b, alpha)
+        Color::from_rgba(
+            self.bg_primary.r,
+            self.bg_primary.g,
+            self.bg_primary.b,
+            alpha,
+        )
     }
 
     /// 层级遮罩层颜色（带动态透明度 + 层级调整）
     pub fn layered_scrim_with_alpha(&self, alpha: f32, level: usize) -> Color {
         let level_adjustment = level as f32 * 0.1;
         let adjusted_alpha = (alpha - level_adjustment).max(0.2).min(0.85);
-        Color::from_rgba(self.bg_primary.r, self.bg_primary.g, self.bg_primary.b, adjusted_alpha)
+        Color::from_rgba(
+            self.bg_primary.r,
+            self.bg_primary.g,
+            self.bg_primary.b,
+            adjusted_alpha,
+        )
     }
 
     /// 终端默认单元格背景（深色，确保文字可见）
     pub fn terminal_default_bg(&self) -> Color {
         Color::from_rgb8(10, 10, 15)
+    }
+
+    // === Liquid Glass Token 辅助方法 ===
+
+    /// 根据主题是否为暗色，计算 Liquid Glass 着色值
+    /// 暗色主题：基于白色渐变
+    /// 亮色主题：基于黑色渐变
+    pub fn compute_glass_tint(&self) -> (Color, Color) {
+        if self.is_dark() {
+            // 暗色主题 - 白色高光
+            (
+                Color::from_rgba(1.0, 1.0, 1.0, 0.12), // 顶部高光
+                Color::from_rgba(0.0, 0.0, 0.0, 0.05), // 底部阴影
+            )
+        } else {
+            // 亮色主题 - 白色高光更明显
+            (
+                Color::from_rgba(1.0, 1.0, 1.0, 0.30),
+                Color::from_rgba(0.0, 0.0, 0.0, 0.08),
+            )
+        }
+    }
+
+    /// 获取适合当前主题的玻璃着色列表
+    pub fn glass_levels(&self) -> [Color; 4] {
+        if self.is_dark() {
+            [
+                Color::from_rgba(1.0, 1.0, 1.0, 0.04), // subtle
+                Color::from_rgba(1.0, 1.0, 1.0, 0.08), // moderate
+                Color::from_rgba(1.0, 1.0, 1.0, 0.12), // strong
+                Color::from_rgba(1.0, 1.0, 1.0, 0.16), // intense
+            ]
+        } else {
+            [
+                Color::from_rgba(0.0, 0.0, 0.0, 0.04),
+                Color::from_rgba(0.0, 0.0, 0.0, 0.08),
+                Color::from_rgba(0.0, 0.0, 0.0, 0.12),
+                Color::from_rgba(0.0, 0.0, 0.0, 0.16),
+            ]
+        }
+    }
+
+    /// 获取 Accent 着色（用于按钮 hover 效果）
+    pub fn accent_tint(&self) -> Color {
+        let accent = self.accent_base;
+        Color::from_rgba(accent.r, accent.g, accent.b, 0.10)
+    }
+
+    /// 获取 Accent 强着色（用于选中状态）
+    pub fn accent_strong(&self) -> Color {
+        let accent = self.accent_base;
+        Color::from_rgba(accent.r, accent.g, accent.b, 0.15)
     }
 }
 

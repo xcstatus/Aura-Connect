@@ -17,7 +17,10 @@ pub fn format_local_datetime(ms: i64) -> String {
     }
     let secs = ms / 1000;
     match Utc.timestamp_opt(secs, 0).single() {
-        Some(dt) => dt.with_timezone(&Local).format("%Y-%m-%d %H:%M:%S").to_string(),
+        Some(dt) => dt
+            .with_timezone(&Local)
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string(),
         None => String::new(),
     }
 }

@@ -3,10 +3,10 @@ use std::sync::Arc;
 use anyhow::Result;
 use secrecy::{ExposeSecret, SecretString};
 
-use crate::backend::ssh_session::{SshSession, SshChannel};
+use crate::backend::ssh_session::{SshChannel, SshSession};
 use crate::i18n::{I18n, Locale};
-use crate::session::{AuthMethod, SessionProfile, SessionLibrary, TransportConfig};
 use crate::session::repository::{JsonSessionStore, SessionManager};
+use crate::session::{AuthMethod, SessionLibrary, SessionProfile, TransportConfig};
 use crate::settings::{RecentConnectionRecord, Settings};
 use crate::utils::StorageManager;
 
@@ -219,7 +219,6 @@ impl AppModel {
                 self.draft.edited = false;
                 self.draft.last_error = None;
                 self.draft.password_error_count = 0;
-                self.status = format!("Selected profile: {}", profile.name);
             }
         }
     }
@@ -257,6 +256,9 @@ impl AppModel {
                 }
                 crate::backend::ssh_session::SshConnectError::HostKeyMismatch { .. } => {
                     ConnectErrorKind::HostKeyChanged
+                }
+                crate::backend::ssh_session::SshConnectError::Disconnected => {
+                    ConnectErrorKind::Unknown
                 }
             };
         }
@@ -405,77 +407,48 @@ impl AppModel {
 
         match &ssh.auth {
             AuthMethod::Password => {
-                let mut loaded_from_vault = false;
                 if let (Some(cid), Some(master)) =
                     (ssh.credential_id.as_deref(), vault_master_password)
                 {
                     let kdf_level = self.settings.security.kdf_memory_level;
                     match crate::vault::session_credentials::load_ssh_credentials(
-                        master.expose_secret(),
+                        master,
                         cid,
                         kdf_level,
                     ) {
                         Ok(Some(payload)) => {
                             if let Some(pw) = payload.password.filter(|s| !s.is_empty()) {
-                                self.draft.password = SecretString::from(pw);
-                                loaded_from_vault = true;
+                                self.draft.password = SecretString::from((*pw).clone());
                             }
                         }
                         Ok(None) => {}
-                        Err(e) => {
-                            self.status = format!(
-                                "Loaded \"{}\" but could not read saved password: {}. Enter the password manually, then click Connect.",
-                                profile.name, e
-                            );
-                            return Ok(());
+                        Err(_e) => {
+                            // Vault 读取失败时静默处理，用户可手动输入密码
                         }
                     }
                 }
-                if loaded_from_vault {
-                    self.status = format!(
-                        "Loaded \"{}\". Password was filled from saved credentials — click Connect when ready.",
-                        profile.name
-                    );
-                } else if self.draft.password.expose_secret().is_empty() {
-                    self.status = format!(
-                        "Loaded \"{}\" (password authentication). Enter the password and click Connect.",
-                        profile.name
-                    );
-                } else {
-                    self.status = format!(
-                        "Loaded \"{}\". Review the fields and click Connect.",
-                        profile.name
-                    );
-                }
             }
             AuthMethod::Interactive => {
-                self.status = format!(
-                    "Loaded \"{}\" (keyboard-interactive auth). Click Connect; the server will prompt for credentials.",
-                    profile.name
-                );
+                // 键盘交互认证，等待服务器提示
             }
             AuthMethod::Key { .. } => {
-                // Passphrase may be stored in vault.
+                // 密钥认证，passphrase 可能从 vault 加载
                 if let (Some(cid), Some(master)) =
                     (ssh.credential_id.as_deref(), vault_master_password)
                 {
                     let kdf_level = self.settings.security.kdf_memory_level;
                     if let Ok(Some(payload)) =
                         crate::vault::session_credentials::load_ssh_credentials(
-                            master.expose_secret(),
+                            master,
                             cid,
                             kdf_level,
                         )
                     {
                         if let Some(pph) = payload.passphrase.filter(|s| !s.is_empty()) {
-                            self.draft.passphrase = SecretString::from(pph);
+                            self.draft.passphrase = SecretString::from((*pph).clone());
                         }
                     }
                 }
-                self.status = format!(
-                    "Loaded \"{}\" (public-key auth). Review key path/passphrase and click Connect.",
-                    profile.name
-                );
             }
             AuthMethod::Agent => {
                 return Err(

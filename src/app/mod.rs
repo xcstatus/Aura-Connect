@@ -3,14 +3,14 @@ mod connection;
 mod engine_adapter;
 mod message;
 mod model;
-mod ssh_session_manager;
 mod settings_modal;
+mod ssh_session_manager;
 mod state;
 mod subscription;
 mod terminal_event;
 mod terminal_host;
-mod terminal_widget;
 mod terminal_viewport;
+mod terminal_widget;
 mod update;
 mod view;
 mod widgets;
@@ -36,8 +36,12 @@ pub fn run() -> iced::Result {
         window_settings.platform_specific.titlebar_transparent = true;
         window_settings.platform_specific.fullsize_content_view = true;
         window_settings.platform_specific.title_hidden = true;
+        window_settings.transparent = false;
+        window_settings.blur = false;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
         window_settings.transparent = true;
-        window_settings.blur = true;
     }
 
     iced::application(boot, update, view)

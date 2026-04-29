@@ -4,7 +4,9 @@ use secrecy::ExposeSecret;
 use crate::backend::ssh_session::AsyncSession;
 
 use super::super::message::Message;
-use super::super::state::{ConnectionStage, IcedState, PrewarmStatus, QuickConnectFlow, SessionPrewarmState};
+use super::super::state::{
+    ConnectionStage, IcedState, PrewarmStatus, QuickConnectFlow, SessionPrewarmState,
+};
 
 /// Handle ConnectPressed message - core connection logic.
 pub(crate) fn handle_connect(state: &mut IcedState) -> Task<Message> {
@@ -101,12 +103,19 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
     let host_key_policy = state.model.settings.security.host_key_policy;
 
     let sess = match state.rt.block_on(
-        crate::backend::ssh_session::InteractiveAuthSession::connect(&host, port, &user_str, &known_hosts, host_key_policy)
+        crate::backend::ssh_session::InteractiveAuthSession::connect(
+            &host,
+            port,
+            &user_str,
+            &known_hosts,
+            host_key_policy,
+        ),
     ) {
         Ok(s) => s,
         Err(_e) => {
             state.quick_connect_flow = QuickConnectFlow::Failed;
-            state.quick_connect_error_kind = Some(crate::app::model::ConnectErrorKind::HostUnreachable);
+            state.quick_connect_error_kind =
+                Some(crate::app::model::ConnectErrorKind::HostUnreachable);
             state.connection_stage = ConnectionStage::None;
             return Task::none();
         }
@@ -133,7 +142,8 @@ fn handle_interactive_auth(state: &mut IcedState) -> Task<Message> {
                 }
                 Err(_e) => {
                     state.quick_connect_flow = QuickConnectFlow::Failed;
-                    state.quick_connect_error_kind = Some(crate::app::model::ConnectErrorKind::Unknown);
+                    state.quick_connect_error_kind =
+                        Some(crate::app::model::ConnectErrorKind::Unknown);
                     state.connection_stage = ConnectionStage::None;
                     Task::none()
                 }
@@ -267,9 +277,7 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
             .await;
 
         match result {
-            Ok(session) => {
-                Message::ConnectResult(Ok(session))
-            }
+            Ok(session) => Message::ConnectResult(Ok(session)),
             Err(e) => {
                 let (kind, host_key_error) = match e {
                     crate::backend::shared_ssh_session::SharedSessionError::ConnectFailed(kind, info) => (kind, info),
@@ -291,7 +299,10 @@ fn start_ssh_connect(state: &mut IcedState) -> Task<Message> {
 }
 
 /// Internal error handler (returns Task::none).
-pub(crate) fn internal_handle_connect_error(state: &mut IcedState, e: crate::app::model::ConnectErrorKind) {
+pub(crate) fn internal_handle_connect_error(
+    state: &mut IcedState,
+    e: crate::app::model::ConnectErrorKind,
+) {
     state.connection_stage = ConnectionStage::None;
     let is_password_auth = e == crate::app::model::ConnectErrorKind::AuthFailed
         && matches!(state.model.draft.auth, crate::session::AuthMethod::Password);
@@ -337,7 +348,12 @@ fn internal_handle_host_key_error(state: &mut IcedState, e: &crate::app::model::
                 crate::settings::HostKeyPolicy::AcceptNew
                     if e == &crate::app::model::ConnectErrorKind::HostKeyUnknown =>
                 {
-                    state.model.settings.security.known_hosts.retain(|r| !(r.host == info.host && r.port == info.port));
+                    state
+                        .model
+                        .settings
+                        .security
+                        .known_hosts
+                        .retain(|r| !(r.host == info.host && r.port == info.port));
                     state.model.settings.security.known_hosts.push(
                         crate::settings::KnownHostRecord {
                             host: info.host.clone(),
@@ -407,7 +423,9 @@ pub(crate) fn handle_connect_success(state: &mut IcedState, session: Box<dyn Asy
                 }),
             }
         };
-        let _ = state.rt.block_on(state.model.tab_manager.upsert_session(profile));
+        let _ = state
+            .rt
+            .block_on(state.model.tab_manager.upsert_session(profile));
         profile_id = Some(id.clone());
         state.model.selected_session_id = profile_id.clone();
     }
@@ -438,7 +456,14 @@ pub(crate) fn handle_connect_success(state: &mut IcedState, session: Box<dyn Asy
         state.model.draft.auth.clone(),
     );
 
-    super::super::update::complete_new_ssh_session(state, session, recent, label, profile_id, Some(connection_key));
+    super::super::update::complete_new_ssh_session(
+        state,
+        session,
+        recent,
+        label,
+        profile_id,
+        Some(connection_key),
+    );
     state.quick_connect_flow = QuickConnectFlow::Connected;
     state.quick_connect_error_kind = None;
     state.connection_stage = ConnectionStage::None;
@@ -503,7 +528,9 @@ pub(crate) fn handle_connect_success_arc(
                 }),
             }
         };
-        let _ = state.rt.block_on(state.model.tab_manager.upsert_session(profile));
+        let _ = state
+            .rt
+            .block_on(state.model.tab_manager.upsert_session(profile));
         profile_id = Some(id.clone());
         state.model.selected_session_id = profile_id.clone();
     }
@@ -568,15 +595,13 @@ fn save_credentials_after_connect(state: &mut IcedState, profile_id: &Option<Str
         if pw_non_empty && state.model.settings.security.vault.is_some() {
             if let Some(master) = state.model.vault_master_password.as_ref() {
                 let pw = state.model.draft.password.expose_secret();
-                if let Ok(Some(cid)) =
-                    crate::vault::session_credentials::sync_ssh_credentials(
-                        master.expose_secret(),
-                        &pid,
-                        Some(pw),
-                        None,
-                        state.model.settings.security.kdf_memory_level,
-                    )
-                {
+                if let Ok(Some(cid)) = crate::vault::session_credentials::sync_ssh_credentials(
+                    master,
+                    &pid,
+                    Some(pw),
+                    None,
+                    state.model.settings.security.kdf_memory_level,
+                ) {
                     if let Some(existing) =
                         state.model.profiles().iter().find(|p| p.id == pid).cloned()
                     {
@@ -587,9 +612,9 @@ fn save_credentials_after_connect(state: &mut IcedState, profile_id: &Option<Str
                                     transport: crate::session::TransportConfig::Ssh(ssh),
                                     ..existing
                                 };
-                                let _ = state.rt.block_on(
-                                    state.model.tab_manager.upsert_session(updated),
-                                );
+                                let _ = state
+                                    .rt
+                                    .block_on(state.model.tab_manager.upsert_session(updated));
                             }
                         }
                     }
@@ -618,14 +643,18 @@ pub(crate) fn handle_host_key_accept_once(state: &mut IcedState) -> Task<Message
         return Task::none();
     };
     let info = p.info;
-    state.runtime_known_hosts.retain(|r| !(r.host == info.host && r.port == info.port));
-    state.runtime_known_hosts.push(crate::settings::KnownHostRecord {
-        host: info.host,
-        port: info.port,
-        algo: info.algo,
-        fingerprint: info.fingerprint,
-        added_ms: crate::settings::unix_time_ms(),
-    });
+    state
+        .runtime_known_hosts
+        .retain(|r| !(r.host == info.host && r.port == info.port));
+    state
+        .runtime_known_hosts
+        .push(crate::settings::KnownHostRecord {
+            host: info.host,
+            port: info.port,
+            algo: info.algo,
+            fingerprint: info.fingerprint,
+            added_ms: crate::settings::unix_time_ms(),
+        });
     super::super::update::update(state, Message::ConnectPressed)
 }
 
@@ -635,14 +664,24 @@ pub(crate) fn handle_host_key_always_trust(state: &mut IcedState) -> Task<Messag
         return Task::none();
     };
     let info = p.info;
-    state.model.settings.security.known_hosts.retain(|r| !(r.host == info.host && r.port == info.port));
-    state.model.settings.security.known_hosts.push(crate::settings::KnownHostRecord {
-        host: info.host,
-        port: info.port,
-        algo: info.algo,
-        fingerprint: info.fingerprint,
-        added_ms: crate::settings::unix_time_ms(),
-    });
+    state
+        .model
+        .settings
+        .security
+        .known_hosts
+        .retain(|r| !(r.host == info.host && r.port == info.port));
+    state
+        .model
+        .settings
+        .security
+        .known_hosts
+        .push(crate::settings::KnownHostRecord {
+            host: info.host,
+            port: info.port,
+            algo: info.algo,
+            fingerprint: info.fingerprint,
+            added_ms: crate::settings::unix_time_ms(),
+        });
     state.model.settings.save_with_log();
     super::super::update::update(state, Message::ConnectPressed)
 }
@@ -696,7 +735,10 @@ pub(crate) fn handle_profile_connect(
     }
 
     let master = state.model.vault_master_password.clone();
-    match state.model.fill_draft_from_profile(&profile, master.as_ref()) {
+    match state
+        .model
+        .fill_draft_from_profile(&profile, master.as_ref())
+    {
         Ok(()) => {
             // 欢迎页模式或不处于活跃连接时，强制开新页签
             if state.show_welcome || !state.active_session_is_connected() {
@@ -707,7 +749,8 @@ pub(crate) fn handle_profile_connect(
             if let crate::session::TransportConfig::Ssh(_ssh) = &profile.transport {
                 match &state.model.draft.auth {
                     crate::session::AuthMethod::Password => {
-                        can_auto_connect = !state.model.draft.password.expose_secret().trim().is_empty();
+                        can_auto_connect =
+                            !state.model.draft.password.expose_secret().trim().is_empty();
                     }
                     crate::session::AuthMethod::Key { private_key_path } => {
                         can_auto_connect = !private_key_path.trim().is_empty();
@@ -796,7 +839,12 @@ pub(crate) fn handle_interactive_submit(state: &mut IcedState) -> Task<Message> 
                     );
                     state.connection_stage = ConnectionStage::SessionSetup;
                     super::super::update::complete_new_ssh_session(
-                        state, session, recent, label, profile_id, Some(connection_key),
+                        state,
+                        session,
+                        recent,
+                        label,
+                        profile_id,
+                        Some(connection_key),
                     );
                     state.quick_connect_flow = QuickConnectFlow::Connected;
                     state.quick_connect_error_kind = None;
@@ -815,7 +863,8 @@ pub(crate) fn handle_interactive_submit(state: &mut IcedState) -> Task<Message> 
                 }
                 Err(_e) => {
                     state.quick_connect_flow = QuickConnectFlow::Failed;
-                    state.quick_connect_error_kind = Some(crate::app::model::ConnectErrorKind::Unknown);
+                    state.quick_connect_error_kind =
+                        Some(crate::app::model::ConnectErrorKind::Unknown);
                     state.connection_stage = ConnectionStage::None;
                 }
             }
@@ -879,7 +928,10 @@ pub(crate) fn inject_ssh_connecting_info_full(state: &mut IcedState, skip_counti
     ) {
         let lines_to_clear = state.preconnect_info_line_count;
         if lines_to_clear > 0 {
-            state.active_pane_mut().terminal.clear_preconnect_lines(lines_to_clear);
+            state
+                .active_pane_mut()
+                .terminal
+                .clear_preconnect_lines(lines_to_clear);
         }
         state.preconnect_info_line_count = 0;
     }
@@ -895,7 +947,9 @@ pub(crate) fn inject_ssh_connecting_info_full(state: &mut IcedState, skip_counti
     let auth_name = match &draft.auth {
         crate::session::AuthMethod::Password => state.model.i18n.tr("iced.auth.password"),
         crate::session::AuthMethod::Key { .. } => state.model.i18n.tr("iced.auth.public_key"),
-        crate::session::AuthMethod::Interactive => state.model.i18n.tr("iced.auth.keyboard_interactive"),
+        crate::session::AuthMethod::Interactive => {
+            state.model.i18n.tr("iced.auth.keyboard_interactive")
+        }
         crate::session::AuthMethod::Agent => state.model.i18n.tr("iced.auth.agent"),
     };
     let merged_known_hosts = merge_known_hosts(&state.model.settings, &state.runtime_known_hosts);
@@ -920,7 +974,9 @@ pub(crate) fn inject_ssh_connecting_info_full(state: &mut IcedState, skip_counti
     // 2. Host fingerprint (from known_hosts + runtime overrides)
     if let Some(rec) = merged_known_hosts.iter().find(|r| r.host == host) {
         lines.push(
-            i18n_host_fp.replace("{algo}", &rec.algo).replace("{fp}", &rec.fingerprint),
+            i18n_host_fp
+                .replace("{algo}", &rec.algo)
+                .replace("{fp}", &rec.fingerprint),
         );
     }
 
@@ -932,10 +988,14 @@ pub(crate) fn inject_ssh_connecting_info_full(state: &mut IcedState, skip_counti
         state.preconnect_info_line_count = lines.len();
     }
     let line_refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
-    state.active_pane_mut().terminal.inject_local_lines(&line_refs);
+    state
+        .active_pane_mut()
+        .terminal
+        .inject_local_lines(&line_refs);
 
     // 4. "连接中…" message (NOT counted — always visible during connection)
-    state.active_pane_mut()
+    state
+        .active_pane_mut()
         .terminal
         .inject_local_lines(&[&i18n_connecting_stage]);
 }
@@ -970,14 +1030,13 @@ pub(crate) fn handle_reconnect_tick(state: &mut IcedState) -> Task<Message> {
     }
 
     // 延迟已到，执行重连
-    log::info!(
-        "[Reconnect] Attempt {}/{}",
-        attempt,
-        max
-    );
+    log::info!("[Reconnect] Attempt {}/{}", attempt, max);
 
     // 显示重连尝试消息
-    let msg = state.model.i18n.tr("iced.term.reconnect_attempt")
+    let msg = state
+        .model
+        .i18n
+        .tr("iced.term.reconnect_attempt")
         .replace("{n}", &attempt.to_string())
         .replace("{max}", &max.to_string());
     state.active_pane_mut().terminal.inject_local_lines(&[&msg]);
@@ -1031,7 +1090,13 @@ fn start_reconnect_async(state: &mut IcedState) -> Task<Message> {
 /// Handle the result of a reconnect attempt.
 pub(crate) fn handle_reconnect_result(
     state: &mut IcedState,
-    result: Result<std::sync::Arc<crate::backend::ssh_session::SshChannel>, (crate::app::model::ConnectErrorKind, Option<crate::app::model::HostKeyErrorInfo>)>,
+    result: Result<
+        std::sync::Arc<crate::backend::ssh_session::SshChannel>,
+        (
+            crate::app::model::ConnectErrorKind,
+            Option<crate::app::model::HostKeyErrorInfo>,
+        ),
+    >,
 ) -> Task<Message> {
     match result {
         Ok(session_arc) => {
@@ -1046,19 +1111,16 @@ pub(crate) fn handle_reconnect_result(
             state.vault_hint_line_count = 0;
 
             // 完成会话建立
-            let label = format!(
-                "{}@{}",
-                state.model.draft.user,
-                state.model.draft.host
-            );
+            let label = format!("{}@{}", state.model.draft.user, state.model.draft.host);
             let recent = state.model.recent_record_for_draft_with_profile(
                 label.clone(),
                 state.model.selected_session_id.clone(),
             );
             // SshChannel 已实现 AsyncSession，可直接使用
-            let session: Box<dyn crate::backend::ssh_session::AsyncSession> = Box::new(std::sync::Arc::try_unwrap(session_arc).unwrap_or_else(|_arc| {
-                panic!("Reconnect session Arc was shared unexpectedly")
-            }));
+            let session: Box<dyn crate::backend::ssh_session::AsyncSession> = Box::new(
+                std::sync::Arc::try_unwrap(session_arc)
+                    .unwrap_or_else(|_arc| panic!("Reconnect session Arc was shared unexpectedly")),
+            );
             // 重连时使用相同的连接键
             let connection_key = state.reconnect_context.as_ref().map(|ctx| {
                 crate::backend::shared_ssh_session::ConnectionKey::new(
@@ -1095,7 +1157,10 @@ pub(crate) fn handle_reconnect_result(
                     state.connection_stage = ConnectionStage::None;
                     state.reconnect_context = None;
 
-                    let msg = state.model.i18n.tr("iced.term.reconnect_failed")
+                    let msg = state
+                        .model
+                        .i18n
+                        .tr("iced.term.reconnect_failed")
                         .replace("{reason}", error_kind.user_message());
                     state.active_pane_mut().terminal.inject_local_lines(&[&msg]);
 
@@ -1103,14 +1168,20 @@ pub(crate) fn handle_reconnect_result(
                 }
 
                 // 继续重试
-                let delay = state.model.settings.reconnect_delay_for_attempt(next_attempt);
+                let delay = state
+                    .model
+                    .settings
+                    .reconnect_delay_for_attempt(next_attempt);
                 state.connection_stage = ConnectionStage::Reconnecting {
                     attempt: next_attempt,
                     max,
                     delay_secs: delay,
                 };
 
-                let msg = state.model.i18n.tr("iced.term.reconnect_attempt")
+                let msg = state
+                    .model
+                    .i18n
+                    .tr("iced.term.reconnect_attempt")
                     .replace("{n}", &next_attempt.to_string())
                     .replace("{max}", &max.to_string());
                 state.active_pane_mut().terminal.inject_local_lines(&[&msg]);
@@ -1148,7 +1219,9 @@ pub(crate) fn handle_restore_session_confirm(state: &mut IcedState) -> Task<Mess
             if let crate::session::TransportConfig::Ssh(ssh) = &profile.transport {
                 auth_to_set = Some(ssh.auth.clone());
                 key_path_to_set = Some(match &ssh.auth {
-                    crate::session::AuthMethod::Key { private_key_path } => private_key_path.clone(),
+                    crate::session::AuthMethod::Key { private_key_path } => {
+                        private_key_path.clone()
+                    }
                     _ => String::new(),
                 });
                 credential_id = ssh.credential_id.clone();
@@ -1171,8 +1244,9 @@ pub(crate) fn handle_restore_session_confirm(state: &mut IcedState) -> Task<Mess
         && state.model.vault_master_password.is_none()
     {
         // 需要解锁 Vault
-        return super::update(state, Message::VaultUnlockOpenConnect(
-            crate::session::SessionProfile {
+        return super::update(
+            state,
+            Message::VaultUnlockOpenConnect(crate::session::SessionProfile {
                 id: record.profile_id.unwrap_or_default(),
                 name: record.label.clone(),
                 group_id: None,
@@ -1185,8 +1259,8 @@ pub(crate) fn handle_restore_session_confirm(state: &mut IcedState) -> Task<Mess
                     auth: state.model.draft.auth.clone(),
                     credential_id,
                 }),
-            },
-        ));
+            }),
+        );
     }
 
     // 直接发起连接
@@ -1259,7 +1333,10 @@ pub(crate) fn start_prewarm_connect(
     let vault_master = state.model.vault_master_password.clone();
 
     // 构建 draft 并开始连接
-    if let Err(msg) = state.model.fill_draft_from_profile(&profile, vault_master.as_ref()) {
+    if let Err(msg) = state
+        .model
+        .fill_draft_from_profile(&profile, vault_master.as_ref())
+    {
         log::warn!("[Prewarm] Failed to fill draft: {}", msg);
         state.prewarm_state = None;
         return Task::none();
@@ -1291,7 +1368,13 @@ pub(crate) fn start_prewarm_connect(
 /// 处理预热结果。
 pub(crate) fn handle_prewarm_result(
     state: &mut IcedState,
-    result: Result<std::sync::Arc<crate::backend::ssh_session::SshChannel>, (crate::app::model::ConnectErrorKind, Option<crate::app::model::HostKeyErrorInfo>)>,
+    result: Result<
+        std::sync::Arc<crate::backend::ssh_session::SshChannel>,
+        (
+            crate::app::model::ConnectErrorKind,
+            Option<crate::app::model::HostKeyErrorInfo>,
+        ),
+    >,
 ) -> Task<Message> {
     match result {
         Ok(_session) => {

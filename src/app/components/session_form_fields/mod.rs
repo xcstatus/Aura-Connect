@@ -4,5 +4,5 @@
 mod form;
 mod sidebar;
 
-pub use form::{session_form_dialog, session_form_tokens, SessionFormMode};
-pub use sidebar::{sidebar, SidebarPage};
+pub use form::{SessionFormMode, session_form_dialog, session_form_tokens};
+pub use sidebar::{SidebarPage, sidebar};
